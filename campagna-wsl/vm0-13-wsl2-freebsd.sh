@@ -5,6 +5,7 @@
 #   - tap13 e VNC 127.0.0.1:5913;
 #   - parte SOLO se non c'e' nessun'altra VM: la vm0:12 ha lo stesso nome Windows e usa lo stesso disco USB.
 # Gira come ROOT e finisce con `exec bhyve`. Con --prova stampa il comando e NON avvia niente.
+# Il MAC di virtio-net lo genera bhyve da md5("13-0-vm0:13"): 00:a0:98:a1:73:65 (vm0:12 = 00:a0:98:53:6b:2d).
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; [ "${1:-}" = --prova ] && PROVA=1
@@ -18,7 +19,8 @@ VM=$(v vm); [ "$VM" = vm0:13 ] || { echo "VM '$VM': solo vm0:13"; exit 4; }
 # una VM alla volta: niente in /dev/vmm e nessun processo bhyve
 altre=$(ls /dev/vmm 2>/dev/null | tr '\n' ' ')
 [ -z "$altre" ] || { echo "STOP: c'e' gia' una VM ($altre): la vm0:13 parte solo da sola"; exit 4; }
-pgrep -x bhyve >/dev/null && { echo "STOP: un processo bhyve e' vivo"; exit 4; }
+# pgrep -x bhyve NON basta: i binari della serie si chiamano anche bhyve-hlt-mirrorfix ecc.
+ps -ax -o comm= | grep -qiE 'bhyve|qemu-system' && { echo "STOP: un processo bhyve/qemu e' vivo"; exit 4; }
 disco() { geom disk list | awk -v id="$1" '/^Geom name: /{d=$NF} $1 == "ident:" && $2 == id && d {print d; exit}'; }
 DI=$(disco "$(v disco_immagine_ident)")
 [ -n "$DI" ] || { echo "disco dell'immagine assente"; exit 4; }
