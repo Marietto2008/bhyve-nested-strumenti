@@ -17,8 +17,14 @@ while :; do
 				[ -n "$w" ] && break
 				i=$((i + 1)); sleep 1
 			done
-			sleep 2
-			[ -n "${pid:-}" ] && for x in $(xdotool search --pid "$pid" 2>/dev/null); do xdotool windowminimize "$x" 2>/dev/null; done
+			# TigerVNC rimappa la finestra quando l'ospite cambia risoluzione (avvio di Windows): per 90 s dopo
+			# l'apertura si riminimizza ogni finestra che torna visibile
+			[ -n "${pid:-}" ] && { k=0; while [ $k -lt 45 ]; do
+				for x in $(xdotool search --pid "$pid" 2>/dev/null); do
+					xwininfo -id "$x" 2>/dev/null | grep -q 'IsViewable' && xdotool windowminimize "$x" 2>/dev/null
+				done
+				k=$((k + 1)); sleep 2
+			done; }
 		fi
 	else
 		# fra un riavvio e l'altro l'istanza manca per pochi secondi: si esce solo dopo 60 s di assenza
