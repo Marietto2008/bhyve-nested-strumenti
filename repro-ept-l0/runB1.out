@@ -1,0 +1,29 @@
+claude-eptrepro v5: X=0x20000 A=off 0x20000 B=off 0x30000 porta=0xeeef pid=76159
+  [host] marcatori iniziali: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run 0 smoke A] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+0 smoke A        esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+--- giro 1 ---
+  [run 1 warm A] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+1 warm A         esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+  [run 1 warm A bis] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+1 warm A bis     esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+  [host] marcatori dopo X->B: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run 2 read B] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000042424242 EAX=0x42424242 inout.eax=0x42424242
+2 read B         esito=0 exit=0 val=0x42424242 gpa=0 errno=0 atteso=0x42424242 -> PASS
+  [host] marcatori dopo non-present: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run 3 fault X] INST_EMUL gpa=0x20000 exit.rip=0x1008
+3 fault X        esito=1 exit=9 val=0 gpa=0x20000 errno=0 atteso=fault X -> PASS (fault su X)
+--- giro 2 ---
+  [run 1 warm A] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+1 warm A         esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+  [run 1 warm A bis] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+1 warm A bis     esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+  [host] marcatori dopo X->B: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run 2 read B] INOUT port=0xeeef out bytes=4 exit.rip=0x100c inst_len=2: RAX=0x0000000042424242 EAX=0x42424242 inout.eax=0x42424242
+2 read B         esito=0 exit=0 val=0x42424242 gpa=0 errno=0 atteso=0x42424242 -> PASS
+  [host] marcatori dopo non-present: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run 3 fault X] INST_EMUL gpa=0x20000 exit.rip=0x1008
+3 fault X        esito=1 exit=9 val=0 gpa=0x20000 errno=0 atteso=fault X -> PASS (fault su X)
+RISULTATO: PASS
+HARNESS_PROTOCOL=PASS
+HW_EPT_NONPRESENT=UNKNOWN (dal programma; si decide con la traccia DTrace: reason48 su GPA 0x20000 al passo 3)

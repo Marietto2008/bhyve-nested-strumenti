@@ -1,0 +1,60 @@
+# Claude 23/10/2026 -- parere #36 §4: contatori Hyper-V per VP (radice e partizioni) ogni
+# secondo, come riscontro indipendente delle sonde di L0.
+# Claude 24/10/2026 -- parere #38 §6: Windows e' in italiano e i nomi degli insiemi sono
+# LOCALIZZATI: niente nomi inglesi. Si elencano tutti gli insiemi che parlano di
+# Hyper-V/hypervisor/processori virtuali (e le classi CIM Win32_Perf* corrispondenti),
+# poi si registrano TUTTI i contatori (\insieme(*)\*) degli insiemi dei processori
+# virtuali e logici dell'hypervisor.
+# uso: hvperf.ps1 -Sec 1700 [-SoloElenco] [-Tag A1]
+# Claude 24/10/2026 -- parere #42: -Tag da' file propri a ogni fase (hvperf<Tag>.csv,
+# hvperf-sync<Tag>.txt); senza -Tag i nomi di sempre.
+param([int]$Sec = 1700, [switch]$SoloElenco, [string]$Tag = "")
+$d = "C:\claude\faseA"
+$el = "$d\hvperf-insiemi.txt"
+$all = Get-Counter -ListSet * -ErrorAction SilentlyContinue
+$hv = $all | Where-Object { $_.CounterSetName -match 'Hyper|Iper|hypervisor|Virt' }
+"== insiemi ($($hv.Count))" | Out-File -Encoding utf8 $el
+foreach ($s in $hv) {
+    "== $($s.CounterSetName) [$($s.CounterSetType)]" | Out-File -Append -Encoding utf8 $el
+    $s.Counter | Out-File -Append -Encoding utf8 $el
+}
+"== classi CIM" | Out-File -Append -Encoding utf8 $el
+Get-CimClass -Namespace root/cimv2 -ErrorAction SilentlyContinue |
+    Where-Object { $_.CimClassName -match 'Win32_Perf.*(HvStats|HyperV|Hypervisor)' } |
+    ForEach-Object { $_.CimClassName } | Out-File -Append -Encoding utf8 $el
+if ($SoloElenco) { "HVPERF-ELENCO-FINE" | Out-File -Append -Encoding utf8 $el; exit }
+$want = @()
+foreach ($s in $hv) {
+    $n = $s.CounterSetName
+    # parere #41 P1: anche gli insiemi per partizione (spazio GPA per partizione)
+    if ($n -match 'hypervisor|Hypervisor' -and $n -match 'virtual|virtuale|logic|logico|partizione|partition') {
+        $want += "\$n(*)\*"
+    }
+}
+"contatori scelti: $($want -join ' ; ')" | Out-File -Append -Encoding utf8 $el
+# parere #40 §7: allineamento con l'host per coppie di marcatori (stile NTP) con tsecho.py
+# (UDP 7123): 10 scambi prima e 10 dopo la raccolta, in ns dall'epoca Unix (orologio di
+# Windows, risoluzione 100 ns); righe "SYNC t1 t4 risposta" in hvperf-sync.txt.
+function Sync([string]$quando) {
+    $u = New-Object System.Net.Sockets.UdpClient; $u.Client.ReceiveTimeout = 500
+    $ep = New-Object System.Net.IPEndPoint ([System.Net.IPAddress]::Any, 0)
+    $e0 = [datetime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc).Ticks
+    for ($i = 0; $i -lt 10; $i++) {
+        $t1 = ([datetime]::UtcNow.Ticks - $e0) * 100
+        $b = [Text.Encoding]::ASCII.GetBytes("$t1"); [void]$u.Send($b, $b.Length, "IP-HOST", 7123)
+        try { $r = [Text.Encoding]::ASCII.GetString($u.Receive([ref]$ep)) } catch { $r = "" }
+        $t4 = ([datetime]::UtcNow.Ticks - $e0) * 100
+        "SYNC $quando $t1 $t4 $r" | Out-File -Append -Encoding ascii "$d\hvperf-sync$Tag.txt"
+        Start-Sleep -Milliseconds 200
+    }
+    $u.Close()
+}
+if (Test-Path "$d\hvperf-sync$Tag.txt") { Remove-Item "$d\hvperf-sync$Tag.txt" }
+Sync "prima"
+$out = "$d\hvperf$Tag.csv"
+if (Test-Path $out) { Clear-Content $out }
+if ($want.Count -gt 0) {
+    & typeperf $want -si 1 -sc $Sec -f CSV -o $out -y | Out-Null
+}
+Sync "dopo"
+"HVPERF-FINE" | Out-File -Append -Encoding utf8 $el

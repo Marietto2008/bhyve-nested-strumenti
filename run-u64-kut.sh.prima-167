@@ -1,0 +1,92 @@
+#!/bin/sh
+# run-u64-kut.sh -- Claude 31/10/2026, parere #166 (livello A1 del dossier). UNA sessione KUT u64 sul modulo
+# ORIGINALE: nessuno scambio di modulo, nessun nesting (accel bhyve SENZA nested=on), una VM (vm2), 1 vCPU su CPU 6.
+#
+#   run-u64-kut.sh --prova  <out>    solo controlli in sola lettura + il comando che userebbe: NESSUNA VM
+#   run-u64-kut.sh --esegui <out>    UNA sessione (consenso dell'utente); nessun rilancio
+#
+# La finestra di misura: dopo il riscaldamento la .flat stampa "U64 PRONTO"; il driver fotografa i contatori
+# d'uscita della vm2 (bhyvectl --get-stats), manda 'g'; a "U64 FINE" li rifotografa. "vm exits for instruction
+# emulation" e "vm exits due to nested page fault" devono crescere di 0: altrimenti la sessione NON vale come
+# riferimento nativo (NON_NATIVA), qualunque sia l'esito dei casi.
+# USCITA: 0 sessione fatta (verdetto nel file VERDETTO); 4 STOP ai controlli; 5 sessione non conclusa.
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+MOD=/boot/kernel/vmm-restore.ko
+MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+OIDS="hw.vmm.vmx.nested_ept12_viol_emul_reflected hw.vmm.vmx.vept_h2_viol_final hw.vmm.gla2gpa_restart_capped hw.vmm.fatal_latches"
+OID_ATTESO=0000				# originale: nessuno degli oid dei moduli di prova
+FLAT=$B/logs/kut-opnd-build-166/x86/u64.flat
+FLAT_SHA=176c8d534a99a58c1e2d7c82b2f76278c5312eb250602d7f4a7a4e74b13325a4
+DRV=$B/kut-drive.py
+DRV_SHA=ecffbbcaa1ddf7cb6780c783857de938b47f47f9478e5291fda4c967a4969aff
+QEMU=$B/build-qemu-gate-nested-sr/qemu-system-x86_64
+QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+LIBV_ATTESA=/usr/lib/libvmmapi.so.7
+LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
+LOADER_SHA=4f3d0c57da4372da8cb501096aa45c359edebf7c11e061c8996e314898022230
+PCBIOS=$B/qemu-nested/pc-bios
+MACCHINA=pc-i440fx-10.2
+PY=/usr/local/bin/python3
+TMO=180
+LIMITE_BLOCCHI=2097152
+
+[ $# -eq 2 ] || { echo "uso: $0 --prova|--esegui <out>"; exit 4; }
+MODO=$1; OUT=$2
+ferma() { echo "STOP: $*"; exit 4; }
+case "$MODO" in --prova|--esegui) ;; *) ferma "modo $MODO";; esac
+case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
+case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+[ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
+[ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
+ulimit -f $LIMITE_BLOCCHI
+
+echo "=== preflight (sola lettura) ==="
+CAR=$(/sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | head -1)
+[ "$CAR" = "$MOD" ] || ferma "caricato '$CAR', atteso $MOD"
+[ "$(sha256 -q "$MOD")" = "$MOD_SHA" ] || ferma "modulo diverso dall'originale"
+sig=""; for o in $OIDS; do sig=$sig$(/sbin/sysctl -n $o >/dev/null 2>&1 && echo 1 || echo 0); done
+[ "$sig" = "$OID_ATTESO" ] || ferma "firma oid $sig, attesa $OID_ATTESO (modulo originale)"
+[ "$(sha256 -q /boot/loader.conf)" = "$LOADER_SHA" ] || ferma "loader.conf cambiato"
+[ "$(sha256 -q "$FLAT")" = "$FLAT_SHA" ] || ferma "u64.flat diversa da quella congelata"
+for x in 'U64 PRONTO' 'U64 FINESTRA APERTA' 'U64 CASO' 'U64 FINE'; do strings "$FLAT" | grep -q "$x" || ferma "la .flat non stampa '$x'"; done
+[ "$(sha256 -q "$DRV")" = "$DRV_SHA" ] || ferma "kut-drive.py diverso da quello congelato"
+[ "$(sha256 -q "$QEMU")" = "$QEMU_SHA" ] || ferma "QEMU diversa da quella protetta"
+LIBV=$(sudo -n /usr/bin/ldd "$QEMU" | awk '/libvmmapi/{print $3}')
+[ "$LIBV" = "$LIBV_ATTESA" ] && [ "$(sha256 -q "$LIBV")" = "$LIBV_SHA" ] || ferma "libvmmapi $LIBV diversa da quella attesa"
+v=$(/bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'); [ -n "$v" ] && { echo "$v"; ferma "una VM e' gia' viva"; }
+[ -z "$(ls /dev/vmm 2>/dev/null)" ] || ferma "/dev/vmm non vuoto ($(ls /dev/vmm | tr '\n' ' ')): nessuna distruzione implicita"
+[ "$(pciconf -l 2>/dev/null | grep -c '^ppt')" = 6 ] || ferma "i ppt legati non sono 6"
+kldstat -q -n amdgpu.ko && ferma "amdgpu caricato"
+
+VMCMD="/usr/bin/cpuset -l 6 /usr/bin/timeout -k 1s $((TMO + 30))s $QEMU -L $PCBIOS --no-reboot -nodefaults \
+-machine $MACCHINA -accel bhyve -device isa-debug-exit,iobase=0xf4,iosize=0x4 -display none -monitor none \
+-chardev stdio,id=u64,mux=off,signal=off -serial chardev:u64 -smp 1 -m 256 -cpu max -kernel $FLAT"
+case "$VMCMD" in *nested=on*|*mon:stdio*|*-daemonize*|*vm0*) ferma "riga QEMU non ammessa";; esac
+DRVCMD="$PY $DRV --out $OUT/drv --timeout $TMO --regola 'U64 PRONTO|foto|g' --regola 'U64 FINE|foto|' \
+--foto-cmd '/usr/sbin/bhyvectl --vm=vm2 --get-stats' -- $VMCMD"
+echo "preflight OK: originale $MOD_SHA (oid $sig), flat $FLAT_SHA, QEMU $QEMU_SHA, libvmmapi $LIBV_SHA"
+echo "comando: sudo -n $DRVCMD"
+[ "$MODO" = --prova ] && { echo "PROVA: nessuna VM avviata"; exit 0; }
+
+mkdir -p "$OUT" || ferma "mkdir $OUT"
+eval sudo -n $DRVCMD | tee "$OUT/driver.out"
+S=$OUT/drv/seriale.txt
+[ -f "$S" ] || { echo "nessuna seriale"; exit 5; }
+grep -q 'U64 FINE' "$S" || { echo "sessione NON conclusa: manca U64 FINE ($(cat $OUT/drv/esito.txt))"; exit 5; }
+conta() { grep -i "$1" "$2" | awk '{print $NF}' | head -1; }
+F1=$OUT/drv/foto-1.txt; F2=$OUT/drv/foto-2.txt
+e1=$(conta 'instruction emulation' $F1); e2=$(conta 'instruction emulation' $F2)
+n1=$(conta 'nested page fault' $F1); n2=$(conta 'nested page fault' $F2)
+if [ -n "$e1" ] && [ -n "$e2" ] && [ -n "$n1" ] && [ -n "$n2" ] && [ "$e1" = "$e2" ] && [ "$n1" = "$n2" ]; then
+	NATIVA="NATIVA (emulazione +0, nested page fault +0 nella finestra)"
+else
+	NATIVA="NON_NATIVA o non misurata (emulazione $e1 -> $e2, nested page fault $n1 -> $n2)"
+fi
+{ echo "sessione: $(cat $OUT/drv/esito.txt)"; echo "finestra: $NATIVA"; grep 'U64 FINE' "$S" | sed 's/^[0-9.]* //'
+  grep -c 'CONTRARIO_AL_MODELLO' "$S" | sed 's/^/casi contrari al modello: /'; } > "$OUT/VERDETTO"
+cat "$OUT/VERDETTO"
+case "$NATIVA" in NATIVA*) echo "esito possibile: U64_NATIVE_DATA_ACCESS_OBSERVED (se 0 contrari) o ..._CONTRADICTS_MODEL";;
+	*) echo "la sessione NON vale come riferimento nativo";; esac
+echo "/dev/vmm dopo: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')(nessuna distruzione da questo runner)"
+exit 0

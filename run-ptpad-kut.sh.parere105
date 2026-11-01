@@ -1,0 +1,49 @@
+#!/bin/sh
+# run-ptpad-kut.sh -- Claude 27/10/2026, parere #101. Runner del test deterministico AUDIT-PTP-HOLD.
+# NON si lancia senza un NUOVO consenso esplicito dell'utente: avvia una VM (kvm-unit-tests come L1
+# sotto bhyve). VM DEDICATA e SACRIFICABILE, UNA sola vCPU, MAI la vm0:12 Windows. Nessuna patch al
+# kernel. I casi D (D_DATA, D_PTP) possono uccidere bhyve: vanno per ULTIMI e le evidenze dei casi
+# precedenti sono gia' su disco (la serie e' scritta via via).
+#
+# Preflight a FREDDO (tutti STOP):
+#   - modulo 27125f004917 (hash E build-id), nessuna VM viva ne' nodo /dev/vmm aperto;
+#   - la .flat del test esiste e contiene il simbolo del test (strings);
+#   - lo script NON tocca sysctl se non in lettura; default invariati.
+# Raccolta: per ogni "PTPAD CASE" sulla seriale, fotografa hw.vmm.vmx.nested_ept_mmio_emulated
+# (una vCPU, nessun altro MMIO fra i casi: il delta isola il movsq). Se bhyve esce con
+# "vm_run error" prima di un "PTPAD L1", lo stato del caso aperto e' bhyve_died (H2).
+# L'analisi e' OFFLINE: ptpad_an.py sul log combinato. Nessun verdetto di performance.
+#
+# Uso (SOLO dopo consenso): sudo -n sh run-ptpad-kut.sh <cartella-out> <kut.flat> <serial-dev-o-log>
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+N=$B/freebsd-nested/tools/nested
+MOD=/boot/kernel/vmm-restore.ko
+MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+MOD_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+OUT=${1:?cartella}; FLAT=${2:?kut.flat}; SER=${3:?seriale}
+. $N/ptpad-assembla.sh
+mkdir -p "$OUT" || exit 1
+ferma() { echo "STOP: $*"; exit 2; }
+
+echo "=== preflight a freddo ==="
+[ "$(sha256 -q $MOD)" = "$MOD_SHA" ] || ferma "modulo diverso da 27125f004917"
+readelf -n $MOD 2>/dev/null | grep -q "Build ID: $MOD_BUILDID" || ferma "build-id diverso: offset dell'audit non validi"
+/bin/ps -ax -o comm= -o args= | awk '$1 ~ /^(bhyve|qemu-system)/{print; f=1} END{exit f}' && ferma "una VM e' gia' viva"
+for n in /dev/vmm/*; do [ -e "$n" ] || continue; a=$(fstat "$n" 2>/dev/null | sed 1d); [ -n "$a" ] && ferma "nodo $n aperto"; done
+[ -s "$FLAT" ] || ferma "kut.flat assente: $FLAT"
+strings "$FLAT" | grep -q 'PTPAD CASE' || ferma "la .flat non contiene il test ptpad"
+echo "preflight OK (modulo $MOD_SHA, build-id $MOD_BUILDID)"
+echo
+echo "QUESTO RUNNER NON AVVIA LA VM DA SOLO."
+echo "Per eseguire, con una VM KUT dedicata a UNA vCPU, serve:"
+echo "  1) il consenso esplicito dell'utente;"
+echo "  2) un involucro che avvii bhyve col solo $FLAT, UNA vCPU, seriale su $SER,"
+echo "     catturi l'uscita 'vm_run error' e chiami ptpad_assembla sul log della seriale;"
+echo "  3) i casi D per ultimi, con le evidenze dei casi precedenti gia' salvate."
+echo
+echo "Quando il log della seriale e' in \$OUT/serial.txt e lo stato terminale e' noto:"
+echo "  . $N/ptpad-assembla.sh; ptpad_assembla \$OUT/serial.txt <alive|bhyve_died> \$OUT/combinato.txt <piano>"
+echo "  (il <piano> elenca i casi della SESSIONE: parere #102 §5, UN solo caso D per avvio;"
+echo "   l'altro resta NOT_RUN e richiede un avvio successivo con nuovo consenso)"
+echo "  python3 $B/ptpad_an.py \$OUT/combinato.txt"

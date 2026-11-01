@@ -1,0 +1,50 @@
+# mc-sistema.sh -- Claude 29/10/2026. Accesso REALE al sistema per modulo-caldo.sh.
+# Ogni funzione s_* e' l'unico punto in cui la logica (mc-logica.sh) tocca l'host.
+# Il banco di collaudo (mc-finto.sh) definisce le stesse funzioni su uno stato simulato.
+s_kld_path()    { /sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | /usr/bin/sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | /usr/bin/head -1; }
+s_kld_modules() { /sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | /usr/bin/awk '/Contains modules:/{f=1;next} f && $1 ~ /^[0-9]+$/ {print $2}' | /usr/bin/sort; }
+s_kld_loaded()  { /sbin/kldstat -q -n "$1" 2>/dev/null; }
+s_sha()         { /sbin/sha256 -q "$1" 2>/dev/null; }
+s_bid()         { /usr/bin/readelf -n "$1" 2>/dev/null | /usr/bin/sed -n 's/.*Build ID: *//p' | /usr/bin/head -1; }
+s_sysctl_present() { /sbin/sysctl -n "$1" >/dev/null 2>&1; }
+s_sysctl_val()  { /sbin/sysctl -n "$1" 2>/dev/null; }
+# una riga per funzione PCI di interesse: "<bdf> <driver> <unita'> <vendor> <device>"
+s_pci() {
+	/usr/sbin/pciconf -l 2>/dev/null | /usr/bin/awk '
+	{ split($1, a, "@"); nome = a[1]; sel = a[2]; sub(/:$/, "", sel)
+	  drv = nome; sub(/[0-9]+$/, "", drv); unit = substr(nome, length(drv) + 1)
+	  v = ""; d = ""
+	  for (i = 2; i <= NF; i++) { if ($i ~ /^vendor=/) v = substr($i, 8); if ($i ~ /^device=/) d = substr($i, 8) }
+	  print sel, drv, unit, v, d }'
+}
+s_vm_procs()    { /bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'; }
+s_vmm_nodes()   { /bin/ls /dev/vmm 2>/dev/null; }
+s_vmm_open()    { [ -n "$(sudo -n /usr/bin/fstat "/dev/vmm/$1" 2>/dev/null | /usr/bin/sed 1d)" ]; }
+s_kenv_get()    { /bin/kenv -q "$1" 2>/dev/null; }
+s_kenv_esiste() { /bin/kenv -q "$1" >/dev/null 2>&1; }
+s_kenv_set()    { sudo -n /bin/kenv "$1=$2" >/dev/null; }
+s_kenv_unset()  { sudo -n /bin/kenv -u "$1" >/dev/null 2>&1; }
+s_freeze()      { sudo -n /usr/sbin/devctl freeze; }
+s_thaw()        { sudo -n /usr/sbin/devctl thaw; }
+s_vm_destroy()  { sudo -n /usr/sbin/bhyvectl --vm="$1" --destroy; }
+# identita' di vm2 come in vmm-residuo.sh (#168 par. 5): ctime del nodo e hash dell'uscita di --get-memseg
+s_vm2_ctime()      { /usr/bin/stat -f '%c' /dev/vmm/vm2 2>/dev/null; }
+# #169 R5: l'hash vale come identita' SOLO se bhyvectl e' riuscito (pipefail: l'hash di un messaggio d'errore non conta)
+s_vm2_memseg_sha() { ( set -o pipefail; sudo -n /usr/sbin/bhyvectl --vm=vm2 --get-memseg 2>&1 | /sbin/sha256 -q ); }
+s_kldunload()   { sudo -n /sbin/kldunload -n vmm-restore.ko; }
+s_kldload()     { sudo -n /sbin/kldload "$1"; }
+s_sudo_ok()     { sudo -n /usr/bin/true 2>/dev/null; }
+s_loader_sha()  { /sbin/sha256 -q /boot/loader.conf; }
+s_kernel_bid()  { s_bid "$(/sbin/sysctl -n kern.bootfile)"; }
+s_sleep()       { /bin/sleep "$1"; }
+s_ora()         { /bin/date '+%F %T'; }
+# processi della catena devd -> service devmatch -> /etc/rc.d/devmatch -> devmatch/kldload/devctl (#118 §2.3)
+s_devmatch_attivi() {
+	/bin/ps -ax -o pid= -o command= | /usr/bin/awk -v me=$$ '
+	$1 != me && ($0 ~ /\/etc\/rc\.d\/devmatch/ || $0 ~ /service devmatch/ || $0 ~ /(^|[ \/])devmatch -/) && $0 !~ /awk -v me=/'
+}
+# moduli che devmatch caricherebbe per il dispositivo ppt<unita'> se restasse senza driver (nome senza .ko)
+s_devmatch_candidati() {
+	/sbin/devmatch -p "? at $(/sbin/sysctl -n dev.ppt.$1.%location 2>/dev/null) $(/sbin/sysctl -n dev.ppt.$1.%pnpinfo 2>/dev/null) on $(/sbin/sysctl -n dev.ppt.$1.%parent 2>/dev/null)" 2>/dev/null |
+	    /usr/bin/sed 's/\.ko$//' | /usr/bin/sort -u
+}

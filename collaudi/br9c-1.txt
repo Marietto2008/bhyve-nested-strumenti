@@ -1,0 +1,25 @@
+pila (emulate_stack_op)
+  ok     reale PUSH word, SP 0x100                      SDM    atteso N osservato N gla 0x200fe KASSERT falliti 0 lettura SS 1
+  ok     reale POP word, SP 0xfffe                      SDM    atteso N osservato N gla 0x2fffe KASSERT falliti 0 lettura SS 1
+  ok     reale PUSH word, SP 0x1 (word a 0xffff)        SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     16 bit PUSH word, SP 0x1 (word a 0xffff)       SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     16 bit PUSH word, SP 0x100                     SDM    atteso N osservato N gla 0x300fe KASSERT falliti 0 lettura SS 1
+  ok     32 bit piatto PUSH dword, ESP 0x1000           SDM    atteso N osservato N gla 0xffc KASSERT falliti 0 lettura SS 1
+  ok     expand-down lim 0xfff, ESP 0x1004              SDM    atteso N osservato N gla 0x1000 KASSERT falliti 0 lettura SS 1
+  ok     expand-down lim 0xfff, ESP 0x1002 (byte 0xffe) SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     expand-down lim 0xfff, ESP 0x1003 (byte 0xfff = limite) SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     expand-down lim 0xffffffff (vuoto), ESP 0x2000 SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     expand-down B=0 lim 0xfff, SP 0x2000           SDM    atteso N osservato N gla 0x41ffe KASSERT falliti 0 lettura SS 1
+  ok     expand-down B=0 lim 0xfff, SP 0x1 (word a 0xffff) SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+  ok     64 bit PUSH qword, RSP 0x7fff0010              SDM    atteso N osservato N gla 0x7fff0008 KASSERT falliti 0 lettura SS 1
+  ok     64 bit POP, RSP non canonico                   SDM    atteso S osservato S gla 0 KASSERT falliti 0 lettura SS 1
+stringhe (get_gla: MOVS/STOS/LODS)
+  ok     16 bit word a 0xffff                           SDM    atteso G osservato G gla 0 KASSERT falliti 0 lettura SS 0
+  ok     16 bit word a 0xfffe                           SDM    atteso N osservato N gla 0x3fffe KASSERT falliti 0 lettura SS 0
+  ok     reale word a 0xffff                            SDM    atteso G osservato G gla 0 KASSERT falliti 0 lettura SS 0
+  ok     32 bit piatto, dword a 0xfffffffe              POLICY atteso N osservato N gla 0xfffffffe KASSERT falliti 0 lettura SS 0
+  ok     32 bit non piatto lim 0xffffffff, dword a 0xfffffffe POLICY atteso G osservato G gla 0 KASSERT falliti 0 lettura SS 0
+  ok     expand-down B=0 lim 0xfff, word a 0xfffe       SDM    atteso N osservato N gla 0x4fffe KASSERT falliti 0 lettura SS 0
+  ok     expand-down B=0 lim 0xfff, word a 0xffff       SDM    atteso G osservato G gla 0 KASSERT falliti 0 lettura SS 0
+  ok     64 bit qword a 0x1000                          SDM    atteso N osservato N gla 0x1000 KASSERT falliti 0 lettura SS 0
+SUMMARY: 22 ok, 0 errati

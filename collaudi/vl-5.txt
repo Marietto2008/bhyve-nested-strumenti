@@ -1,0 +1,41 @@
+  ok      ping: /usr/bin/true
+  ok      ping-argomento: RIFIUTO ping: uso
+  ok      memseg: /usr/sbin/bhyvectl|--vm=vm2|--get-memseg
+  ok      memseg-altra-vm: RIFIUTO memseg: solo vm2
+  ok      memseg-con-destroy: RIFIUTO memseg: solo vm2
+  ok      fstat: /usr/bin/fstat|/dev/vmm/vm2
+  ok      fstat-altro: RIFIUTO fstat-vmm: solo vm2
+  ok      kld-loadcnt: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm/kld-loadcnt.d|vmm-restore.ko
+  ok      kld-loadcnt-cambiato: RIFIUTO kld-loadcnt: /mnt/linuxulator2/vm/nested-work/collaudi/vl-5/senza-kld/kld-loadcnt.d non approvato o cambiato
+  ok      sonde-lista: /usr/sbin/dtrace|-l|-n|vmm:::fatal-latch|-n|vmm:::fatal-ritorno|-n|vmm:vmx:nested:veptunemul|-n|vmm:vmx:nested:opndfatal|-n|:::fatal-latch|-n|:::fatal-ritorno|-n|:::veptunemul|-n|:::opndfatal
+  ok      sonde-lista-argomento: RIFIUTO sonde-lista: uso
+  ok      fbt-compila: /usr/sbin/dtrace|-e|-s|/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm/ptpad-fbt-ripfix-nested.d|1
+  ok      fbt-cambiato: RIFIUTO fbt-compila: /mnt/linuxulator2/vm/nested-work/collaudi/vl-5/senza-fbt/ptpad-fbt-ripfix-nested.d non approvato o cambiato
+  ok      sonde: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm/sonde-opnd-v2.d|360
+  ok      sonde-breve: RIFIUTO sonde: limite fuori da 60..7200 s
+  ok      sonde-lunga: RIFIUTO sonde: limite fuori da 60..7200 s
+  ok      sonde-non-intero: RIFIUTO sonde: limite non intero
+  ok      sonde-pragma-distruttivo: RIFIUTO sonde: /mnt/linuxulator2/vm/nested-work/collaudi/vl-5/cambiato/sonde-opnd-v2.d non approvato o cambiato
+  ok      sonde-senza-limite: RIFIUTO sonde: uso sonde <limite in secondi>
+  ok      ferma-term: /bin/kill|-TERM|4242
+  ok      ferma-kill: /bin/kill|-KILL|4242
+  ok      ferma-hup: RIFIUTO ferma-sonde: solo TERM o KILL
+  ok      ferma-pid: RIFIUTO ferma-sonde: pid non numerico
+  ok      ferma-non-dtrace: RIFIUTO ferma-sonde: 4242 non e' un processo dtrace
+  ok      ferma-non-root: RIFIUTO ferma-sonde: 4242 non e' di root
+  ok      ferma-argv-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -c /bin/sh -s /mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm/sonde-opnd-v2.d 360')
+  ok      ferma-limite-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -s /mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm/sonde-opnd-v2.d 360')
+  ok      ldd-tolta: RIFIUTO lettura sconosciuta: 'ldd-qemu'
+  ok      sconosciuta: RIFIUTO lettura sconosciuta: 'dtrace'
+controllo statico dei wrapper installati (par. 2.2e)
+  ok      vmm-azione: carica solo /usr/local/libexec/claude-vmm/gettone-lib.sh
+  ok      vmm-azione: nessun percorso del workspace scritto dentro
+  ok      vmm-lettura: carica solo /usr/local/libexec/claude-vmm/gettone-lib.sh
+  ok      vmm-lettura: nessun percorso del workspace scritto dentro
+  ok      vmm-gettone: carica solo /usr/local/libexec/claude-vmm/gettone-lib.sh
+  ok      vmm-gettone: nessun percorso del workspace scritto dentro
+  ok      gettone-lib.sh: non carica altri file
+  ok      vmm-azione: controllo di root (riga 19) prima della libreria (riga 22)
+  ok      vmm-lettura: controllo di root (riga 12) prima della libreria (riga 15)
+  ok      vmm-lettura come collaudo: vmm-lettura: RIFIUTO: non sono root
+SUMMARY: 39 ok, 0 errati

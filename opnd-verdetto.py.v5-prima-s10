@@ -1,0 +1,281 @@
+#!/usr/local/bin/python3
+# opnd-verdetto.py -- Claude 31/10/2026, parere #167R1 §6. Verdetto della sessione B (vmx-opnd.flat) dalla cartella
+# della sessione (drv/stato.json, drv/seriale.txt, drv/qemu-stderr.txt, sonde.txt, contatori.txt).
+#   opnd-verdetto.py <cartella della sessione> <piano>
+# contatori.txt (scritto da opnd-manifest.sh, #168 par. 3): TRE righe "<nome> <prima> <dopo>", nell'ordine
+# fatal_latches / nested_vept_mmio_unemulable / nested_operand_fatal. Delta attesi: F1-F3 0/0/0, F4 +1/0/+1.
+# Parere Opus (31/10): per OGNI piano la traccia deve essersi chiusa regolarmente (DTRACE_ATTIVO ... DTRACE_FINE, nessun
+# DTRACE_SCADUTO); in F1-F3 i gestori nested_vmread/nested_vmwrite e nested_operand_copy devono essere entrati (FBT > 0:
+# zero = istruzioni eseguite dal silicio, copertura nulla, V1); una riga WITNESS nel dmesg della sessione (LOR, sleeping
+# with a non-sleepable lock) rende INCONCLUSIVO: e' l'unica evidenza runtime dei lock del percorso per copia.
+# Uscita: 0 PASS; 1 FAIL (sessione completa, esito sbagliato); 5 INCONCLUSIVO (incompleta o non verificabile).
+# F4: l'errno del latch (14, EFAULT: la causa) e il 95 di VM_RUN (la traduzione terminale del progetto) si
+# controllano ciascuno nel suo punto (sonde, contatori, stderr della QEMU), MAI confrontandoli col codice d'uscita.
+# v4 (#169 R2): precondizioni COMUNI (driver valido, nessun errore, nessun timeout, qemu_rc presente, l'insieme ESATTO
+# delle regole obbligatorie tutte concluse, un solo invio = il piano). F1-F3: l'inventario atteso si ricava QUI dal
+# piano e dalle capacita' (righe CASO/CONTROLLO per fase e per passaggio), non dalla riga ATTESI del guest. F4: il
+# contratto della QEMU protetta (accel/bhyve/bhyve-all.c, bhyve_vmrun_chiusa: SHUTDOWN_CAUSE_HOST_ERROR con
+# EXIT_FAILURE; osservato VM_RC=1 nelle sessioni DM/HM del 30/10): rc 1, nessuna SUMMARY della KUT, le due righe
+# terminali con errno=95, e la STESSA vCPU e lo STESSO RIP in stderr e nelle tre sonde.
+import json, os, re, sys
+
+# --- inventario atteso, dal sorgente opnd_test.c.inc (test-verdetti.py lo confronta col sorgente)
+OFFS8 = ('0xffc', '0xff9', '0xfff', '0x100')
+ISTR8 = ('VMPTRST', 'VMPTRLD', 'VMCLEAR', 'VMREAD', 'VMWRITE')
+OFFS16 = ('0xff8', '0xff1', '0x100')
+CTRL8 = ('VMCS corrente dopo VMPTRLD', 'VMCS corrente dopo VMCLEAR', 'GUEST_RIP del VMCS di lavoro dopo VMWRITE')
+F3 = ('VMPTRLD', 'INVVPID', 'INVVPID_tipo4_non_annunciato', 'VMXON_VMX_gia_attiva', 'VMCLEAR', 'VMPTRST', 'INVEPT',
+    'VMREAD', 'VMWRITE', 'VMXOFF', 'VMLAUNCH', 'VMRESUME')
+PASSAGGI = {'F1': (('F1', 'ok'),), 'F2': (('F2', 'P1_assente'), ('F2', 'P1_sola_lettura'))}
+PIANI = ('F1', 'F2', 'F3', 'F1,F2', 'F1,F3', 'F2,F3', 'F1,F2,F3', 'F4')
+REGOLE = {'F4': ('OPND INIZIO', 'OPND PIANO?')}
+REGOLE_F123 = ('OPND INIZIO', 'OPND PIANO?', 'OPND FINE casi=')
+NOMI = ('fatal_latches', 'nested_vept_mmio_unemulable', 'nested_operand_fatal')
+
+def inventario(piano, iv, ie):
+	"""casi attesi per (fase, var) -> lista ordinata di (istruzione, offset); controlli per fase -> lista di nomi"""
+	casi, ctr = {}, {}
+	for f in piano.split(','):
+		for fase, var in PASSAGGI.get(f, ()):
+			c = [(x, o) for o in OFFS8 for x in ISTR8]
+			c += [(x, o) for o in OFFS16 for x in ['INVVPID'] * iv + ['INVEPT'] * (2 * ie)]
+			casi[(fase, var)] = sorted(c)
+			ctr.setdefault(fase, []).extend(n for o in OFFS8 for n in CTRL8)
+		if f == 'F3':
+			casi[('F3', '-')] = list(F3)
+	return casi, dict((k, sorted(v)) for k, v in ctr.items())
+
+def leggi(p):
+	try:
+		return open(p).read()
+	except Exception:
+		return None
+
+def main():
+	d, piano = sys.argv[1], sys.argv[2]
+	inc, fail = [], []
+	if piano not in PIANI:
+		print('INCONCLUSIVO: piano %r non ammesso' % piano)
+		return 5
+	try:
+		st = json.load(open(os.path.join(d, 'drv', 'stato.json')))
+	except Exception as e:
+		print('INCONCLUSIVO: stato.json illeggibile (%r)' % e)
+		return 5
+	ser = leggi(os.path.join(d, 'drv', 'seriale.txt'))
+	if ser is None:
+		print('INCONCLUSIVO: seriale assente')
+		return 5
+	righe = [l.split(' ', 1)[1] if ' ' in l else '' for l in ser.split('\n') if l]
+	# --- precondizioni COMUNI (#169 R2)
+	if st.get('valida') is not True:
+		inc.append('sessione del driver NON valida')
+	if st.get('errori'):
+		inc.append('errori del driver: %s' % '; '.join(map(str, st.get('errori'))))
+	if st.get('timeout') is not False:
+		inc.append('TIMEOUT (o stato del timeout assente)')
+	rc = st.get('qemu_rc')
+	if not isinstance(rc, int) or isinstance(rc, bool):
+		inc.append('codice d\'uscita della QEMU assente: %r' % (rc,))
+		rc = None
+	attese = REGOLE.get(piano, REGOLE_F123)
+	reg = st.get('regole')
+	if not isinstance(reg, list) or sorted(r.get('testo') for r in reg) != sorted(attese):
+		inc.append('regole del driver %r, attese esattamente %r' % ([r.get('testo') for r in reg or []], list(attese)))
+	elif any(r.get('stato') != 'fatta' for r in reg):
+		inc.append('regole non concluse: %r' % [(r.get('testo'), r.get('stato')) for r in reg if r.get('stato') != 'fatta'])
+	inv = st.get('invii')
+	if not isinstance(inv, list) or [(x.get('regola'), x.get('invio')) for x in inv] != [('OPND PIANO?', piano)]:
+		inc.append('invii %r: atteso UN solo invio del piano %r' % (inv, piano))
+	if sum(1 for r in righe if r.startswith('OPND PIANO "%s" ' % piano)) != 1:
+		inc.append('la .flat non ha ricevuto (una volta) il piano %r' % piano)
+	if any(r.startswith('OPND PREREQ') for r in righe):
+		fail.append('prerequisito fallito: %s' % [r for r in righe if r.startswith('OPND PREREQ')][:2])
+	# --- contatori, traccia, dmesg
+	cont = {}
+	for l in (leggi(os.path.join(d, 'contatori.txt')) or '').split('\n'):
+		p = l.split()
+		if len(p) == 3 and p[1].isdigit() and p[2].isdigit() and p[0] not in cont:
+			cont[p[0]] = (int(p[1]), int(p[2]))
+		elif l.strip():
+			inc.append('riga dei contatori malformata o doppia: %r' % l[:60])
+	if set(cont) != set(NOMI):
+		inc.append('contatori prima/dopo assenti o malformati (attesi i tre %s)' % '/'.join(NOMI))
+		cont = {}
+	delta = tuple(cont[n][1] - cont[n][0] for n in NOMI) if cont else None
+	so = leggi(os.path.join(d, 'sonde.txt'))
+	if so is None or 'DTRACE_ATTIVO' not in so:
+		inc.append('traccia DTrace assente o non attivata')
+		so = ''
+	elif 'DTRACE_FINE' not in so:
+		inc.append('traccia DTrace non chiusa regolarmente (manca DTRACE_FINE: END non eseguita)')
+	se = leggi(os.path.join(d, 'sonde-err.txt'))		# stderr di dtrace (sessione A: file separato)
+	if se is None:
+		inc.append('stderr di DTrace (sonde-err.txt) assente')
+		se = ''
+	elif se.strip():
+		inc.append('DTrace ha scritto su stderr: %r' % se.strip()[:120])
+	if 'drop' in so.lower() or 'drop' in se.lower():
+		inc.append('DTrace segnala perdite')
+	if 'DTRACE_SCADUTO' in so:
+		inc.append('traccia DTrace scaduta prima della fine della sessione')
+	fbt = dict((m.group(1), int(m.group(2))) for m in re.finditer(r'^FBT (\S+) (\d+)$', so, re.M))
+	dm = leggi(os.path.join(d, 'dmesg-sessione.txt'))
+	if dm is None:
+		inc.append('dmesg della sessione assente')
+	else:
+		w = [l for l in dm.split('\n') if re.search(r'lock order reversal|witness|sleeping with|non-sleepable', l, re.I)]
+		if w:
+			inc.append('WITNESS nel dmesg della sessione: %s' % w[:3])
+	er = leggi(os.path.join(d, 'drv', 'qemu-stderr.txt'))
+	if er is None:
+		inc.append('stderr della QEMU assente')
+		er = ''
+	ert = [re.sub(r'^\d+ ', '', l) for l in er.split('\n')]	# tollera il prefisso di tempo di altri driver
+	vm_run = [re.match(r'^bhyve: vCPU (\d+): VM_RUN .* \(errno=(\d+)\): .*; porta chiusa, nessun nuovo VM_RUN; '
+	    r'RIP del registro (0x[0-9a-f]+)(.*)$', l) for l in ert]
+	vm_run = [m for m in vm_run if m]
+	porta = [m for m in (re.match(r'^bhyve: porta della VM chiusa dal vCPU (\d+): nessun vCPU rientra; arresto della VM '
+	    r'richiesto \(VM_RUN non recuperabile\)$', l) for l in ert) if m]
+	terminale = bool(vm_run or porta or any(l.startswith('Error running vm') for l in ert))
+	if piano != 'F4':
+		zero = [f for f in ('nested_vmread', 'nested_vmwrite', 'nested_operand_copy') if fbt.get(f, 0) == 0]
+		if so and zero:
+			inc.append('nessun ingresso FBT in %s: istruzioni eseguite dal silicio o traccia mancante (copertura nulla)' % zero)
+		if terminale:
+			fail.append('arresto terminale della VM in F1-F3 (stderr della QEMU protetta)')
+		f123(righe, piano, rc, inc, fail)
+		if delta is not None and delta != (0, 0, 0):
+			fail.append('contatori mossi in F1-F3: delta %d/%d/%d (attesi 0/0/0)' % delta)
+	else:
+		f4(righe, rc, so, vm_run, porta, ert, delta, inc, fail)
+	if fail and not inc:
+		print('FAIL: ' + ' | '.join(fail))
+		return 1
+	if inc:
+		print('INCONCLUSIVO: ' + ' | '.join(inc + fail))
+		return 5
+	print('PASS: piano %s' % piano)
+	return 0
+
+def f123(righe, piano, rc, inc, fail):
+	att = [r for r in righe if r.startswith('OPND ATTESI ')]
+	m = re.match(r'OPND ATTESI casi=(\d+) controlli=(\d+) invvpid1=([01]) invept1=([01])$', att[0]) if len(att) == 1 else None
+	if not m:
+		inc.append('riga ATTESI assente, doppia o malformata')
+		return
+	na, nca, iv, ie = map(int, m.groups())
+	casi_att, ctr_att = inventario(piano, iv, ie)
+	tot_c, tot_k = sum(len(v) for v in casi_att.values()), sum(len(v) for v in ctr_att.values())
+	if (na, nca) != (tot_c, tot_k):
+		inc.append('ATTESI casi=%d controlli=%d, ma il piano %s con invvpid1=%d invept1=%d ne richiede %d e %d' %
+		    (na, nca, piano, iv, ie, tot_c, tot_k))
+	casi, ctr, num_c, num_k = {}, {}, {}, {}
+	for r in righe:
+		mc = re.match(r'^OPND CASO (\S+) (\d+) (\S+) (.*) -> (OK|ERRATO)$', r)
+		mk = re.match(r'^OPND CONTROLLO (\S+) (\d+) (.+?): (\S+) \(atteso (\S+)\) -> (OK|ERRATO)$', r)
+		if r.startswith('OPND CASO') and not mc or r.startswith('OPND CONTROLLO') and not mk:
+			inc.append('riga malformata: %r' % r[:80])
+			continue
+		if mc:
+			fase, n, istr, resto, e = mc.groups()
+			if fase == 'F3':
+				chiave, voce = ('F3', '-'), istr
+			else:
+				mo = re.search(r'\boff=(0x[0-9a-f]+) var=(\S+) ', resto)
+				if not mo:
+					inc.append('caso senza off/var: %r' % r[:80])
+					continue
+				chiave, voce = (fase, mo.group(2)), (istr, mo.group(1))
+			casi.setdefault(chiave, []).append(voce)
+			if int(n) in num_c:
+				inc.append('caso %s duplicato' % n)
+			num_c[int(n)] = e
+		if mk:
+			fase, n, cosa = mk.group(1), int(mk.group(2)), mk.group(3)
+			ctr.setdefault(fase, []).append(cosa)
+			if n in num_k:
+				inc.append('controllo %d duplicato' % n)
+			num_k[n] = mk.group(6)
+	casi = dict((k, v if k == ('F3', '-') else sorted(v)) for k, v in casi.items())
+	ctr = dict((k, sorted(v)) for k, v in ctr.items())
+	if casi != casi_att:
+		dif = sorted(set(casi) ^ set(casi_att)) or [k for k in casi_att if casi.get(k) != casi_att[k]]
+		inc.append('inventario dei casi diverso da quello del piano %s (passaggi diversi o incompleti: %s)' % (piano, dif[:4]))
+	if ctr != ctr_att:
+		inc.append('inventario dei controlli diverso da quello del piano %s: %r' %
+		    (piano, dict((k, len(v)) for k, v in ctr.items())))
+	if sorted(num_c) != list(range(1, len(num_c) + 1)) or sorted(num_k) != list(range(1, len(num_k) + 1)):
+		inc.append('numerazione di casi/controlli non continua')
+	err_righe = sum(1 for r in righe if r.endswith('-> ERRATO'))
+	fine = [r for r in righe if r.startswith('OPND FINE ')]
+	mf = re.match(r'OPND FINE casi=(\d+) controlli=(\d+) errati=(\d+)$', fine[0]) if len(fine) == 1 else None
+	if not mf:
+		inc.append('record finale assente, doppio o malformato')
+		return
+	x, xc, e = map(int, mf.groups())
+	if (x, xc) != (tot_c, tot_k) or x != len(num_c) or xc != len(num_k):
+		inc.append('record finale incoerente: %r (inventario %d/%d)' % (fine[0], tot_c, tot_k))
+	if e != err_righe:
+		inc.append('errati=%d ma righe ERRATO %d: un errore senza la sua riga' % (e, err_righe))
+	if e:
+		fail.append('%d errati' % e)
+	if not any(r.startswith('SUMMARY:') for r in righe):
+		inc.append('la KUT non ha chiuso (manca SUMMARY)')
+	if rc is not None:
+		if rc not in (1, 3):
+			inc.append('codice QEMU %r: non e\' un\'uscita KUT' % rc)
+		elif (rc == 3) != bool(e):
+			inc.append('codice QEMU %d incoerente con %d errati' % (rc, e))
+
+def f4(righe, rc, so, vm_run, porta, ert, delta, inc, fail):
+	if not any(r.startswith('OPND F4 INIZIO') for r in righe):
+		inc.append('F4 non raggiunta (manca OPND F4 INIZIO)')
+	if any(r.startswith('OPND F4 RITORNATO') for r in righe):
+		fail.append('l\'istruzione e\' TORNATA nel guest')
+	if any(r.startswith('OPND FINE ') for r in righe) or any(r.startswith('SUMMARY:') for r in righe):
+		fail.append('il guest e\' arrivato alla fine (OPND FINE/SUMMARY): nessun arresto terminale')
+	if rc is not None and rc != 1:
+		inc.append('codice QEMU %d: il contratto della QEMU protetta dopo la chiusura della porta e\' 1 (host-error)' % rc)
+	if delta is not None and delta != (1, 0, 1):
+		fail.append('contatori: delta %d/%d/%d (attesi 1/0/1)' % delta)
+	# stderr: esattamente una chiusura del vCPU e una della VM, nel formato reale
+	if len(vm_run) != 1 or len(porta) != 1 or sum(1 for l in ert if l.startswith('Error running vm')) != 1:
+		inc.append('stderr: chiusura vCPU %d, chiusura VM %d, "Error running vm" %d (attese 1, 1, 1)' %
+		    (len(vm_run), len(porta), sum(1 for l in ert if l.startswith('Error running vm'))))
+		return
+	cpu_e, errno_e, rip_e, coda = vm_run[0].groups()
+	if coda:
+		inc.append('RIP del registro non letto dalla QEMU: %r' % coda)
+	if errno_e != '95':
+		fail.append('VM_RUN errno=%s (atteso 95, ENOTRECOVERABLE)' % errno_e)
+	if porta[0].group(1) != cpu_e:
+		fail.append('la VM e\' stata chiusa dal vCPU %s, il VM_RUN fallito era del vCPU %s' % (porta[0].group(1), cpu_e))
+	me = re.search(r'^Error running vm: .* \(errno=(\d+), error=-1\)$', '\n'.join(ert), re.M)
+	if not me or me.group(1) != '95':
+		fail.append('"Error running vm" senza errno=95')
+	if not so:
+		return
+	o = re.findall(r'^OPNDFATAL vcpu=(\d+) stadio=(\d+) err=(\d+) rip=(0x[0-9a-f]+)', so, re.M)
+	fl = re.findall(r'^FATAL_LATCH vcpu=(\d+) errno=(\d+) stadio=(\d+) rip=(0x[0-9a-f]+)', so, re.M)
+	fr = re.findall(r'^FATAL_RITORNO vcpu=(\d+) nextrip=(0x[0-9a-f]+) rip=(0x[0-9a-f]+) len=(\d+) fatal_rip=(0x[0-9a-f]+)',
+	    so, re.M)
+	if len(o) != 1 or len(fl) != 1 or len(fr) != 1:
+		inc.append('sonde: OPNDFATAL %d, FATAL_LATCH %d, FATAL_RITORNO %d (attese 1, 1, 1)' % (len(o), len(fl), len(fr)))
+		return
+	(ov, ost, oe, orip), (lv, le, lst, lrip), (rv, rnr, rrip, rln, rfr) = o[0], fl[0], fr[0]
+	if (ost, oe) != ('4', '14'):
+		fail.append('OPNDFATAL stadio %s err %s (attesi 4, 14)' % (ost, oe))
+	if (le, lst) != ('14', '4'):
+		fail.append('FATAL_LATCH errno %s stadio %s (attesi 14, 4)' % (le, lst))
+	if rln != '0':
+		fail.append('FATAL_RITORNO len %s (atteso 0)' % rln)
+	if len({ov, lv, rv, cpu_e}) != 1:
+		fail.append('vCPU diverse: OPNDFATAL %s, FATAL_LATCH %s, FATAL_RITORNO %s, stderr %s' % (ov, lv, rv, cpu_e))
+	rips = {int(x, 16) for x in (orip, lrip, rnr, rrip, rfr, rip_e)}
+	if len(rips) != 1:
+		fail.append('RIP diversi: OPNDFATAL %s, FATAL_LATCH %s, nextrip %s, rip %s, fatal_rip %s, stderr %s' %
+		    (orip, lrip, rnr, rrip, rfr, rip_e))
+
+if __name__ == '__main__':
+	sys.exit(main())

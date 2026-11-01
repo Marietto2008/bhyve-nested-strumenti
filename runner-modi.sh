@@ -1,0 +1,113 @@
+# runner-modi.sh -- Claude 30/10/2026, parere #139 §4. Tabella DICHIARATIVA dei modi del runner KUT
+# (run-ptpad-kut-h2ad.sh la sorge; test-runner-modi.sh la collauda). Una sola fonte per: modulo e sua identita',
+# firma degli oid, frontend QEMU e sue identita', piani ammessi, e se il modo implica un cambio di modulo a caldo.
+# Due difetti del 30/10 avevano la stessa radice -- condizioni sparse "modo = originale" che trattavano un modo
+# nuovo di FRONTEND come un modulo diverso: firma oid attesa 110 per originale-porta (STOP nel preflight) e il
+# consiglio di un hot-swap di ritorno stampato dove nessun modulo era stato cambiato.
+#
+#   modo                modulo                    oid   frontend    hot-swap  traccia DTrace
+#   originale           /boot, 149fa57e           0000  riferimento no        ptpad-fbt.d
+#   originale-porta     /boot, 149fa57e (STESSO)  0000  porta       no        ptpad-fbt.d
+#   h2ad2               staging h2ad2, 4882d73d   1100  riferimento si        ptpad-fbt.d
+#   ripfix-nested-porta RIPFIX r5, 7bdd6781       1101  porta       si        ptpad-fbt-ripfix-nested.d (#142)
+#   ripfix-nested-porta-regr  (STESSO modulo, QEMU, traccia e CALDO_ID)                  regressioni H1/H2-AD (#143 §4)
+# Nei due modi RIPFIX /dev/vmm deve essere VUOTO all'avvio (anche nei piani non terminali): nessuna distruzione
+# implicita di un residuo da parte di QEMU, che all'avvio distrugge e ricrea vm2.
+# oid = (r110, h2, P3, fatal_latches). hot-swap si = procedura e consenso a parte (caldo/modulo-caldo.sh, identita'
+# CALDO_ID). Piani TERMINALI (la VM finisce nel caso: --esegui-d, /dev/vmm vuoto): ogni piano con un caso D, e per
+# ripfix-nested-porta anche HM_PTP (Fase C ferma il vCPU).
+#
+# Funzioni pure: impostano variabili, non toccano l'host.
+
+RM_B=/mnt/linuxulator2/vm/nested-work
+RM_MOD_ORIG=/boot/kernel/vmm-restore.ko
+RM_MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+RM_MOD_ORIG_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+RM_QEMU_RIF=$RM_B/stage/current/bin/qemu-system-x86_64
+# #139 §3 e Q8: QEMU con la porta, la causa host-error (stato d'uscita EXIT_FAILURE) e l'ammissione con in_volo
+RM_QEMU_PORTA=$RM_B/build-qemu-gate-nested-sr/qemu-system-x86_64
+RM_QEMU_PORTA_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+RM_LIBV=/usr/lib/libvmmapi.so.7
+RM_LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
+RM_FBT=$RM_B/freebsd-nested/tools/nested/ptpad-fbt.d
+# #142: modulo RIPFIX con nesting, copia CONGELATA (r5); la stessa di caldo/mc-logica.sh (MC_RIPFIX)
+RM_MOD_RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+RM_MOD_RIPFIX_SHA=7bdd6781d3f535798d9133bacd2ecb9791e2e34e8ab828e4f103ee402dd042d5
+RM_MOD_RIPFIX_BUILDID=6bce1d5cc73c1b2b5087ce5647b42867285e7cdb
+RM_FBT_RIPFIX=$RM_B/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+
+# modo_carica <modo>: 0 e variabili impostate, oppure 1 (modo sconosciuto)
+modo_carica() {
+	MOD=; MOD_SHA=; MOD_BUILDID=; OID_ATTESO=; FRONTEND=; HOTSWAP=; QEMU_ATTESO_SHA=; LIBV_ATTESA=; LIBV_ATTESA_SHA=
+	CALDO_ID=; MOD_FBT=$RM_FBT; MOD_SDT=
+	case "$1" in
+	originale)
+		MOD=$RM_MOD_ORIG; MOD_SHA=$RM_MOD_ORIG_SHA; MOD_BUILDID=$RM_MOD_ORIG_BUILDID
+		OID_ATTESO=0000; FRONTEND=riferimento; HOTSWAP=no; QEMU=$RM_QEMU_RIF;;
+	originale-porta)
+		MOD=$RM_MOD_ORIG; MOD_SHA=$RM_MOD_ORIG_SHA; MOD_BUILDID=$RM_MOD_ORIG_BUILDID
+		OID_ATTESO=0000; FRONTEND=porta; HOTSWAP=no; QEMU=$RM_QEMU_PORTA; QEMU_ATTESO_SHA=$RM_QEMU_PORTA_SHA
+		LIBV_ATTESA=$RM_LIBV; LIBV_ATTESA_SHA=$RM_LIBV_SHA;;
+	h2ad2)
+		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+		MOD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
+		MOD_BUILDID=6df2856a10e94608a69a3844ff78965e25ad97fe
+		OID_ATTESO=1100; FRONTEND=riferimento; HOTSWAP=si; QEMU=$RM_QEMU_RIF; CALDO_ID=h2ad2;;
+	ripfix-nested-porta)
+		# #142: kernel RIPFIX con nesting SOLO davanti alla QEMU protetta (porta, -S, QMP); ogni altra QEMU e'
+		# rifiutata dal controllo d'identita' del frontend porta, ogni altro modulo dalla firma 1101 e dallo sha
+		MOD=$RM_MOD_RIPFIX; MOD_SHA=$RM_MOD_RIPFIX_SHA; MOD_BUILDID=$RM_MOD_RIPFIX_BUILDID
+		OID_ATTESO=1101; FRONTEND=porta; HOTSWAP=si; QEMU=$RM_QEMU_PORTA; QEMU_ATTESO_SHA=$RM_QEMU_PORTA_SHA
+		LIBV_ATTESA=$RM_LIBV; LIBV_ATTESA_SHA=$RM_LIBV_SHA; CALDO_ID=ripfix-nested
+		MOD_FBT=$RM_FBT_RIPFIX
+		MOD_SDT="sdt_vmm___fatal__latch sdt_vmm___fatal__ritorno sdt_vmm_vmx_nested_veptunemul";;	# simboli delle sonde dello script
+	ripfix-nested-porta-regr)
+		# #143 §4: regressioni H1/H2-AD del modulo RIPFIX, con la STESSA QEMU protetta (-S, QMP) e la traccia del
+		# latch armata (in regressione nessun latch e' atteso: riga (ripfix-latch) RIPFIX_NESSUN_LATCH)
+		modo_carica ripfix-nested-porta;;
+	*) return 1;;
+	esac
+	return 0
+}
+
+# piano_ammesso <modo> <piano>: 0 se il piano e' ammesso per il modo
+piano_ammesso() {
+	case "$1" in
+	originale)
+		case "$2" in
+		"B,HD_DATA,HD_DATA_PDE,HD_DATA_ALL,HD_PTP,HD_PTP_ALL"|"B,HD_CONFLICT,HD_CONFLICT_PDE") return 0;;
+		"B,H,H_PDE,HD_CONFLICT,HD_CONFLICT_PDE") return 0;;
+		"B,HD_PTP,HM_RAM,HM_PTP"|"B,HM_RAM,DM_PTP") return 0;;	# #131 H2_MMIO
+		esac;;
+	originale-porta)
+		[ "$2" = "B,HM_RAM,DM_PTP" ] && return 0;;		# #136 §6.1: solo il caso DM
+	ripfix-nested-porta)
+		# #142: i due oracoli terminali, ciascuno coi suoi controlli positivi nella stessa sessione
+		case "$2" in "B,HM_RAM,DM_PTP"|"B,HD_PTP,HM_RAM,HM_PTP") return 0;; esac;;
+	ripfix-nested-porta-regr)
+		# #143 §4: gli STESSI piani di regressione approvati per h2ad2 (H1; H2 DATA/PTP, _PDE, _ALL; conflitti)
+		piano_ammesso h2ad2 "$2" && return 0;;
+	h2ad2)
+		case "$2" in
+		"B,C,H,A,H_D,A_D") return 0;;
+		"B,HD_DATA,D_DATA"|"B,HD_DATA_PDE,D_DATA_PDE"|"B,HD_DATA_ALL,D_DATA_ALL"|"B,HD_PTP,D_PTP"|"B,HD_PTP_ALL,D_PTP_ALL") return 0;;
+		"B,H,HD_CONFLICT,D_CONFLICT"|"B,H_PDE,HD_CONFLICT_PDE,D_CONFLICT_PDE") return 0;;
+		esac;;
+	esac
+	return 1
+}
+
+# piano_terminale <modo> <piano>: 0 se nel piano la VM FINISCE (consenso --esegui-d, /dev/vmm vuoto prima)
+piano_terminale() {
+	case "$2" in *,D_DATA*|*,D_PTP*|*,D_CONFLICT*|*,DM_PTP*) return 0;; esac
+	[ "$1" = ripfix-nested-porta ] && case "$2" in *,HM_PTP) return 0;; esac	# Fase C: latch in HM_PTP
+	return 1
+}
+
+# messaggio_finale <modo>: il passo successivo OBBLIGATORIO, solo se il modo ha cambiato il modulo a caldo. Il nome
+# per modulo-caldo.sh e' l'identita' CALDO_ID, non il nome del modo (ripfix-nested-porta -> ripfix-nested)
+messaggio_finale() {
+	modo_carica "$1" || return 0
+	[ "$HOTSWAP" = si ] && echo "PROSSIMO PASSO OBBLIGATORIO: sh $RM_B/caldo/modulo-caldo.sh --esegui $CALDO_ID originale (ritorno al modulo originale)"
+	return 0
+}

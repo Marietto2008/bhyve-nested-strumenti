@@ -1,0 +1,153 @@
+1. F1-F3 conclusa: tre contatori fermi, vm2 della sessione
+  ok      m1: verdetto rc 0 (PASS: piano F1,F2,F3)
+  ok      m1: SHA256SUMS verificato
+  ok      m1: manifest 'sessione: APERTA'
+  ok      m1: manifest 'avvio sessione: 1793400000'
+  ok      m1: manifest 'contatori prima: fatal_latches=0 nested_vept_mmio_unemulable=0 nested_operand_fatal=0'
+  ok      m1: manifest 'contatori dopo: fatal_latches=0 nested_vept_mmio_unemulable=0 nested_operand_fatal=0'
+  ok      m1: manifest 'sessione: CHIUSA'
+  ok      m1: manifest 'nested_shadow_vmcs 0'
+  ok      m1: manifest 'nested_shadow_vmcs alla chiusura 0'
+  ok      m1: APERTA in testa, CHIUSA in coda
+  ok      m1: contatori.txt a tre righe
+  ok      m1: dmesg della sessione
+  ok      m1: RAMO=NODO_DELLA_SESSIONE
+  ok      m1: nessuna azione del classificatore
+  ok      m1: comando da autorizzare per QUELLA istanza
+  ok      m1: smoke --continuita rc 2
+  ok      m1: smoke 'nested_operand_fatal = 0 (= valore finale'
+  ok      m1: smoke --continuita rc 4
+  ok      m1: smoke 'chiudeva a 0: cambiato'
+2. F4 conclusa: terna 1/0/1, residuo identificato
+  ok      m2: verdetto rc 0 (PASS: piano F4)
+  ok      m2: SHA256SUMS verificato
+  ok      m2: manifest 'contatori dopo: fatal_latches=1 nested_vept_mmio_unemulable=0 nested_operand_fatal=1'
+  ok      m2: RAMO=NODO_DELLA_SESSIONE
+  ok      m2: nessuna azione del classificatore
+  ok      m2: smoke --continuita rc 2
+  ok      m2: smoke 'hw.vmm.fatal_latches = 1 (= valore finale'
+  ok      m2: smoke --continuita rc 4
+  ok      m2: smoke 'nested_vept_mmio_unemulable'
+  ok      m2b: verdetto rc 1 (FAIL: contatori: delta 1/1/1 (attesi 1/0/1))
+  ok      m2b: il terzo contatore lo respinge il VERDETTO
+  ok      m2b: smoke --continuita rc 2
+3. avvio fallito o sessione interrotta: nessun record finale inventato
+  ok      m3: manifest senza 'contatori dopo'
+  ok      m3: manifest senza 'sessione: CHIUSA'
+  ok      m3: nessun sigillo
+  ok      m3: RAMO=OPERATORE
+  ok      m3: nessuna azione del classificatore
+  ok      m3: motivo 'non conclusa'
+  ok      m3: smoke --continuita rc 4
+  ok      m3: smoke 'continuita' non dimostrabile'
+  ok      m3b: manifest 'sessione: NON AVVIATA DTrace non attivata in 15 s'
+  ok      m3b: manifest senza 'contatori dopo'
+  ok      m3b: SHA256SUMS verificato
+  ok      m3b: RAMO=NESSUN_NODO
+  ok      m3b: nessuna azione del classificatore
+  ok      m3b: smoke --continuita rc 4
+  ok      m3b: smoke 'sessione non conclusa'
+4. nodo precedente all'avvio: rifiuto, nessuna distruzione
+  ok      m4: om_apri rifiuta con vm2 gia' presente
+  ok      m4: manifest 'vm2 prima: PRESENTE (ctime 1793399950)'
+  ok      m4: manifest senza 'avvio sessione'
+  ok      m4: RAMO=OPERATORE
+  ok      m4: nessuna azione del classificatore
+  ok      m4b: OM_VM2_ESTRANEA=1 (il runner esce 5)
+  ok      m4b: manifest 'ATTENZIONE: vm2 NON creata da questa sessione (1793399993 < 1793400000)'
+  ok      m4b: RAMO=OPERATORE
+  ok      m4b: nessuna azione del classificatore
+5. campo obbligatorio mancante o lettura fallita
+  ok      m5: lettura iniziale fallita -> rc 1
+  ok      m5: manifest 'contatori prima: LETTURA FALLITA: nested_vept_mmio_unemulable='''
+  ok      m5: manifest senza 'avvio sessione'
+  ok      m5b: manifest 'contatori dopo: LETTURA FALLITA: nested_operand_fatal='''
+  ok      m5b: nessun contatori.txt
+  ok      m5b: verdetto rc 5 (INCONCLUSIVO: contatori prima/dopo assenti o malformati (attesi i tre )
+  ok      m5b: smoke --continuita rc 4
+  ok      m5b: smoke 'sessione non conclusa'
+  ok      m5c: manifest 'vm2 dopo: LETTURA FALLITA (ctime '1793400003' rc 0, memseg rc 1)'
+  ok      m5c: RAMO=OPERATORE
+  ok      m5c: nessuna azione del classificatore
+6. sigillo: generato, verificato, poi un file alterato
+  ok      m6-VERDETTO: SHA256SUMS verificato
+  ok      m6-VERDETTO: smoke --continuita rc 4
+  ok      m6-VERDETTO: smoke 'diverso dal suo SHA256SUMS'
+  ok      m6-manifest.txt: SHA256SUMS verificato
+  ok      m6-manifest.txt: smoke --continuita rc 4
+  ok      m6-manifest.txt: smoke 'diverso dal suo SHA256SUMS'
+  ok      m6-contatori.txt: SHA256SUMS verificato
+  ok      m6-contatori.txt: smoke --continuita rc 4
+  ok      m6-contatori.txt: smoke 'diverso dal suo SHA256SUMS'
+  ok      m6-drv_seriale.txt: SHA256SUMS verificato
+  ok      m6-drv_seriale.txt: smoke --continuita rc 4
+  ok      m6-drv_seriale.txt: smoke 'diverso dal suo SHA256SUMS'
+7. #168 par. 3: un ricaricamento del modulo (anche dello STESSO file, con lo stesso id) rompe la continuita'
+  ok      m7: manifest 'kld prima: id=56 loadcnt=64'
+  ok      m7: manifest 'kld dopo: id=56 loadcnt=64'
+  ok      m7: manifest senza 'ATTENZIONE'
+  ok      m7: OM_RICARICATO=0
+  ok      m7: smoke --continuita rc 4
+  ok      m7: smoke 'modulo RICARICATO dopo la sessione: istanza registrata id=56 loadcnt=64, ora id=56 loadcnt=66'
+  ok      m7: smoke --continuita rc 4
+  ok      m7: smoke 'ora LETTURA FALLITA'
+  ok      m7b: OM_RICARICATO=1 (il runner esce 5)
+  ok      m7b: manifest 'ATTENZIONE: kld vmm-restore.ko non e' l'istanza dell'apertura (id=56 loadcnt=64 -> id=56 loadcnt=65)'
+  ok      m7b: smoke --continuita rc 4
+  ok      m7b: smoke 'non registra un'unica istanza del kld'
+  ok      m7c: elenco dei kld non percorso per intero -> rc 1
+  ok      m7c: manifest 'kld prima: LETTURA FALLITA (rc 0): KLD vmm-restore.ko id=56 loadcnt=64 FINE_ELENCO=NO visitati=256 globale=64 '
+  ok      m7c: manifest senza 'avvio sessione'
+  ok      m7d: due kld con lo stesso nome -> rc 1
+8. #169 R4: letture con rc != 0, chiusura e sigillo falliti
+  ok      m8-ok: om_chiudi rc 0
+  ok      m8-ok: om_sigilla rc 0
+  ok      m8-ok: verdetto rc 0 (PASS: piano F1,F2,F3)
+  ok      m8a: om_apri rc 1
+  ok      m8a: manifest senza 'avvio sessione: [0-9]'
+  ok      m8a: manifest 'apertura non riuscita: contatori prima'
+  ok      m8a: manifest 'contatori prima: LETTURA FALLITA: fatal_latches=rc1'
+  ok      m8b: om_apri rc 1
+  ok      m8b: manifest senza 'avvio sessione: [0-9]'
+  ok      m8b: manifest 'apertura non riuscita: istanza del kld'
+  ok      m8c: om_apri rc 1
+  ok      m8c: manifest senza 'avvio sessione: [0-9]'
+  ok      m8c: manifest 'apertura non riuscita: sha del modulo caricato (rc 1)'
+  ok      m8d: om_apri rc 1
+  ok      m8d: manifest senza 'avvio sessione: [0-9]'
+  ok      m8d: manifest 'apertura non riuscita: pciconf'
+  ok      m8e: om_apri rc 1
+  ok      m8e: manifest senza 'avvio sessione: [0-9]'
+  ok      m8e: manifest 'apertura non riuscita: nested_shadow_vmcs'
+  ok      m8f: om_apri rc 1
+  ok      m8f: manifest 'apertura non riuscita: dmesg iniziale'
+  ok      m8g: om_chiudi rc 1
+  ok      m8g: manifest 'sessione: INCOMPLETA: contatori dopo'
+  ok      m8g: manifest senza 'sessione: CHIUSA'
+  ok      m8g: nessun contatori.txt
+  ok      m8g: verdetto rc 5 (INCONCLUSIVO: contatori prima/dopo assenti o malformati (attesi i tre )
+  ok      m8g: smoke --continuita rc 4
+  ok      m8g: smoke 'sessione non conclusa'
+  ok      m8g: RAMO=OPERATORE
+  ok      m8g: nessuna azione del classificatore
+  ok      m8h: om_chiudi rc 1
+  ok      m8h: manifest 'sessione: INCOMPLETA: istanza del kld'
+  ok      m8i: om_chiudi rc 1
+  ok      m8i: manifest 'sessione: INCOMPLETA: dmesg della sessione'
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-w1/m8j/manifest.txt: Permission denied
+  ok      m8j: om_chiudi rc 1
+  ok      m8j: manifest senza 'sessione: CHIUSA'
+sha256: VERDETTO: Permission denied
+  ok      m8k: om_sigilla rc 1
+  ok      m8k: nessun SHA256SUMS pubblicato
+  ok      m8k: smoke --continuita rc 4
+  ok      m8k: smoke 'continuita' non dimostrabile'
+find: ./drv: Permission denied
+  ok      m8l: om_sigilla rc 1
+  ok      m8l: nessun SHA256SUMS pubblicato
+SUMMARY: 136 ok, 0 errati

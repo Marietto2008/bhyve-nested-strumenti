@@ -1,0 +1,20 @@
+#!/bin/sh
+O=/mnt/linuxulator2/vm/nested-work/logs/efer3run-$(date +%Y%m%d-%H%M); mkdir -p $O
+N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/nested-work/dtrace
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.diag_efer=1 >/dev/null
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s $D/win-efer3.d -o $O/efer.txt 2>/dev/null &
+sleep 4
+sudo -n sh $N/12-Windows-11-vm12-senza-gpu > $O/script.log 2>&1 &
+i=0; while [ $i -lt 60 ]; do [ -e /dev/vmm/vm0:12 ] && break; sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] && sleep 50 || echo "VM NON creata"
+b=$(pgrep -x bhyve); [ -n "$b" ] && { sudo -n kill -KILL $b; sleep 2; }
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n pkill -KILL -f "win-efer3|vncviewer" 2>/dev/null
+sudo -n sysctl hw.vmm.vmx.diag_efer=0 >/dev/null
+echo "=== EFER per VTL (coda):"; tail -20 $O/efer.txt
+echo "OUTPUT: $O"
+ls /dev/vmm 2>/dev/null || echo "/dev/vmm pulito"

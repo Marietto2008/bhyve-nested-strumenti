@@ -1,0 +1,147 @@
+### percorsi normali
+== T01-orig-orig (rc=6)
+  FAIL T01-orig-orig rc=6, atteso 0
+  ok   T01-orig-orig kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T01-orig-orig frozen=0
+  FAIL T01-orig-orig ppt=1 su 6
+  ok   T01-orig-orig amdgpu NON caricato
+  ok   T01-orig-orig kenv=''
+  FAIL T01-orig-orig kldunload SENZA freeze
+  FAIL T01-orig-orig asta senza ppt avvenuta
+== T02-orig-r110 (rc=6)
+  FAIL T02-orig-r110 rc=6, atteso 0
+  FAIL T02-orig-r110 kld='completo /boot/kernel/vmm-restore.ko', atteso 'completo /mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
+  ok   T02-orig-r110 frozen=0
+  FAIL T02-orig-r110 ppt=1 su 6
+  ok   T02-orig-r110 amdgpu NON caricato
+  ok   T02-orig-r110 kenv=''
+  FAIL T02-orig-r110 kldunload SENZA freeze
+  FAIL T02-orig-r110 asta senza ppt avvenuta
+== T03-r110-orig (rc=6)
+  FAIL T03-r110-orig rc=6, atteso 0
+  ok   T03-r110-orig kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T03-r110-orig frozen=0
+  FAIL T03-r110-orig ppt=1 su 6
+  ok   T03-r110-orig amdgpu NON caricato
+  ok   T03-r110-orig kenv=''
+  FAIL T03-r110-orig kldunload SENZA freeze
+== T04-kenv-preesistente (rc=6)
+  FAIL T04-kenv-preesistente rc=6, atteso 0
+  ok   T04-kenv-preesistente kenv='if_cdce'
+  ok   T04-kenv-preesistente amdgpu aggiunto alla lista esistente
+== T05-vm2-residuo (rc=6)
+  FAIL T05-vm2-residuo rc=6, atteso 0
+  ok   T05-vm2-residuo vm2 distrutto
+  FAIL T05-vm2-residuo ppt=1 su 6
+### errori di caricamento
+== T06-r110-non-carica (rc=6)
+  FAIL T06-r110-non-carica rc=6, atteso 5
+  ok   T06-r110-non-carica kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T06-r110-non-carica frozen=0
+  FAIL T06-r110-non-carica ppt=1 su 6
+  ok   T06-r110-non-carica amdgpu NON caricato
+  ok   T06-r110-non-carica kenv=''
+  FAIL T06-r110-non-carica asta senza ppt avvenuta
+== T07-niente-si-carica (rc=6)
+  ok   T07-niente-si-carica rc=6
+  ok   T07-niente-si-carica kld='nessuno'
+  FAIL T07-niente-si-carica frozen=0, atteso 1
+  FAIL T07-niente-si-carica libere=1 su 6
+  ok   T07-niente-si-carica amdgpu NON caricato
+  ok   T07-niente-si-carica kenv='amdgpu'
+  FAIL T07-niente-si-carica asta senza ppt avvenuta
+== T08-unload-rifiutato (rc=5)
+  ok   T08-unload-rifiutato rc=5
+  ok   T08-unload-rifiutato kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T08-unload-rifiutato frozen=0
+  ok   T08-unload-rifiutato pci invariata
+  ok   T08-unload-rifiutato kenv=''
+== T09-unload-parziale (rc=6)
+  ok   T09-unload-parziale rc=6
+  FAIL T09-unload-parziale frozen=0, atteso 1
+  ok   T09-unload-parziale 6 funzioni libere e intoccate
+  ok   T09-unload-parziale amdgpu NON caricato
+  ok   T09-unload-parziale kenv='amdgpu'
+  ok   T09-unload-parziale nessuna asta senza ppt
+== T10-ritorno-non-carica (rc=6)
+  ok   T10-ritorno-non-carica rc=6
+  ok   T10-ritorno-non-carica kld='nessuno'
+  FAIL T10-ritorno-non-carica frozen=0, atteso 1
+  FAIL T10-ritorno-non-carica libere=1 su 6
+  ok   T10-ritorno-non-carica amdgpu NON caricato
+### catture e interferenze
+== T11-cattura-xhci-orig (rc=6)
+  ok   T11-cattura-xhci-orig rc=6
+  ok   T11-cattura-xhci-orig frozen=0
+  ok   T11-cattura-xhci-orig uscita contiene 'VERIFICA FALLITA'
+  ok   T11-cattura-xhci-orig uscita contiene 'OPERATORE'
+== T12-cattura-xhci-r110 (rc=6)
+  ok   T12-cattura-xhci-r110 rc=6
+  ok   T12-cattura-xhci-r110 kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T12-cattura-xhci-r110 uscita contiene 'torno all'originale'
+== T13-freeze-occupato (rc=6)
+  FAIL T13-freeze-occupato rc=6, atteso 4
+  ok   T13-freeze-occupato kld='completo /boot/kernel/vmm-restore.ko'
+  FAIL T13-freeze-occupato pci cambiata
+  ok   T13-freeze-occupato kenv=''
+== T14-scongelato-da-altri (rc=6)
+  ok   T14-scongelato-da-altri rc=6
+  ok   T14-scongelato-da-altri amdgpu NON caricato
+  ok   T14-scongelato-da-altri uscita contiene 'VERIFICA FALLITA'
+== T15-segnale-dopo-unload (rc=6)
+  FAIL T15-segnale-dopo-unload rc=6, atteso 5
+  ok   T15-segnale-dopo-unload kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T15-segnale-dopo-unload frozen=0
+  FAIL T15-segnale-dopo-unload ppt=1 su 6
+  ok   T15-segnale-dopo-unload amdgpu NON caricato
+  ok   T15-segnale-dopo-unload kenv=''
+  ok   T15-segnale-dopo-unload uscita contiene 'TRAP'
+### preflight: STOP senza toccare nulla
+== T16-iommu-usato (rc=4)
+  ok   T16-iommu-usato rc=4
+  ok   T16-iommu-usato nessuna azione sul sistema
+  ok   T16-iommu-usato nessuna esecuzione nel diario
+  ok   T16-iommu-usato STOP annotato nel diario
+== T17-vm-viva (rc=4)
+  ok   T17-vm-viva rc=4
+  ok   T17-vm-viva nessuna azione sul sistema
+  ok   T17-vm-viva nessuna esecuzione nel diario
+  ok   T17-vm-viva STOP annotato nel diario
+== T18-nodo-estraneo (rc=4)
+  ok   T18-nodo-estraneo rc=4
+  ok   T18-nodo-estraneo nessuna azione sul sistema
+  ok   T18-nodo-estraneo nessuna esecuzione nel diario
+  ok   T18-nodo-estraneo STOP annotato nel diario
+== T19-vm2-aperto (rc=4)
+  ok   T19-vm2-aperto rc=4
+  ok   T19-vm2-aperto nessuna azione sul sistema
+  ok   T19-vm2-aperto nessuna esecuzione nel diario
+  ok   T19-vm2-aperto STOP annotato nel diario
+== T20-amdgpu-gia (rc=4)
+  ok   T20-amdgpu-gia rc=4
+  ok   T20-amdgpu-gia nessuna azione sul sistema
+  ok   T20-amdgpu-gia nessuna esecuzione nel diario
+  ok   T20-amdgpu-gia STOP annotato nel diario
+== T21-staging-r109 (rc=4)
+  ok   T21-staging-r109 rc=4
+  ok   T21-staging-r109 nessuna azione sul sistema
+  ok   T21-staging-r109 nessuna esecuzione nel diario
+  ok   T21-staging-r109 STOP annotato nel diario
+== T22-da-sbagliato (rc=4)
+  ok   T22-da-sbagliato rc=4
+  ok   T22-da-sbagliato nessuna azione sul sistema
+  ok   T22-da-sbagliato nessuna esecuzione nel diario
+  ok   T22-da-sbagliato STOP annotato nel diario
+== T23-pci-nativa (rc=4)
+  ok   T23-pci-nativa rc=4
+  ok   T23-pci-nativa nessuna azione sul sistema
+  ok   T23-pci-nativa nessuna esecuzione nel diario
+  ok   T23-pci-nativa STOP annotato nel diario
+== T24-prova (rc=0)
+  ok   T24-prova rc=0
+  ok   T24-prova nessuna azione sul sistema
+  ok   T24-prova nessuna esecuzione nel diario
+  ok   T24-prova nessun diario
+  ok   T24-prova uscita contiene 'PROVA, nessuna azione'
+
+SUMMARY: 89 ok, 28 FAIL

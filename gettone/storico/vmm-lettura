@@ -1,0 +1,19 @@
+#!/bin/sh
+# vmm-lettura -- Claude 01/11/2026, parere Opus «letture chiuse» par. 4. PREPARATO OFFLINE, NON INSTALLATO.
+# Wrapper ROOT delle LETTURE, a elenco chiuso (vmm_lettura_decidi, collaudata senza privilegi). Nessun gettone: non
+# cambia lo stato dell'host. Root NON scrive file: l'uscita va su stdout/stderr, il chiamante (marietto) la redirige.
+# Fa solo: controllo root, decisione, esecuzione (exec: il pid e' quello di dtrace, per ferma-sonde).
+set -u
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
+L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+[ "$(id -u)" = 0 ] || { echo "vmm-lettura: RIFIUTO: non sono root" >&2; exit 4; }
+vl_comm() { ps -o comm= -p "$1" 2>/dev/null; }
+vl_uid()  { ps -o uid= -p "$1" 2>/dev/null | tr -d ' '; }
+vl_args() { ps -o args= -p "$1" 2>/dev/null; }
+v=$(vmm_lettura_decidi "$L" "$@") || { echo "vmm-lettura: $v" >&2; exit 4; }
+IFS='
+'
+set -f; set -- $(echo "$v" | sed 1d); set +f
+unset IFS
+exec "$@"

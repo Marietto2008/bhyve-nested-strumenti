@@ -1,0 +1,44 @@
+analisi-wsl-corsa rev. 3: /mnt/linuxulator2/vm/nested-work/collaudi/analisi-wsl-r3-1/allineamento
+fasi: avvio +0 s, desktop +15 s, wsl_inizio +22 s (richiesta al task di Windows)
+vCPU nella serie: vcpu0,vcpu1; campioni: 2 (2 completi)
+SEGNALAZIONI: 0
+
+FINESTRE DTRACE (estremi = due righe "F" consecutive; la prima e l'ultima sono PARZIALI)
+  da(s)    a(s)  dur fase        uscite L2 motivi principali (L2)                   riflesse  note
+      ?      10    ? avvio            1000 EPTVIOL 90%, IO 10%                            50  PARZIALE(inizio traccia)
+     10      20   10 desktop         10000 EPTVIOL 90%, EXTINT 10%                      4000  attraversa desktop
+     20      30   10 wsl_inizio          7 EPTVIOL 100%                                    0  PARZIALE(END) attraversa wsl_inizio
+motivi sull'intera traccia: EPTVIOL 9907 (90.0%), EXTINT 1000 (9.1%), IO 100 (0.9%)
+
+INTERVALLI DEI CONTATORI (fra due campioni consecutivi; tassi al secondo; NA = campione incompleto o delta negativo)
+  da(s)    a(s)  dur fase        vCPU       L2in     rifl     slow     emul     immx     intw     migr  note
+     10      27   17 wsl_inizio  vcpu0        10       10       10       10       10       10       10  
+     10      27   17 wsl_inizio  vcpu1         2        2        2        2        2        2        2  
+     10      27   17 wsl_inizio  tot          12       12       12       12       12       12       12  attraversa desktop+wsl_inizio
+
+  ok     allineamento: uscita 0
+  ok     finestra DTrace 100..110 con la SUA durata (10 s): ['     10      20   10 desktop         10000 EPTVIOL 90%, EXTINT 10%                      4000  attraversa desktop']
+  ok     finestra DTrace 110..120 (10 s, ultima): 7 uscite: ['     20      30   10 wsl_inizio          7 EPTVIOL 100%                                    0  PARZIALE(END) attraversa wsl_inizio']
+  ok     intervallo dei contatori 100..117 con la SUA durata (17 s), per vCPU e totale: 3 righe
+  ok     tasso totale ingressi in L2 = (170+34)/17 = 12/s: ['     10      27   17 wsl_inizio  tot          12       12       12       12       12       12       12  attraversa desktop+wsl_inizio']
+  ok     tasso vcpu0 = 170/17 = 10/s: ['     10      27   17 wsl_inizio  vcpu0        10       10       10       10       10       10       10  ']
+  ok     nessun "+40" attribuito alla finestra DTrace
+  ok     vcpu mancante: nessun -80 nell'uscita
+  ok     vcpu mancante: intervallo NA per ogni riga: ['     10      27   17 wsl_inizio  vcpu0        NA       NA       NA       NA       NA       NA       NA  ', '     10      27   17 wsl_inizio  vcpu1        NA       NA       NA       NA       NA       NA       NA  ', '     10      27   17 wsl_inizio  tot          NA       NA       NA       NA       NA       NA       NA  NA: campione incompleto attraversa desktop+wsl_inizio']
+  ok     vcpu mancante: segnalato
+  ok     delta negativo: NA e segnalato: ['     10      20   10 desktop     vcpu1        NA        0        0        0        0        0        0  ', '     10      20   10 desktop     tot          NA        0        0        0        0        0        0  attraversa desktop delta NEGATIVO tot ingressi in L2 delta NEGATIVO vcpu1 ingressi in L2']
+  ok     riga doppia segnalata
+  ERRATO doppione: intervallo NA, nessun 13/s: ['     10      20   10 desktop         10000 EPTVIOL 90%, EXTINT 10%                      4000  attraversa desktop', '     10      20   10 desktop     vcpu0        NA       NA       NA       NA       NA       NA       NA  ', '     10      20   10 desktop     vcpu1        NA       NA       NA       NA       NA       NA       NA  ', '     10      20   10 desktop     tot          NA       NA       NA       NA       NA       NA       NA  NA: campione incompleto attraversa desktop']
+  ok     riga d'errore di bhyvectl segnalata
+  ERRATO vcpu1 mai vista, 2 attese: NA e segnalata: ['     10      20   10 desktop         10000 EPTVIOL 90%, EXTINT 10%                      4000  attraversa desktop', '     10      20   10 desktop     vcpu0        NA       NA       NA       NA       NA       NA       NA  ', '     10      20   10 desktop     vcpu1        NA       NA       NA       NA       NA       NA       NA  ', '     10      20   10 desktop     tot          NA       NA       NA       NA       NA       NA       NA  NA: campione incompleto attraversa desktop']
+  ok     senza serie-attese.txt: segnalazione esplicita
+  ok     lettura di 4 s segnalata
+  ok     prima finestra PARZIALE: ['      ?      10    ? avvio            1000 EPTVIOL 90%, IO 10%                            50  PARZIALE(inizio traccia)']
+  ok     ultima finestra PARZIALE: ['     20      30   10 wsl_inizio          7 EPTVIOL 100%                                    0  PARZIALE(END) attraversa wsl_inizio']
+  ok     finestra 100..110 attraversa il desktop (105): ['     10      20   10 desktop         10000 EPTVIOL 90%, EXTINT 10%                      4000  attraversa desktop', '     10      20   10 desktop     vcpu0        17       17       17       17       17       17       17  ', '     10      20   10 desktop     vcpu1         3        3        3        3        3        3        3  ', '     10      20   10 desktop     tot          20       20       20       20       20       20       20  attraversa desktop']
+  ok     significato di wsl_inizio dichiarato
+  ok     raccolta incompleta: quattro segnalazioni
+  ok     corsa con le sonde v1: uscita 5
+  info   c3/1: vCPU nella serie: vcpu0,vcpu1; campioni: 35 (35 completi) | SEGNALAZIONI: 1
+  ok     c3/1 vera: due vCPU, uscita 0
+SUMMARY: 22 ok, 2 errati

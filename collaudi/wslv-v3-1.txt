@@ -1,0 +1,37 @@
+esemplare reale: /mnt/linuxulator2/vm/nested-work/logs/serie-20261020-1619/corsa1 (stats.txt 12 righe, wsl-o.txt '6.18.54.1-microsoft-standard-WSL2')
+  ok     pass                               uscita 0 (attesa 0): PASS: corsa wsl --esegui, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo
+  ok     pass_ombra                         uscita 0 (attesa 0): PASS: corsa wsl --esegui-ombra, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo, ombra 50000 ingressi
+  ok     pass_v2                            uscita 0 (attesa 0): PASS: corsa wsl --esegui, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo
+  ok     v2_etichetta_v1                    uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace assente o non del programma dichiarato
+  ok     pass_v3                            uscita 0 (attesa 0): PASS: corsa wsl --esegui, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo
+  ok     v3_latch                           uscita 1 (attesa 1): FAIL: sonde del latch scattate: ['OPNDFATAL vcpu=0 stadio=4 err=14 rip=0x1 gla=0x2']
+  ok     v2_latch                           uscita 1 (attesa 1): FAIL: sonde del latch scattate: ['FATAL_LATCH vcpu=1 errno=14 stadio=4 rip=0x1 gpa=0 gla=0x2']
+  ok     latch_sonda                        uscita 1 (attesa 1): FAIL: sonde del latch scattate: ['FATAL_LATCH vcpu=1 errno=14 stadio=4 rip=0x1 gpa=0 gla=0x2']
+  ok     latch_contatori                    uscita 1 (attesa 1): FAIL: contatori del latch cambiati durante la corsa: {'fatal_latches': 1, 'nested_vept_mmio_unemulable': 0, 'nested_operand_fatal': 1}
+  ok     no_desktop                         uscita 1 (attesa 1): FAIL: corsa: NO-DESKTOP | Windows non e' arrivato al desktop ('-1') | WSL2 non ha risposto (uname senza microsoft-standard-WSL2: None) | prova SHA-256
+  ok     bhyve_uscito                       uscita 1 (attesa 1): FAIL: corsa: BHYVE-USCITO | Windows non e' arrivato al desktop ('-1') | WSL2 non ha risposto (uname senza microsoft-standard-WSL2: None) | prova SHA-2
+  ok     wsl_muta                           uscita 1 (attesa 1): FAIL: WSL2 non ha risposto (uname senza microsoft-standard-WSL2: '') | prova SHA-256 in WSL non riuscita: ''
+  ok     sha_diverso                        uscita 1 (attesa 1): FAIL: prova SHA-256 in WSL non riuscita: 'SHA-DIVERSO'
+  ok     no_spegnimento                     uscita 1 (attesa 1): FAIL: corsa: NO-SPEGNIMENTO | spegnimento non pulito: bhyve rc 137, spento da Windows 0 (atteso rc 1 = poweroff)
+  ok     bhyve_rc_triplo                    uscita 1 (attesa 1): FAIL: spegnimento non pulito: bhyve rc 3, spento da Windows 1 (atteso rc 1 = poweroff)
+  ok     vmfail                             uscita 1 (attesa 1): FAIL: VMfail restituiti all'L1: [('vcpu1 VMfailValid', 3)]
+  ok     vmcs12_corrotto                    uscita 1 (attesa 1): FAIL: VMCS12 corrotti o non mappabili: [('vcpu0', 1)]
+  ok     dmesg_latch                        uscita 1 (attesa 1): FAIL: latch nel dmesg: ['vmm: vm0:12 vcpu 1: istruzione non completabile (stadio 4, errno 14)']
+  ok     ombra_guasto                       uscita 1 (attesa 1): FAIL: guasto dell'ombra in L0: ['nested shadow VMCS: vcpu0 errore 7, VM fermata']
+  ok     witness                            uscita 5 (attesa 5): INCONCLUSIVO: WITNESS nel dmesg della corsa
+  ok     etichetta_assente                  uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace assente o non del programma dichiarato
+  ok     etichetta_altra                    uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace assente o non del programma dichiarato
+  ok     senza_fine                         uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace non chiusa regolarmente (manca DTRACE_FINE)
+  ok     scaduta                            uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace scaduta prima della fine della corsa
+  ok     stderr_dtrace                      uscita 5 (attesa 5): INCONCLUSIVO: DTrace ha scritto su stderr: 'dtrace: 1 drop on CPU 3' | DTrace segnala perdite
+  ok     kld_ricaricato                     uscita 5 (attesa 5): INCONCLUSIVO: istanza del modulo non dimostrata la stessa prima e dopo (['id=56 loadcnt=71'] / ['id=56 loadcnt=72'])
+  ok     sessione_incompleta                uscita 5 (attesa 5): INCONCLUSIVO: sessione non APERTA...CHIUSA nel manifest
+  ok     modo_ignoto                        uscita 5 (attesa 5): INCONCLUSIVO: riga "piano wsl modo ..." assente, doppia o con modo non ammesso: [('wsl', '--esegui-d')]
+  ok     ombra_senza_ingressi               uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso in vmx_shvmcs_enter: l'ombra non e' stata usata
+  ok     ombra_senza_modo                   uscita 5 (attesa 5): INCONCLUSIVO: ombra attiva (99 ingressi) senza --esegui-ombra
+  ok     ombra_apertura_0                   uscita 5 (attesa 5): INCONCLUSIVO: corsa con l'ombra ma nested_shadow_vmcs all'apertura 0
+  ok     stats_assenti                      uscita 5 (attesa 5): INCONCLUSIVO: contatori VMfail/VMCS12 assenti per qualche vCPU (0 VMfail, 0 VMCS12)
+  ok     manifest_assente                   uscita 5 (attesa 5): INCONCLUSIVO: manifest assente | sessione non APERTA...CHIUSA nel manifest | riga "piano wsl modo ..." assente, doppia o con modo non ammesso: [] | is
+  ok     esito_assente                      uscita 5 (attesa 5): INCONCLUSIVO: esito.txt assente: nessuna conclusione sull'ospite
+  ok     contatori_assenti                  uscita 5 (attesa 5): INCONCLUSIVO: contatori del latch assenti o malformati
+SUMMARY: 35 ok, 0 errati

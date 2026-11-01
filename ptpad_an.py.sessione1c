@@ -1,0 +1,255 @@
+#!/usr/local/bin/python3
+# ptpad_an.py -- Claude 27/10/2026, parere #101: oracolo e classificatore del test deterministico
+# AUDIT-PTP-HOLD (H1 scrittura A/D non autorizzata, H2 EFAULT che uccide la VM). OFFLINE: nessuna
+# VM. Legge il log COMBINATO prodotto dal runner (righe della serie di L1 = kvm-unit-tests +
+# fotografie del contatore host nested_ept_mmio_emulated attorno a ogni caso + stato terminale).
+#
+# Verdetti per caso (parere #101 §5), uno solo:
+#   PATH_COVERED_ARCH_PASS        percorso emulato raggiunto, oracolo ARCHITETTURALE soddisfatto
+#   PATH_COVERED_H1_REPRODUCED    A/D scritti in una pagina EPT12 R-only senza EPT violation: H1
+#   PATH_COVERED_H2_REPRODUCED    EFAULT -> vm_run error -> bhyve terminato: H2
+#   INCONCLUSIVE_HW_PREEMPTED     EPT violation hardware PRIMA del percorso emulato (nessuna emul.)
+#   INCONCLUSIVE_PATH_NOT_COVERED contatore/sonde/RIP non confermano il ramo emulato
+#   INCONCLUSIVE_TEST_SETUP       MMIO, permessi, pagine o traduzioni non controllabili
+#   TEST_ERROR                    marcatori mancanti, contatore a ritroso, drop, log incompleto
+#
+# Il contatore host e' path-proof: delta >= 1 fra le due fotografie di UN caso prova che l'accesso
+# e' stato EMULATO (VEPT_MMIO), non gestito dall'hardware. Senza delta il caso NON copre il ramo.
+# L'oracolo architetturale e' interno a L1 (vede o no l'EPT violation riflessa da L0); H2 lo vede
+# il runner (morte di bhyve). Stesse VM/vCPU/istruzione: il campo rip deve combaciare col setup.
+#
+# Formato del log combinato, per caso (una riga CASE apre; le righe CTR/L1/TERM seguono):
+#   CASE <nome>
+#   CTR before=<n>
+#   L1 viol=<0|1> reason=<n> qual=<hex> gpa=<hex> paddr=<0|1> pte0=<hex> pte1=<hex> dwr=<0|1> ripadv=<0|1>
+#   CTR after=<n>
+#   TERM <alive|bhyve_died>
+# L1 e TERM possono mancare (morte prima della risposta di L1): regole sotto.
+#
+# Uso: ptpad_an.py <log combinato>   (uscita 0 se nessun TEST_ERROR, 3 altrimenti)
+import re, sys
+from collections import OrderedDict
+
+CASI = ('B', 'C', 'A', 'A_D', 'D_DATA', 'D_PTP')
+
+def leggi(testo):
+	casi = OrderedDict()
+	cur = None
+	plan = None
+	mp = re.search(r'^PLAN cases=(\S+)', testo, re.M)
+	if mp:
+		plan = set(mp.group(1).split(','))
+	drop = 'drop' in testo.lower() or 'DROP' in testo
+	# parere #107: il driver chiude la sessione con una riga STOP (cancello, protocollo, timeout,
+	# errore di VM_RUN). Le righe EVENT (VMRUN_ERROR_QEMU, QEMU_TERMINATED_BY_DRIVER) sono fatti
+	# registrati, non verdetti.
+	ms = re.search(r'^STOP kind=(\S+) motivo=(.*)$', testo, re.M)
+	stop = (ms.group(1), ms.group(2)) if ms else None
+	for riga in testo.splitlines():
+		t = riga.strip()
+		m = re.match(r'CASE (\S+)$', t)
+		if m:
+			cur = m.group(1)
+			casi[cur] = {'ctr': [], 'l1': None, 'term': None, 'dup': cur in casi, 'bad': []}
+			continue
+		if cur is None:
+			continue
+		c = casi[cur]
+		m = re.match(r'CTR (before|after)=(-?\d+)$', t)
+		if m:
+			c['ctr'].append((m.group(1), int(m.group(2))))
+			continue
+		if t.startswith('FBT '):
+			m2 = re.match(r'FBT mmio=(\d+) ptp=(\d+)$', t)
+			if m2:
+				casi[cur]['fbt'] = {'mmio': int(m2.group(1)), 'ptp': int(m2.group(2))}
+			else:
+				casi[cur]['bad'].append(riga)
+			continue
+		if t.startswith('L1 '):
+			d = {}
+			ok = True
+			for kv in t[3:].split():
+				k, sep, v = kv.partition('=')
+				if not sep:
+					ok = False; break
+				try:
+					d[k] = int(v, 16) if k in ('qual', 'gpa', 'pte0', 'pte1') else int(v)
+				except ValueError:
+					ok = False; break
+			if ok and set(d) == {'viol', 'reason', 'qual', 'gpa', 'paddr', 'pte0', 'pte1', 'dwr', 'ripadv'}:
+				c['l1'] = d
+			else:
+				c['bad'].append(riga)
+			continue
+		m = re.match(r'TERM (alive|bhyve_died)$', t)
+		if m:
+			c['term'] = m.group(1)
+			continue
+	# parere #106 D1: NOT_RUN vale solo per i casi FUORI piano e assenti (in analizza). Un caso
+	# del piano assente dal log e' TEST_ERROR; un caso presente ma fuori piano e' TEST_ERROR.
+	return casi, drop, plan, stop
+
+VMX_EPT_VIOLATION = 48
+
+def delta(c):
+	b = [v for k, v in c['ctr'] if k == 'before']
+	a = [v for k, v in c['ctr'] if k == 'after']
+	if len(b) != 1 or len(a) != 1:
+		return None
+	return a[0] - b[0]
+
+def viol_scrittura_T(l1):
+	"""EPT violation di scrittura a una STRUTTURA di paging (bit7=LADDR valido, bit8=0)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 1)) and (q & (1 << 7)) and not (q & (1 << 8))
+
+def viol_struttura_T(l1):
+	"""EPT violation a una STRUTTURA di paging (bit7 valido, bit8=0), QUALUNQUE accesso.
+	Per D_PTP: la prima lettura della PTE fallisce PRIMA di ogni aggiornamento A/D, quindi
+	bit1 (scrittura) puo' essere 0 (parere #102 §2)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 7)) and not (q & (1 << 8))
+
+def viol_dato_D(l1):
+	"""EPT violation sull'indirizzo finale (bit8=1)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 8))
+
+def pte_ad_scritti(l1):
+	"""A (bit5) o D (bit6) passati da 0 a 1 fra pte0 e pte1."""
+	acceso = (l1['pte1'] & ~l1['pte0'])
+	return bool(acceso & ((1 << 5) | (1 << 6)))
+
+def verdetto(nome, c):
+	if c['dup']:
+		return 'TEST_ERROR', 'caso duplicato'
+	if c['bad']:
+		return 'TEST_ERROR', 'riga L1 malformata'
+	morto = c['term'] == 'bhyve_died'
+	fbt = c.get('fbt')
+	path_proof = bool(fbt and fbt['mmio'])	# attestazione indipendente dell'ingresso emulatore
+	# H2 (parere #103 §5): i casi D possono uccidere bhyve PRIMA della risposta di L1; dopo la
+	# morte la fotografia CTR after puo' mancare. H2 richiede morte E prova di percorso.
+	if nome in ('D_DATA', 'D_PTP') and morto:
+		before = [v for k, v in c['ctr'] if k == 'before']
+		if len(before) != 1:
+			return 'TEST_ERROR', 'morte senza CTR before persistito'
+		if path_proof:
+			return 'PATH_COVERED_H2_REPRODUCED', 'bhyve terminato + percorso attestato (FBT mmio)'
+		return 'INCONCLUSIVE_PATH_UNPROVEN', 'terminazione avvenuta ma percorso non provato'
+	d = delta(c)
+	if d is None:
+		return 'TEST_ERROR', 'fotografie del contatore mancanti o doppie'
+	if d < 0:
+		return 'TEST_ERROR', 'contatore a ritroso'
+	# H2: i casi D vivi
+	if nome in ('D_DATA', 'D_PTP'):
+		if c['l1'] is None:
+			return 'TEST_ERROR', 'ne\' morte ne\' risposta di L1'
+		if d == 0:
+			return 'INCONCLUSIVE_PATH_NOT_COVERED', 'nessuna emulazione (contatore invariato)'
+		if d > 1:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta>1: evento non attribuibile al movsq del caso'
+		l1 = c['l1']
+		atteso = viol_dato_D(l1) if nome == 'D_DATA' else viol_struttura_T(l1)
+		if atteso and not l1['ripadv']:
+			return 'PATH_COVERED_ARCH_PASS', 'EPT violation riflessa a L1, VM viva'
+		return 'INCONCLUSIVE_TEST_SETUP', 'VM viva ma la violazione non ha la forma attesa'
+	# casi non-D: serve la risposta di L1
+	if morto:
+		return 'TEST_ERROR', 'bhyve terminato in un caso non-D'
+	if c['l1'] is None:
+		return 'TEST_ERROR', 'manca la riga L1'
+	l1 = c['l1']
+	if d == 0:
+		# nessuna emulazione: se L1 ha visto una violazione, l'hardware ha preceduto
+		if l1['viol']:
+			return 'INCONCLUSIVE_HW_PREEMPTED', 'EPT violation hardware prima del percorso emulato'
+		return 'INCONCLUSIVE_PATH_NOT_COVERED', 'nessuna emulazione e nessuna violazione'
+	if d > 1:
+		return 'INCONCLUSIVE_TEST_SETUP', 'delta>1: evento non attribuibile al movsq del caso'
+	# d == 1: percorso emulato raggiunto
+	if nome == 'B':			# T=RW, A/D=0: emula, scrive A/D e D, nessuna violazione
+		if not l1['viol'] and pte_ad_scritti(l1) and l1['dwr'] and l1['ripadv']:
+			return 'PATH_COVERED_ARCH_PASS', 'emulazione corretta del movsq (controllo positivo)'
+		return 'INCONCLUSIVE_TEST_SETUP', 'il controllo positivo non emula come atteso'
+	if nome == 'C':			# T=R-only, A/D gia' 1: nessun A/D da scrivere, nessuna violazione
+		if not l1['viol'] and not pte_ad_scritti(l1) and l1['dwr']:
+			return 'PATH_COVERED_ARCH_PASS', 'nessuna scrittura A/D su T R-only (controllo negativo)'
+		if l1['viol']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'violazione su T con A/D gia\' impostati: contaminazione'
+		return 'INCONCLUSIVE_TEST_SETUP', 'controllo negativo anomalo'
+	if nome in ('A', 'A_D'):	# T=R-only, A o D da scrivere
+		if viol_scrittura_T(l1) and not pte_ad_scritti(l1) and not l1['dwr'] and not l1['ripadv']:
+			return 'PATH_COVERED_ARCH_PASS', 'EPT violation di scrittura su T riflessa a L1, PTE e D invariati'
+		if not l1['viol'] and pte_ad_scritti(l1):
+			return 'PATH_COVERED_H1_REPRODUCED', 'A/D scritti su una pagina EPT12 R-only senza EPT violation'
+		return 'INCONCLUSIVE_TEST_SETUP', 'esito non classificabile (ne\' violazione attesa ne\' scrittura A/D)'
+	return 'TEST_ERROR', 'caso sconosciuto'
+
+def analizza(testo):
+	casi, drop, plan, stop = leggi(testo)
+	out = []
+	if drop:
+		out.append(('(globale)', 'TEST_ERROR', 'drop o log incompleto segnalato'))
+	if stop is not None:
+		g = 'SESSIONE_FERMATA' if stop[0] == 'GATE' else 'INCONCLUSIVE_PROTOCOL'
+		out.append(('(globale)', g, '%s: %s' % stop))
+	for nome in casi:
+		if plan is not None and nome not in plan:
+			# parere #106 D1: un caso ESEGUITO fuori piano non si nasconde come NOT_RUN
+			out.append((nome, 'TEST_ERROR', 'caso eseguito FUORI dal piano di sessione'))
+			continue
+		v, perche = verdetto(nome, casi[nome])
+		out.append((nome, v, perche))
+	noti = set(casi)
+	for nome in CASI:
+		if nome not in noti:
+			# con un PLAN: fuori piano e assente = NOT_RUN; del piano e assente = errore
+			if plan is not None and nome not in plan:
+				out.append((nome, 'NOT_RUN', 'fuori dal piano di sessione'))
+			elif plan is not None and stop is not None:
+				# il driver ha fermato la sessione PRIMA dell'ACK: il caso non e' entrato in L2
+				out.append((nome, 'NOT_RUN_FERMATA', 'sessione fermata dal driver (%s)' % stop[0]))
+			elif plan is not None:
+				out.append((nome, 'TEST_ERROR', 'caso del piano assente dal log'))
+			else:
+				out.append((nome, 'TEST_ERROR', 'caso previsto ma assente dal log'))
+	# cancello del controllo B (parere #102 §4): se B non e' ARCH_PASS, A/H1 non sono affidabili
+	bv = dict((n, v) for n, v, _ in out)
+	if bv.get('B') not in (None, 'PATH_COVERED_ARCH_PASS', 'NOT_RUN', 'NOT_RUN_FERMATA'):
+		out.append(('(globale)', 'B_GATE_FALLITO', 'il controllo positivo B non passa: A/A_D non affidabili'))
+	return out
+
+def main():
+	testo = open(sys.argv[1], errors='replace').read()
+	righe = analizza(testo)
+	err = 0
+	print('== %s' % sys.argv[1])
+	for nome, v, perche in righe:
+		print('  %-8s %-30s %s' % (nome, v, perche))
+		err += v == 'TEST_ERROR'
+	# copertura del percorso per caso (diagnostica, non cambia i verdetti)
+	casi = leggi(testo)[0]
+	for nome in casi:
+		c = casi[nome]
+		fbt = c.get('fbt')
+		dd = delta(c)
+		mmio = (dd == 1) or bool(fbt and fbt['mmio'])
+		ptp = bool(fbt and fbt['ptp'])
+		et = []
+		if mmio:
+			et.append('MMIO_PATH_COVERED')
+		if ptp:
+			et.append('PTP_HOLD_PATH_COVERED')
+		if et:
+			print('  PATH %-8s %s' % (nome, ' '.join(et)))
+	h1 = any(v == 'PATH_COVERED_H1_REPRODUCED' for _, v, _ in righe)
+	h2 = any(v == 'PATH_COVERED_H2_REPRODUCED' for _, v, _ in righe)
+	print('RIPRODUZIONE: H1=%s H2=%s' % ('SI' if h1 else 'no', 'SI' if h2 else 'no'))
+	print('  (un PATH_COVERED_H*_REPRODUCED e\' un PASS dell\'oracolo di riproduzione e un FAIL di correttezza del kernel)')
+	sys.exit(3 if err else 0)
+
+if __name__ == '__main__':
+	main()

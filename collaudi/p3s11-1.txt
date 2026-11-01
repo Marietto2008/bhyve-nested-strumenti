@@ -1,0 +1,16 @@
+banco P3 stadio 11 (s11-vero)
+  info    L: i chiamanti legacy (vm_gla2gpa) non vedono il limite: 1000 corse perse finiscono, la contesa persistente non torna
+  ERRATO  B1 contesa persistente: interrotto 0 ret 0 fault 0 conteso 1 ripartenze 63 capped 1 pf 0 rip.istr 0 holds 0  [!interrotto && ret == 0 && fault == 0 && conteso && ripartenze == 64 && gla2gpa_restart_capped == 1 && iniezioni_pf == 0 && iniezioni_gp == 0 && eventi_nested == 0 && ripartenze_istruzione == 0 && holds_attivi == 0]
+  info    B1: contesa persistente -> CONTESO dopo 63 ripartenze: ret 0, fault 0, nessuna pagina tenuta, nessuna eccezione
+  ERRATO  B4 bordo: 64 corse perse -> CONTESO: conteso 1 ripartenze 63  [!interrotto && ret == 0 && fault == 0 && conteso && ripartenze == 64 && gla2gpa_restart_capped == 1]
+  ERRATO  B5 EPT12 instabile per sempre: conteso 1 ripartenze 63 eventi 0 holds 0  [!interrotto && ret == 0 && fault == 0 && conteso && ripartenze == 64 && eventi_nested == 0 && holds_attivi == 0]
+  ERRATO  B8 limite 1: conteso 1 ripartenze 0  [!interrotto && conteso && ripartenze == 1]
+s11-vero: 10 ok, 4 errati
+  ok      mutante senza_limite preso da B1
+Segmentation fault
+  ERRATO  mutante limite_anche_legacy NON preso da L1 (rc 139: )
+  ok      mutante codifica_respinta preso da B1
+  ok      mutante contatore_fermo preso da B1
+  ok      mutante fuori_di_uno preso da B3
+  ok      mutante limite_zero_attivo preso da B7
+banco P3 stadio 11: errori 2

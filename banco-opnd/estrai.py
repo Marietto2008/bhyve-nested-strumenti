@@ -1,0 +1,51 @@
+# estrai.py -- Claude 30/10/2026 (#158 B4d). Estrae la DEFINIZIONE (non il prototipo) di ciascuna funzione:
+# la riga del tipo che precede "nome(" a inizio riga e il corpo fino alla prima "}" a inizio riga.
+# Uso: estrai.py <file.c> <nome>...   Esce 1 se una funzione manca o e' ambigua.
+import sys, re
+src = open(sys.argv[1]).read().split('\n')
+ok = True
+opzionale = False
+for n in sys.argv[2:]:
+    if n == '--opzionali':		# da qui in poi: una funzione assente si salta (stadi diversi)
+        opzionale = True; continue
+    if n.startswith('blocco:'):		# dati a livello di file: dalla riga che inizia col testo dato fino a "};"
+        t = n[7:].replace('~', ' ')	# '~' = spazio (argomento di shell senza spazi)
+        idx = [i for i, l in enumerate(src) if l.startswith(t)]
+        if len(idx) != 1:
+            if opzionale and not idx: continue
+            print('#error %s: %d definizioni' % (n, len(idx))); ok = False; continue
+        k = idx[0]
+        while not src[k].startswith('};'): k += 1
+        print('/* --- %s:%d */' % (sys.argv[1].split('/sys/')[-1], idx[0] + 1))
+        print('\n'.join(src[idx[0]:k + 1])); print(); continue
+    if n.startswith('enum:'):		# un enum a livello di file: da "enum NOME {" a "};"
+        t = 'enum %s {' % n[5:]
+        idx = [i for i, l in enumerate(src) if l.startswith(t)]
+        if len(idx) != 1:
+            if opzionale and not idx: continue
+            print('#error %s: %d definizioni' % (n, len(idx))); ok = False; continue
+        k = idx[0]
+        while not src[k].startswith('};'): k += 1
+        print('/* --- %s:%d */' % (sys.argv[1].split('/sys/')[-1], idx[0] + 1))
+        print('\n'.join(src[idx[0]:k + 1])); print(); continue
+    trovate = []
+    for i, l in enumerate(src):
+        if not l.startswith(n + '('):
+            continue
+        j = i
+        while '{' not in src[j] and ';' not in src[j] and j < i + 6:
+            j += 1
+        if src[j].rstrip().endswith(';'):
+            continue			# prototipo
+        k = j
+        while not src[k].startswith('}'):
+            k += 1
+        trovate.append((i, k))
+    if opzionale and not trovate:
+        continue
+    if len(trovate) != 1:
+        print('#error funzione %s: %d definizioni' % (n, len(trovate))); ok = False; continue
+    i, k = trovate[0]
+    print('/* --- %s:%d */' % (sys.argv[1].split('/sys/')[-1], i + 1))
+    print('\n'.join(src[i - 1:k + 1])); print()
+sys.exit(0 if ok else 1)

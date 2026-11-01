@@ -1,0 +1,6 @@
+  ok      mutante piatto_non_esente preso: 32 bit piatto, dword a 0xfffffffe              POLICY atteso N osservato G gla 0 KASSERT f
+  ok      mutante expand_down_minore preso: expand-down lim 0xfff, ESP 0x1003 (byte 0xfff = limite) SDM    atteso S osservato N gla 0x
+  ok      mutante top_sempre_4g preso: expand-down B=0 lim 0xfff, SP 0x1 (word a 0xffff) SDM    atteso S osservato N gla 0x4ffff 
+  ok      mutante primo_contro_top preso: expand-down B=0 lim 0xfff, SP 0x1 (word a 0xffff) SDM    atteso S osservato N gla 0x4ffff 
+  ok      mutante r9c_ss_solo_protetto preso: reale PUSH word, SP 0x100                      SDM    atteso N osservato S gla 0 KASSERT f
+mutanti: errori 0

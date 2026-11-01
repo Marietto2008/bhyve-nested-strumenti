@@ -1,0 +1,185 @@
+/*
+ * banco.c -- Claude 30/10/2026, parere #135 §8 (E1-E10, E14, E16, E18-E20). Esercita le funzioni VERE estratte
+ * dal vmm.c di un clone (funzioni.inc, generato da run.sh) contro gli stub di stub.h. Il "guest" e' vmmops_run:
+ * conta gli ingressi e registra il RIP di partenza di ciascuno. Uscita: numero di controlli falliti.
+ */
+#include "stub.h"
+
+static u_long vm_fatal_latches;
+
+#include "funzioni.inc"
+
+static int nf, nok;
+static struct vm vm;
+static struct vcpu v;
+
+#define VERO(c, ...) do { if (c) { nok++; } else { nf++; printf("  ERRATO  "); printf(__VA_ARGS__); \
+	printf("  [%s]\n", #c); } } while (0)
+
+static void nuovo(void)
+{
+	memset(&sc, 0, sizeof(sc));
+	memset(&vm, 0, sizeof(vm));
+	memset(&v, 0, sizeof(v));
+	vm.active_cpus = 1;
+	v.vm = &vm;
+	v.vcpuid = 0;
+	vcpu_init(&v);
+	v.nextrip = 0x1000;		/* L2/guest parte da 0x1000 */
+	sc.decode_len = 3;		/* movsq con prefisso REX: 3 byte */
+	sc.gpa = DEFAULT_APIC_BASE;	/* MMIO di un dispositivo emulato nel kernel */
+	for (int i = 0; i < 64; i++)
+		sc.prossima[i] = VM_EXITCODE_INOUT;	/* dopo l'evento del caso: torna a userland */
+	sc.prossima[0] = VM_EXITCODE_INST_EMUL;
+	kassert_fallite = 0;
+}
+
+int main(int argc, char **argv)
+{
+	const char *albero = argc > 1 ? argv[1] : "?";
+	int e, nested = argc > 2 && strcmp(argv[2], "nested") == 0;
+
+	printf("banco ripfix (%s)\n", albero);
+
+	/* E1: errore d'emulazione dopo la decodifica -> nextrip sull'istruzione, latch, ENOTRECOVERABLE */
+	nuovo(); sc.emul_err = EFAULT;
+	e = vm_run(&v);
+	VERO(e == ENOTRECOVERABLE, "E1 vm_run=%d", e);
+	VERO(v.nextrip == 0x1000 && v.exitinfo.inst_length == 0, "E1 nextrip %#lx len %d", (u_long)v.nextrip, v.exitinfo.inst_length);
+	VERO(v.fatal.errno_orig == EFAULT && v.fatal.stadio == VM_FATAL_EMUL && v.fatal.rip == 0x1000, "E1 latch");
+	VERO(sc.effetti_mmio == 0 && sc.entrate == 1, "E1 D intatta, un solo ingresso");
+	/* E6: QEMU vecchia rientra cento volte: nessun ingresso, nessuna emulazione */
+	for (int i = 0; i < 100; i++)
+		e = vm_run(&v);
+	VERO(e == ENOTRECOVERABLE && sc.entrate == 1 && sc.emul_chiamate == 1, "E6 ingressi %d emulazioni %d", sc.entrate, sc.emul_chiamate);
+	/* E16: il record conserva il RIP originale, il vecchio nextrip e la lunghezza; il registro RIP coincide */
+	{
+		uint64_t r;
+		vm_get_register(&v, VM_REG_GUEST_RIP, &r);
+		VERO(v.fatal.nextrip_old == 0x1003 && v.fatal.inst_length == 3 && v.fatal.ninst == 3 && r == v.fatal.rip,
+		    "E16 nextrip_old %#lx len %d ninst %d reg %#lx", (u_long)v.fatal.nextrip_old, v.fatal.inst_length, v.fatal.ninst, (u_long)r);
+	}
+	VERO(vm_fatal_latches == 1 && kassert_fallite == 0, "E1 contatore %lu kassert %d", vm_fatal_latches, kassert_fallite);
+	/* #139 §7: validita' dei campi: emulazione con GLA valido -> GPA, GLA e byte validi */
+	VERO(v.fatal.valide == (VM_FATAL_V_GPA | VM_FATAL_V_GLA | VM_FATAL_V_INST) && v.fatal.gpa == DEFAULT_APIC_BASE,
+	    "E16v valide %#x gpa %#lx", v.fatal.valide, (u_long)v.fatal.gpa);
+	/* GLA non valido (VIE_INVALID_GLA): non dichiarato valido e azzerato nel record */
+	nuovo(); sc.emul_err = EFAULT; sc.gla = VIE_INVALID_GLA;
+	vm_run(&v);
+	VERO(!(v.fatal.valide & VM_FATAL_V_GLA) && v.fatal.gla == 0 && (v.fatal.valide & VM_FATAL_V_INST),
+	    "E16g GLA non valido: valide %#x gla %#lx", v.fatal.valide, (u_long)v.fatal.gla);
+
+	/* E2: la stessa istruzione riuscita: avanza UNA volta, D scritta una volta, nessun latch */
+	nuovo();
+	e = vm_run(&v);
+	VERO(e == 0 && sc.entrate == 2 && sc.rip_entrata[1] == 0x1003 && sc.effetti_mmio == 1 && v.fatal.errno_orig == 0,
+	    "E2 vm_run=%d ingressi %d secondo da %#lx effetti %d", e, sc.entrate, (u_long)sc.rip_entrata[1], sc.effetti_mmio);
+
+	/* E3: #PF di L2 nel walk: restart, nessun latch, rientro sulla STESSA istruzione */
+	nuovo(); sc.emul_restart = 1;
+	e = vm_run(&v);
+	VERO(e == 0 && sc.rip_entrata[1] == 0x1000 && v.fatal.errno_orig == 0, "E3 vm_run=%d rientro %#lx", e, (u_long)sc.rip_entrata[1]);
+
+	/* E4: diniego EPT12 -> emu_viol: consegnata UNA volta, rientro sull'istruzione, nessun latch */
+	nuovo(); sc.emul_restart = 2;
+	e = vm_run(&v);
+	VERO(e == 0 && sc.emu_viol_consegnate == 1 && sc.rip_entrata[1] == 0x1000 && v.fatal.errno_orig == 0,
+	    "E4 vm_run=%d consegnate %d rientro %#lx", e, sc.emu_viol_consegnate, (u_long)sc.rip_entrata[1]);
+
+	/* E5: handoff userland (QEMU, GPA non di un dispositivo nel kernel): nextrip avanzato, nessun latch */
+	nuovo(); vm.flags = VM_OP_F_QEMU; sc.gpa = 0x40000000;
+	e = vm_run(&v);
+	VERO(e == 0 && v.nextrip == 0x1003 && v.exitinfo.inst_length == 3 && v.exitinfo.exitcode == VM_EXITCODE_INST_EMUL &&
+	    v.fatal.errno_orig == 0 && sc.emul_chiamate == 0, "E5 vm_run=%d nextrip %#lx len %d", e, (u_long)v.nextrip, v.exitinfo.inst_length);
+
+	/* E7 + E19: REP MOVS, l'iterazione 3 fallisce dopo una lettura MMIO con effetti: RCX = due iterazioni
+	 * completate, nextrip sull'istruzione, latch, e la lettura NON viene rifatta */
+	nuovo(); sc.rcx = 5; sc.rep_fallisce_a = 3;
+	for (int i = 0; i < 3; i++)
+		sc.prossima[i] = VM_EXITCODE_INST_EMUL;
+	e = vm_run(&v);
+	VERO(e == ENOTRECOVERABLE && sc.rcx == 3 && v.nextrip == 0x1000 && sc.emul_chiamate == 3,
+	    "E7 vm_run=%d rcx %d nextrip %#lx emulazioni %d", e, sc.rcx, (u_long)v.nextrip, sc.emul_chiamate);
+	for (int i = 0; i < 10; i++)
+		vm_run(&v);
+	VERO(sc.effetti_mmio == 3 && sc.emul_chiamate == 3 && sc.entrate == 3, "E19 effetti %d emulazioni %d ingressi %d",
+	    sc.effetti_mmio, sc.emul_chiamate, sc.entrate);
+
+	/* E8: l'emulazione trasforma l'uscita in IPI: gestita, nessun latch */
+	nuovo(); sc.emul_ipi = 1;
+	e = vm_run(&v);
+	VERO(e == 0 && sc.ipi_gestiti == 1 && v.fatal.errno_orig == 0, "E8 vm_run=%d ipi %d", e, sc.ipi_gestiti);
+
+	/* E10: EINTR da HLT (segnale al thread): transitorio, nessun latch, il prossimo VM_RUN entra */
+	nuovo(); sc.prossima[0] = VM_EXITCODE_HLT; sc.hlt_err = EINTR;
+	e = vm_run(&v);
+	VERO(e == EINTR && v.fatal.errno_orig == 0, "E10 vm_run=%d", e);
+	sc.hlt_err = 0;
+	e = vm_run(&v);
+	VERO(sc.entrate == 2, "E10 rientro dopo EINTR: ingressi %d", sc.entrate);
+
+	/* fetch fallito (R2): latch stadio FETCH, nextrip fermo */
+	nuovo(); sc.fetch_err = EFAULT;
+	e = vm_run(&v);
+	VERO(e == ENOTRECOVERABLE && v.fatal.stadio == VM_FATAL_FETCH && v.nextrip == 0x1000 && sc.emul_chiamate == 0,
+	    "R2 vm_run=%d stadio %d", e, v.fatal.stadio);
+	VERO(!(v.fatal.valide & VM_FATAL_V_INST) && v.fatal.ninst == 0, "R2v fetch fallito: byte dichiarati validi (%#x, %d)",
+	    v.fatal.valide, v.fatal.ninst);
+	/* fetch con #PF: nessun latch */
+	nuovo(); sc.fetch_fault = 1;
+	e = vm_run(&v);
+	VERO(e == 0 && v.fatal.errno_orig == 0, "R3 vm_run=%d", e);
+
+	/* E14: latch scritto una volta; vm_run senza reset resta bloccato; vcpu_init lo azzera e il guest rientra */
+	nuovo(); sc.emul_err = EFAULT;
+	vm_run(&v);
+	e = vm_fatal_latch(&v, EIO, VM_FATAL_FETCH, 0x9999, 0, 0, NULL, 0, VM_FATAL_V_GPA);
+	VERO(e == ENOTRECOVERABLE && v.fatal.errno_orig == EFAULT && v.fatal.rip == 0x1000, "E14 sovrascritto: errno %d rip %#lx",
+	    v.fatal.errno_orig, (u_long)v.fatal.rip);
+	vcpu_init(&v);
+	sc.emul_err = 0; v.nextrip = 0x2000;
+	e = vm_run(&v);
+	VERO(v.fatal.errno_orig == 0 && sc.rip_entrata[1] == 0x2000, "E14 dopo vcpu_init: latch %d rientro %#lx",
+	    v.fatal.errno_orig, (u_long)sc.rip_entrata[1]);
+
+	/* E18: emu_viol registrata E errore nello stesso giro (impossibile nel codice vero: vedi rapporto):
+	 * vince il latch, l'evento non viene consegnato e il guest non rientra */
+	nuovo(); sc.emul_restart = 2; sc.emul_err = EFAULT;
+	e = vm_run(&v);
+	vm_run(&v);
+	VERO(e == ENOTRECOVERABLE && sc.emu_viol_consegnate == 0 && sc.entrate == 1, "E18 vm_run=%d consegnate %d ingressi %d",
+	    e, sc.emu_viol_consegnate, sc.entrate);
+
+	/* R10b/d: effetto prodotto e poi errore: il latch impedisce la riesecuzione (nessun effetto doppio) */
+	nuovo(); sc.emul_err = -EIO;
+	e = vm_run(&v);
+	for (int i = 0; i < 5; i++)
+		vm_run(&v);
+	VERO(e == ENOTRECOVERABLE && v.fatal.errno_orig == EIO && sc.effetti_mmio == 1, "R10d vm_run=%d errno %d effetti %d",
+	    e, v.fatal.errno_orig, sc.effetti_mmio);
+
+	if (nested) {
+		/* E20: Fase C: VEPT_MMIO non emulabile -> latch, exitcode non NESTED, nessuna KASSERT, nessun rientro */
+		nuovo(); sc.prossima[0] = VM_EXITCODE_NESTED; sc.nested_err = 1;
+		e = vm_run(&v);
+		vm_run(&v);
+		VERO(e == ENOTRECOVERABLE && kassert_fallite == 0 && v.exitinfo.exitcode == VM_EXITCODE_BOGUS && sc.entrate == 1 &&
+		    v.fatal.stadio == VM_FATAL_NESTED_VEPT, "E20 vm_run=%d kassert %d exitcode %d ingressi %d",
+		    e, kassert_fallite, v.exitinfo.exitcode, sc.entrate);
+		VERO(v.fatal.valide == VM_FATAL_V_GPA && v.fatal.gla == 0 && v.fatal.ninst == 0,
+		    "E20v Fase C: solo il GPA valido (%#x)", v.fatal.valide);
+		/* E11: NESTED -> INST_EMUL emulabile: emulazione nel kernel, D scritta, avanti */
+		nuovo(); sc.prossima[0] = VM_EXITCODE_NESTED;
+		e = vm_run(&v);
+		VERO(e == 0 && sc.effetti_mmio == 1 && sc.rip_entrata[1] == 0x1003, "E11 vm_run=%d effetti %d", e, sc.effetti_mmio);
+		/* E11 + E1: NESTED -> INST_EMUL con errore d'emulazione (il caso DM): latch, nessun salto */
+		nuovo(); sc.prossima[0] = VM_EXITCODE_NESTED; sc.emul_err = EFAULT;
+		e = vm_run(&v);
+		vm_run(&v);
+		VERO(e == ENOTRECOVERABLE && v.nextrip == 0x1000 && sc.entrate == 1, "DM vm_run=%d nextrip %#lx ingressi %d",
+		    e, (u_long)v.nextrip, sc.entrate);
+	}
+
+	printf("%s: %d ok, %d errati\n", albero, nok, nf);
+	return (nf != 0);
+}

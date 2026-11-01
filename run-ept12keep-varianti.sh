@@ -1,0 +1,91 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-ept12keep-varianti.sh.non-conforme
+echo "INERTE: run-ept12keep-varianti.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-ept12keep-varianti.sh.non-conforme" >&2; exit 4
+# run-ept12keep-varianti.sh -- Claude 26/10/2026 notte, parere #80 §0.4:
+# ept12_remap_np, _rax, _sentinel con vept_keep=1, vept_verify_hpa=1,
+# vept_scan_retries=1 (impostati, riletti, ripristinati alla fine), traccia
+# diag79c.d. SCOPE: 3 VM QEMU (vm2), una per variante, in sequenza.
+# Nessun retry, nessuna corsa successiva automatica.
+W=/mnt/linuxulator2/vm/nested-work
+T=$W/freebsd-nested/tools/nested
+cd $W || exit 1
+MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+FLAT=$W/kut/vmxc-plain.flat
+FLAT_SHA=848b0410e94ca86be1b06a7288f6c80c1de8f3e90eec4a2872e49afbade5c7a5
+D79C_SHA=94f8f034e4f1289922748cdbb44eea7f131ffa80a2432a589b4bd0db7f4f36ec
+R0=0x40fb5b			# lettura di stage0 (vmxc-plain.elf, 9b87c5f4...)
+EVB=$W/evidenze-ept12-rip/varianti-keep-1
+mkdir -p $EVB || exit 1
+[ -e $EVB/riepilogo.txt ] && { echo "STOP: gia' fatta ($EVB)"; exit 1; }
+
+S="hw.vmm.vmx.vept_keep hw.vmm.vmx.vept_verify_hpa hw.vmm.vmx.vept_scan_retries"
+PRIMA=$(/sbin/sysctl -n $S | /usr/bin/tr '\n' ' ')
+ripristina() {
+	set -- $PRIMA
+	sudo -n /sbin/sysctl hw.vmm.vmx.vept_keep=$1 hw.vmm.vmx.vept_verify_hpa=$2 hw.vmm.vmx.vept_scan_retries=$3 \
+	    hw.vmm.vmx.nested_diag58=0 hw.vmm.vmx.nested_diag58_gpa=0 >/dev/null
+}
+ferma() { echo "STOP: $*"; ripristina; exit 1; }
+
+echo "=== controlli a freddo ==="
+[ "$(/sbin/sha256 -q /boot/kernel/vmm-restore.ko)" = "$MOD_SHA" ] || ferma "modulo diverso da 27125f004917"
+[ "$(/sbin/sha256 -q $FLAT)" = "$FLAT_SHA" ] || ferma "vmxc-plain.flat diverso"
+[ "$(/sbin/sha256 -q $T/diag79c.d)" = "$D79C_SHA" ] || ferma "diag79c.d diverso da quello collaudato"
+[ "$(/sbin/sysctl -n hw.vmm.vmx.nested_diag58)" = "0" ] || ferma "nested_diag58 gia' acceso"
+vivi=$(sudo -n /bin/ps axww -o pid,ppid,user,command | /usr/bin/grep -iE 'bhyve|qemu-system' | /usr/bin/grep -v grep)
+[ -n "$vivi" ] && { echo "$vivi"; ferma "processo VM vivo"; }
+for v in /dev/vmm/*; do
+	[ -e "$v" ] || continue
+	a=$(sudo -n /usr/bin/fstat "$v" 2>/dev/null | /usr/bin/sed 1d)
+	[ -n "$a" ] && { echo "$a"; ferma "$v aperto da un processo"; }
+done
+{
+	echo "modulo $MOD_SHA"; echo "flat $FLAT_SHA"; echo "diag79c.d $D79C_SHA"
+	echo "script $(/sbin/sha256 -q $0)"; echo "sysctl iniziali: $PRIMA"
+	sudo -n /usr/sbin/cpucontrol -m 0x8b /dev/cpuctl6
+	/sbin/sysctl kern.osrelease; /bin/ls -la /dev/vmm
+} > $EVB/baseline.txt 2>&1
+
+echo "=== configurazione vept_keep=1 (impostata E riletta) ==="
+sudo -n /sbin/sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_verify_hpa=1 hw.vmm.vmx.vept_scan_retries=1 >/dev/null || ferma "sysctl"
+[ "$(/sbin/sysctl -n hw.vmm.vmx.vept_keep)" = 1 ] && [ "$(/sbin/sysctl -n hw.vmm.vmx.vept_verify_hpa)" = 1 ] && \
+    [ "$(/sbin/sysctl -n hw.vmm.vmx.vept_scan_retries)" = 1 ] || ferma "sysctl non applicati"
+/sbin/sysctl $S | /usr/bin/tee $EVB/configurazione.txt
+
+# variante | RIP lettura stage1 | modalita' (1 = _np)
+for riga in "np 0x40fc89 1" "rax 0x40fc57 0" "sentinel 0x40fc73 0"; do
+	set -- $riga
+	v=$1; R1=$2; MODO=$3
+	EV=$EVB/$v; mkdir -p $EV
+	echo "=== $v (1 VM): lettura stage1 $R1, modalita' $MODO ==="
+	sudo -n /sbin/sysctl hw.vmm.vmx.nested_diag58_gpa=0 hw.vmm.vmx.nested_diag58=1 >/dev/null || ferma "diag58"
+	: > $EV/diag79c.out
+	sudo -n /usr/sbin/dtrace -s $T/diag79c.d $R1 $R0 0 $MODO -o $EV/diag79c.out 2> $EV/diag79c.err &
+	DT=$!
+	i=0
+	until /usr/bin/grep -q '== TRACCIA PRONTA ==' $EV/diag79c.out 2>/dev/null; do
+		i=$((i + 1))
+		[ $i -gt 30 ] && { sudo -n kill -TERM $DT; ferma "DTrace non pronto in 15 s ($v)"; }
+		sleep 0.5
+	done
+	sudo -n env TEST_CPUS=6 /bin/sh $W/kutvpid/kut-run.sh --nested $T/kut-ept12keep-$v.list > $EV/kut-run.out 2>&1
+	sleep 2
+	sudo -n kill -TERM $DT
+	wait $DT 2>/dev/null
+	sudo -n /sbin/sysctl hw.vmm.vmx.nested_diag58=0 >/dev/null
+	ser=$(/bin/ls -t $W/logs/kut-*-ept12_remap_$v.serial | /usr/bin/head -1)
+	/bin/cp -n "$ser" $EV/
+	l1=$(/usr/bin/awk -v n="ept12_remap_$v" '$1==n {print $2}' $EV/kut-run.out)
+	tr=$(/usr/bin/grep -q '== TRACCIA CHIUSA ==' $EV/diag79c.out && echo completa || echo TRONCA)
+	l0=$(/usr/bin/grep -E '^L0_' $EV/diag79c.out | /usr/bin/tr '\n' ' ')
+	al=$(/usr/bin/grep -cE 'ALLARME|CPU CAMBIATA|ORDINE VIOLATO' $EV/diag79c.out)
+	echo "== $v: L1=$l1 traccia=$tr allarmi=$al $l0" | /usr/bin/tee -a $EVB/riepilogo.txt
+	/usr/bin/grep -E 'E12DIAG|^(PASS|FAIL|SUMMARY)' $EV/$(basename $ser) | /usr/bin/sed 's/^/   L1| /'
+	/usr/bin/grep -vE '^\[[0-9]+\] INVEPT-fisico|^$' $EV/diag79c.out | /usr/bin/sed 's/^/   L0| /'
+	/sbin/sha256 -r $EV/* > $EV/SHA256SUMS 2>/dev/null
+done
+
+ripristina
+echo "sysctl ripristinati: $(/sbin/sysctl -n $S | /usr/bin/tr '\n' ' ') diag58=$(/sbin/sysctl -n hw.vmm.vmx.nested_diag58)" | /usr/bin/tee -a $EVB/riepilogo.txt
+/bin/ls -la /dev/vmm | /usr/bin/tee -a $EVB/riepilogo.txt
+echo "FINE: 3 corse, nessuna successiva automatica"

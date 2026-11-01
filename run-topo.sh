@@ -1,0 +1,40 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-topo.sh.non-conforme
+echo "INERTE: run-topo.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-topo.sh.non-conforme" >&2; exit 4
+# Claude 23/10/2026 -- parere #32 §1: cosa vedono Windows e WSL2 della topologia CPU.
+# uso: run-topo.sh <script VM> <etichetta>. Avvio, domande a Windows e WSL, CPU dei thread
+# vCPU di bhyve durante un carico di 4 processi in WSL, spegnimento ordinato.
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+VMS=$1; E=$2; O=$B/logs/topo-$E-$(date +%Y%m%d-%H%M); mkdir -p $O
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 >/dev/null
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sh $N/$VMS > $O/script.log 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+# TOLTO 23/10: xdotool windowminimize su TigerVNC fa crollare openbox (client_calc_layer), vedi memoria
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; done
+w "schtasks /delete /tn claude-vita /f & schtasks /delete /tn claude-clk /f" > /dev/null 2>&1
+sleep 60
+echo "== Windows" | tee $O/topo.txt
+w "powershell -NoProfile -Command \"Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfProcessors,NumberOfLogicalProcessors | Format-List; Get-CimInstance Win32_Processor | Select-Object DeviceID,NumberOfCores,NumberOfLogicalProcessors | Format-Table -AutoSize; (Get-CimInstance Win32_OperatingSystem).Caption; Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Select-Object Name | Format-Table -HideTableHeaders\"" | /usr/bin/grep -v "^\s*$" | tee -a $O/topo.txt
+# WSL: topologia e un carico di 4 processi per 60 s
+printf '%s' "-d Debian -u root -- bash -c 'nproc; lscpu -e=CPU,CORE,SOCKET,ONLINE; cat /sys/devices/system/cpu/online; for i in 1 2 3 4; do timeout 60 sh -c \"while :; do :; done\" & done; wait; echo CARICO-FINE'" > $O/args.txt
+cpw $O/args.txt marietto@win11:'C:/claude/wsl-args.txt'
+P=$(pgrep -x bhyve)
+ps -H -o lwp,time,comm -p $P | /usr/bin/grep -i vcpu > $O/vcpu-prima.txt
+w "del C:\\claude\\wsl-log.txt 2>nul & del C:\\claude\\o.txt 2>nul & schtasks /create /tn claude-wsl /tr \"powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn claude-wsl" > /dev/null
+j=0; while [ $j -lt 30 ]; do w "type C:\\claude\\wsl-log.txt" | /usr/bin/grep -q codice && break; sleep 10; j=$((j+1)); done
+ps -H -o lwp,time,comm -p $P | /usr/bin/grep -i vcpu > $O/vcpu-dopo.txt
+echo "== WSL" | tee -a $O/topo.txt
+w "type C:\\claude\\wsl-log.txt" | /usr/bin/grep -v "^===" | tee -a $O/topo.txt
+echo "== CPU dei thread vCPU di bhyve (prima -> dopo il carico di 60 s)" | tee -a $O/topo.txt
+/usr/bin/paste $O/vcpu-prima.txt $O/vcpu-dopo.txt | tee -a $O/topo.txt
+w "shutdown /s /t 0" >/dev/null 2>&1
+i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+sudo -n pkill -KILL -f vncviewer 2>/dev/null; sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+echo "shadow dopo: $(sysctl -n hw.vmm.vmx.vept_shadow_pages)"; sudo -n sysctl hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 >/dev/null
+echo "OUTPUT $O"

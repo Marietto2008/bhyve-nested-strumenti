@@ -1,0 +1,5 @@
+claude-eptrepro v2: X=0x20000 A=off 0x20000 B=off 0x30000 porta=0xeeef pid=68325
+  [host] marcatori iniziali: integri (A[0]=0x41414141 B[0]=0x42424242)
+0 smoke A        esito=2 exit=-1 val=0 gpa=0 errno=22 atteso=0x41414141 -> INVALID
+RISULTATO: INVALID (canale userspace non verificato)
+HARNESS_PROTOCOL=INVALID

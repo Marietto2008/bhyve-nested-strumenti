@@ -1,0 +1,147 @@
+u64-verdetto.py
+  ok     u64 completa_modello                         uscita 0 (attesa 0): MODELLO: 28 casi, 0 contrari, finestra nativa (+0 +0): U64_NATIVE_DATA_ACCESS_OBSERVED
+  ok     u64 completa_un_contrario                    uscita 1 (attesa 1): CONTRARIO_AL_MODELLO: 1 casi su 28 (sessione completa e nativa: e' un DATO)
+  ok     u64 finestra_mossa                           uscita 3 (attesa 3): NON_NATIVA: nella finestra vm exits for instruction emulation +1, vm exits due to nested page fault +0
+  ok     u64 nested_pf_mosso                          uscita 3 (attesa 3): NON_NATIVA: nella finestra vm exits for instruction emulation +0, vm exits due to nested page fault +2
+  ok     u64 finestra_aperta_senza_fine               uscita 5 (attesa 5): INCONCLUSIVO: casi presenti 0, attesi 1..28 univoci | record finale assente o doppio: 0 | manca U64 CHIUSO (la
+  ok     u64 zero_casi_con_record                     uscita 5 (attesa 5): INCONCLUSIVO: casi presenti 0, attesi 1..28 univoci | record finale incoerente: 'U64 FINE casi=0 modello=0 con
+  ok     u64 ventisette_casi                          uscita 5 (attesa 5): INCONCLUSIVO: casi presenti 27, attesi 1..28 univoci | record finale incoerente: 'U64 FINE casi=27 modello=27 
+  ok     u64 caso_duplicato                           uscita 5 (attesa 5): INCONCLUSIVO: caso 1 duplicato
+  ok     u64 foto_finale_rc_1                         uscita 5 (attesa 5): INCONCLUSIVO: fotografia per 'U64 FINE casi=' assente o fallita
+  ok     u64 foto_finale_timeout                      uscita 5 (attesa 5): INCONCLUSIVO: fotografia per 'U64 FINE casi=' assente o fallita
+  ok     u64 contatore_mancante                       uscita 5 (attesa 5): INCONCLUSIVO: contatore 'vm exits due to nested page fault' assente, doppio o non numerico in 'U64 PRONTO'
+  ok     u64 contatore_non_numerico                   uscita 5 (attesa 5): INCONCLUSIVO: contatore 'vm exits for instruction emulation' assente, doppio o non numerico in 'U64 PRONTO'
+  ok     u64 uscita_anticipata_senza_chiuso           uscita 5 (attesa 5): INCONCLUSIVO: manca U64 CHIUSO (la chiusura dopo la fotografia finale)
+  ok     u64 record_incoerente                        uscita 5 (attesa 5): INCONCLUSIVO: record finale incoerente: 'U64 FINE casi=28 modello=27 contrari=0' (casi letti 28, contrari lett
+  ok     u64 rc_incoerente_coi_contrari               uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 1 incoerente con 1 contrari
+  ok     u64 codice_qemu_non_kut                      uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 0: non e' un'uscita KUT (1 o 3)
+  ok     u64 driver_non_valido                        uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver NON valida: x
+  ok     u64 prerequisito_fallito                     uscita 5 (attesa 5): INCONCLUSIVO: prerequisito o stretta di mano fallita
+opnd-verdetto.py
+  ok     opnd f123_completa_106_39                    uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd f123_senza_invvpid                      uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd f123_senza_invept                       uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd f1_da_sola                              uscita 0 (attesa 0): PASS: piano F1
+  ok     opnd f3_da_sola_zero_controlli               uscita 0 (attesa 0): PASS: piano F3
+  ok     opnd f1_f2                                   uscita 0 (attesa 0): PASS: piano F1,F2
+  ok     opnd f2_f3                                   uscita 0 (attesa 0): PASS: piano F2,F3
+  ok     opnd f4_completa                             uscita 0 (attesa 0): PASS: piano F4
+  ok     opnd f123_vuoto_coerente                     uscita 5 (attesa 5): INCONCLUSIVO: ATTESI casi=0 controlli=0, ma il piano F1,F2,F3 con invvpid1=1 invept1=1 ne richiede 106 e 39 | 
+  ok     opnd f123_tutti_etichettati_F1               uscita 5 (attesa 5): INCONCLUSIVO: inventario dei casi diverso da quello del piano F1,F2,F3 (passaggi diversi o incompleti: [('F1',
+  ok     opnd f123_caso_errato                        uscita 1 (attesa 1): FAIL: 1 errati
+  ok     opnd f123_controllo_errato                   uscita 1 (attesa 1): FAIL: 1 errati
+  ok     opnd f123_errore_senza_riga                  uscita 5 (attesa 5): INCONCLUSIVO: errati=1 ma righe ERRATO 0: un errore senza la sua riga | 1 errati
+  ok     opnd f123_timeout_senza_casi                 uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver NON valida | errori del driver: x | TIMEOUT (o stato del timeout assente) | 
+  ok     opnd f123_manca_un_caso                      uscita 5 (attesa 5): INCONCLUSIVO: inventario dei casi diverso da quello del piano F1,F2,F3 (passaggi diversi o incompleti: [('F2',
+  ok     opnd f123_caso_duplicato                     uscita 5 (attesa 5): INCONCLUSIVO: caso 3 duplicato | inventario dei casi diverso da quello del piano F1,F2,F3 (passaggi diversi o 
+  ok     opnd f123_attesi_sbagliati                   uscita 5 (attesa 5): INCONCLUSIVO: ATTESI casi=99 controlli=36, ma il piano F1,F2,F3 con invvpid1=1 invept1=1 ne richiede 106 e 39
+  ok     opnd f123_senza_casi_s10                     uscita 5 (attesa 5): INCONCLUSIVO: inventario dei casi diverso da quello del piano F1,F2,F3 (passaggi diversi o incompleti: [('F1',
+  ok     opnd f123_senza_riga_msr                     uscita 5 (attesa 5): INCONCLUSIVO: riga OPND MSR (evidenza K6) assente, doppia o malformata
+  ok     opnd f123_msr_vpid_spento                    uscita 5 (attesa 5): INCONCLUSIVO: MSR virtuali: enable EPT/VPID, INVEPT/INVVPID = 1/0/1/1 (attesi tutti 1)
+  ok     opnd f4_senza_riga_msr                       uscita 5 (attesa 5): INCONCLUSIVO: riga OPND MSR (evidenza K6) assente, doppia o malformata
+  ok     opnd f123_capacita_mentite                   uscita 5 (attesa 5): INCONCLUSIVO: ATTESI casi=98 controlli=39, ma il piano F1,F2,F3 con invvpid1=1 invept1=0 ne richiede 86 e 39 |
+  ok     opnd f123_senza_summary                      uscita 5 (attesa 5): INCONCLUSIVO: la KUT non ha chiuso (manca SUMMARY)
+  ok     opnd f123_rc_incoerente                      uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 3 incoerente con 0 errati
+  ok     opnd f123_arresto_terminale                  uscita 1 (attesa 1): FAIL: arresto terminale della VM in F1-F3 (stderr della QEMU protetta)
+  ok     opnd f123_contatori_mossi                    uscita 1 (attesa 1): FAIL: contatori mossi in F1-F3: delta 1/0/0 (attesi 0/0/0)
+  ok     opnd f123_vmu_mosso                          uscita 1 (attesa 1): FAIL: contatori mossi in F1-F3: delta 0/1/0 (attesi 0/0/0)
+  ok     opnd f123_contatori_assenti                  uscita 5 (attesa 5): INCONCLUSIVO: contatori prima/dopo assenti o malformati (attesi i tre fatal_latches/nested_vept_mmio_unemulabl
+  ok     opnd f123_prereq                             uscita 1 (attesa 1): FAIL: prerequisito fallito: ['OPND PREREQ VMCLEAR del VMCS di lavoro prima del riuso -> ERRATO'] | 1 errati
+  ok     opnd f123_piano_diverso                      uscita 5 (attesa 5): INCONCLUSIVO: la .flat non ha ricevuto (una volta) il piano 'F1,F2'
+  ok     opnd f123_piano_non_ammesso                  uscita 5 (attesa 5): INCONCLUSIVO: piano 'F3,F1' non ammesso
+  ok     opnd f123_driver_non_valido                  uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver NON valida | errori del driver: x
+  ok     opnd f123_regola_fine_assente                uscita 5 (attesa 5): INCONCLUSIVO: regole del driver ['OPND INIZIO', 'OPND PIANO?'], attese esattamente ['OPND INIZIO', 'OPND PIANO
+  ok     opnd f123_regola_fallita                     uscita 5 (attesa 5): INCONCLUSIVO: regole non concluse: [('OPND INIZIO', 'fallita')]
+  ok     opnd f123_due_invii                          uscita 5 (attesa 5): INCONCLUSIVO: invii [{'regola': 'OPND PIANO?', 'invio': 'F1,F2,F3'}, {'regola': 'OPND PIANO?', 'invio': 'F1,F2
+  ok     opnd f123_qemu_rc_null                       uscita 5 (attesa 5): INCONCLUSIVO: codice d'uscita della QEMU assente: None
+  ok     opnd f4_driver_non_valido_con_errore         uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver NON valida | errori del driver: regola fallita
+  ok     opnd f4_regole_vuote                         uscita 5 (attesa 5): INCONCLUSIVO: regole del driver [], attese esattamente ['OPND INIZIO', 'OPND PIANO?']
+  ok     opnd f4_qemu_rc_null                         uscita 5 (attesa 5): INCONCLUSIVO: codice d'uscita della QEMU assente: None
+  ok     opnd f4_errno_5                              uscita 1 (attesa 1): FAIL: VM_RUN errno=5 (atteso 95, ENOTRECOVERABLE) | "Error running vm" senza errno=95
+  ok     opnd f4_rip_latch_diverso                    uscita 1 (attesa 1): FAIL: RIP diversi: OPNDFATAL 0x405123, FATAL_LATCH 0xdead, nextrip 0x405123, rip 0x405123, fatal_rip 0x405123,
+  ok     opnd f4_vcpu_latch_diversa                   uscita 1 (attesa 1): FAIL: vCPU diverse: OPNDFATAL 0, FATAL_LATCH 7, FATAL_RITORNO 0, stderr 0
+  ok     opnd f4_rip_stderr_diverso                   uscita 1 (attesa 1): FAIL: RIP diversi: OPNDFATAL 0x405123, FATAL_LATCH 0x405123, nextrip 0x405123, rip 0x405123, fatal_rip 0x40512
+  ok     opnd f4_rip_non_letto                        uscita 5 (attesa 5): INCONCLUSIVO: stderr: chiusura vCPU 0, chiusura VM 1, "Error running vm" 1 (attese 1, 1, 1)
+  ok     opnd f4_vcpu_porta_diversa                   uscita 1 (attesa 1): FAIL: la VM e' stata chiusa dal vCPU 1, il VM_RUN fallito era del vCPU 0
+  ok     opnd f4_stderr_assente                       uscita 5 (attesa 5): INCONCLUSIVO: stderr della QEMU assente | stderr: chiusura vCPU 0, chiusura VM 0, "Error running vm" 0 (attese
+  ok     opnd f4_stderr_senza_porta                   uscita 5 (attesa 5): INCONCLUSIVO: stderr: chiusura vCPU 1, chiusura VM 0, "Error running vm" 1 (attese 1, 1, 1)
+  ok     opnd f4_rc_diverso_dal_contratto             uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 0: il contratto della QEMU protetta dopo la chiusura della porta e' 1 (host-error)
+  ok     opnd f4_rc_3                                 uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 3: il contratto della QEMU protetta dopo la chiusura della porta e' 1 (host-error)
+  ok     opnd v9_etichetta_giusta                     uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd v9_etichetta_assente                    uscita 5 (attesa 5): INCONCLUSIVO: la traccia non e' del programma dichiarato (manca "DTRACE_ATTIVO sonde-opnd-v1")
+  ok     opnd v9_etichetta_diversa                    uscita 5 (attesa 5): INCONCLUSIVO: la traccia non e' del programma dichiarato (manca "DTRACE_ATTIVO sonde-opnd-v1")
+  ok     opnd v9_riga_sonde_doppia                    uscita 5 (attesa 5): INCONCLUSIVO: manifest: riga "sonde ..." doppia o malformata
+  ok     opnd f4_rc_2                                 uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 2: il contratto della QEMU protetta dopo la chiusura della porta e' 1 (host-error)
+  ok     opnd f4_rc_255                               uscita 5 (attesa 5): INCONCLUSIVO: codice QEMU 255: il contratto della QEMU protetta dopo la chiusura della porta e' 1 (host-error)
+  ok     opnd f4_summary_kut                          uscita 1 (attesa 1): FAIL: il guest e' arrivato alla fine (OPND FINE/SUMMARY): nessun arresto terminale
+  ok     opnd f4_ritornata                            uscita 1 (attesa 1): FAIL: l'istruzione e' TORNATA nel guest
+  ok     opnd f4_fine_raggiunta                       uscita 1 (attesa 1): FAIL: il guest e' arrivato alla fine (OPND FINE/SUMMARY): nessun arresto terminale
+  ok     opnd f4_senza_sonde                          uscita 5 (attesa 5): INCONCLUSIVO: sonde: OPNDFATAL 0, FATAL_LATCH 0, FATAL_RITORNO 0 (attese 1, 1, 1)
+  ok     opnd f4_dtrace_non_attivata                  uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace assente o non attivata
+  ok     opnd f4_timeout                              uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver NON valida | errori del driver: x | TIMEOUT (o stato del timeout assente)
+  ok     opnd f4_stadio_sbagliato                     uscita 1 (attesa 1): FAIL: OPNDFATAL stadio 5 err 14 (attesi 4, 14)
+  ok     opnd f4_nextrip_avanzato                     uscita 1 (attesa 1): FAIL: RIP diversi: OPNDFATAL 0x405123, FATAL_LATCH 0x405123, nextrip 0x405128, rip 0x405123, fatal_rip 0x40512
+  ok     opnd f4_contatori_fermi                      uscita 1 (attesa 1): FAIL: contatori: delta 0/0/0 (attesi 1/0/1)
+  ok     opnd f4_vmu_mosso                            uscita 1 (attesa 1): FAIL: contatori: delta 1/1/1 (attesi 1/0/1)
+  ok     opnd f4_solo_opnd                            uscita 1 (attesa 1): FAIL: contatori: delta 0/0/1 (attesi 1/0/1)
+  ok     opnd f4_doppio_incremento                    uscita 1 (attesa 1): FAIL: contatori: delta 2/0/2 (attesi 1/0/1)
+  ok     opnd f4_non_raggiunta                        uscita 5 (attesa 5): INCONCLUSIVO: F4 non raggiunta (manca OPND F4 INIZIO)
+  ok     opnd f4_regola_fine_in_piu                   uscita 5 (attesa 5): INCONCLUSIVO: regole del driver ['OPND INIZIO', 'OPND PIANO?', 'OPND FINE casi='], attese esattamente ['OPND I
+  ok     opnd contatori_formato_v2                    uscita 5 (attesa 5): INCONCLUSIVO: contatori prima/dopo assenti o malformati (attesi i tre fatal_latches/nested_vept_mmio_unemulabl
+  ok     opnd contatori_riga_doppia                   uscita 5 (attesa 5): INCONCLUSIVO: riga dei contatori malformata o doppia: 'fatal_latches 7 7'
+  ok     opnd contatori_lettura_fallita               uscita 5 (attesa 5): INCONCLUSIVO: riga dei contatori malformata o doppia: 'nested_vept_mmio_unemulable 0 X' | contatori prima/dopo
+  ok     opnd f123_senza_dtrace_fine                  uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace non chiusa regolarmente (manca DTRACE_FINE: END non eseguita)
+  ok     opnd f123_dtrace_scaduto                     uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace scaduta prima della fine della sessione
+  ok     opnd f123_vmread_dal_silicio                 uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso FBT in ['nested_vmread']: istruzioni eseguite dal silicio o traccia mancante (co
+  ok     opnd f123_vmwrite_zero                       uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso FBT in ['nested_vmwrite']: istruzioni eseguite dal silicio o traccia mancante (c
+  ok     opnd f123_senza_copia_operando               uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso FBT in ['nested_operand_copy']: istruzioni eseguite dal silicio o traccia mancan
+  ok     opnd f123_drop                               uscita 5 (attesa 5): INCONCLUSIVO: DTrace segnala perdite
+  ok     opnd f123_witness                            uscita 5 (attesa 5): INCONCLUSIVO: WITNESS nel dmesg della sessione: ['lock order reversal:']
+  ok     opnd f123_sleeping_with                      uscita 5 (attesa 5): INCONCLUSIVO: WITNESS nel dmesg della sessione: ['Sleeping thread 0x1 owns a non-sleepable lock']
+  ok     opnd f123_senza_dmesg                        uscita 5 (attesa 5): INCONCLUSIVO: dmesg della sessione assente
+  ok     opnd f123_dmesg_innocuo                      uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd f4_senza_dtrace_fine                    uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace non chiusa regolarmente (manca DTRACE_FINE: END non eseguita)
+  ok     opnd f4_drop                                 uscita 5 (attesa 5): INCONCLUSIVO: DTrace segnala perdite
+  ok     opnd f123_sonde_err_assente                  uscita 5 (attesa 5): INCONCLUSIVO: stderr di DTrace (sonde-err.txt) assente
+  ok     opnd f123_sonde_err_drop                     uscita 5 (attesa 5): INCONCLUSIVO: DTrace ha scritto su stderr: 'dtrace: 3 drops on CPU 1' | DTrace segnala perdite
+  ok     opnd f123_sonde_err_errore                   uscita 5 (attesa 5): INCONCLUSIVO: DTrace ha scritto su stderr: 'dtrace: failed to enable probe'
+  ok     opnd f4_sonde_err_drop                       uscita 5 (attesa 5): INCONCLUSIVO: DTrace ha scritto su stderr: 'dtrace: 1 aggregation drop on CPU 0' | DTrace segnala perdite
+  ok     opnd ombra_completa                          uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd ombra_senza_ingressi                    uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso in vmx_shvmcs_enter: l'ombra non e' stata usata
+  ok     opnd ombra_sonda_assente                     uscita 5 (attesa 5): INCONCLUSIVO: nessun ingresso in vmx_shvmcs_enter: l'ombra non e' stata usata
+  ok     opnd ombra_apertura_0                        uscita 5 (attesa 5): INCONCLUSIVO: passata A-shadow con nested_shadow_vmcs all'apertura 0 (atteso 1)
+  ok     opnd ombra_chiusura_1                        uscita 5 (attesa 5): INCONCLUSIVO: nested_shadow_vmcs alla chiusura 1 (atteso 0: ombra non ripristinata)
+  ok     opnd ombra_chiusura_illeggibile              uscita 5 (attesa 5): INCONCLUSIVO: manifest: nested_shadow_vmcs all'apertura ['1'], alla chiusura [] (attese una riga ciascuna)
+  ok     opnd ombra_lasciata_spenta                   uscita 5 (attesa 5): INCONCLUSIVO: il modulo ha lasciato l'ombra spenta: ["nested shadow VMCS: l'hardware non ha VMCS shadowing o V
+  ok     opnd ombra_vmclear_fallito                   uscita 5 (attesa 5): INCONCLUSIVO: il modulo ha lasciato l'ombra spenta: ['nested shadow VMCS: VMCLEAR iniziale fallito: resta spen
+  ok     opnd ombra_guasto_vm_fermata                 uscita 1 (attesa 1): FAIL: guasto dell'ombra in L0 (VM fermata): ['nested shadow VMCS: vcpu0 errore 5 sul campo 0x681e: VM fermata 
+  ok     opnd normale_con_ingressi                    uscita 5 (attesa 5): INCONCLUSIVO: ombra attiva (3 ingressi in vmx_shvmcs_enter) senza --esegui-ombra
+  ok     opnd normale_ingressi_zero                   uscita 0 (attesa 0): PASS: piano F1,F2,F3
+  ok     opnd normale_apertura_1                      uscita 5 (attesa 5): INCONCLUSIVO: nested_shadow_vmcs apertura 1 chiusura 0 senza --esegui-ombra (attesi 0, 0)
+  ok     opnd normale_chiusura_1                      uscita 5 (attesa 5): INCONCLUSIVO: nested_shadow_vmcs apertura 0 chiusura 1 senza --esegui-ombra (attesi 0, 0)
+  ok     opnd normale_messaggio_ombra                 uscita 5 (attesa 5): INCONCLUSIVO: messaggi dell'ombra nel dmesg senza --esegui-ombra: ['nested shadow VMCS: VMCLEAR iniziale falli
+  ok     opnd manifest_assente                        uscita 5 (attesa 5): INCONCLUSIVO: manifest assente | manifest: riga "piano ... modo ..." assente, doppia o di un altro piano: [] |
+  ok     opnd manifest_senza_riga_chiusura            uscita 5 (attesa 5): INCONCLUSIVO: manifest: nested_shadow_vmcs all'apertura ['0'], alla chiusura [] (attese una riga ciascuna)
+  ok     opnd manifest_altro_piano                    uscita 5 (attesa 5): INCONCLUSIVO: manifest: riga "piano ... modo ..." assente, doppia o di un altro piano: [('F1', '--esegui')]
+  ok     opnd f4_con_modo_esegui                      uscita 5 (attesa 5): INCONCLUSIVO: modo --esegui incoerente col piano F4
+  ok     opnd f4_con_ingressi_ombra                   uscita 5 (attesa 5): INCONCLUSIVO: ombra attiva (4 ingressi in vmx_shvmcs_enter) senza --esegui-ombra
+  ok     opnd f123_con_modo_d                         uscita 5 (attesa 5): INCONCLUSIVO: modo --esegui-d incoerente col piano F1,F2,F3
+  ok     modello verdetto = sorgente: offs_8          uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: offs_16         uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: F3 (nomi e ordine) uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: istruzioni per offset 8 uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: INVEPT 2 per offset uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: controlli per offset uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: stadio 10: casi di opnd_s10 uscita 0 (attesa 0): 
+  ok     modello verdetto = sorgente: stadio 10: controlli di opnd_s10 uscita 0 (attesa 0): 
+kut-drive.py
+  ok     drive flusso_completo                        uscita 0 (attesa 0): QEMU rc 0; sessione VALIDA
+  ok     drive foto_fallita_niente_g                  uscita 2 (attesa 2): QEMU rc -15 (TIMEOUT); sessione NON VALIDA: fotografia fallita per 'U64 PRONTO': invio NON fatto; TIMEOUT dopo
+  ok     drive b_foto_iniziale_fallita_niente_piano   uscita 2 (attesa 2): QEMU rc 0; sessione NON VALIDA: fotografia fallita per 'OPND INIZIO': invio NON fatto; regola 'OPND INIZIO' no
+  ok     drive b_foto_iniziale_riuscita_piano         uscita 2 (attesa 2): QEMU rc 0; sessione NON VALIDA: regola 'OPND FINE casi=' non conclusa (attesa)
+  ok     drive foto_timeout                           uscita 2 (attesa 2): QEMU rc 0; sessione NON VALIDA: fotografia fallita per 'U64 PRONTO': invio NON fatto; regola 'U64 PRONTO' non 
+  ok     drive timeout_sessione                       uscita 2 (attesa 2): QEMU rc -15 (TIMEOUT); sessione NON VALIDA: TIMEOUT dopo 2 s
+  ok     drive regola_mai_scattata                    uscita 2 (attesa 2): QEMU rc 0; sessione NON VALIDA: regola 'U64 PRONTO' non conclusa (attesa)
+  ok     drive regole_ambigue                         uscita 1 (attesa 1): regole ambigue: 'U64 FINE' e' prefisso di 'U64 FINE casi='
+  ok     drive discendente_persistente                uscita 0 (attesa 0): QEMU rc 0; sessione VALIDA
+test-verdetti: 143 ok, 0 errati

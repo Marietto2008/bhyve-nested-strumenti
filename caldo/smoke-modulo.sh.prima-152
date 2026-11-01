@@ -1,0 +1,57 @@
+#!/bin/sh
+# smoke-modulo.sh -- Claude 30/10/2026, parere #143 §5-§6 (passo C1). SOLA LETTURA, nessuna VM: dopo un hot-swap,
+# il modulo caricato e' esattamente quello atteso e l'host e' nello stato di partenza.
+#   smoke-modulo.sh originale | ripfix-nested
+# Controlli: path/sha/build-id del modulo caricato (dall'identita' di mc-logica.sh), kld COMPLETO, firma OID a 4 bit,
+# contatori del latch a 0 (ripfix), 6 dispositivi su ppt (pptdevs), amdgpu non caricato, /dev/vmm vuoto, nessun
+# processo bhyve/qemu/dtrace, kenv boot_safe/devmatch_blocklist assenti, loader.conf invariato, sonde SDT del latch
+# REGISTRATE (dtrace -l: 3 col ripfix, 0 con l'originale) e lo script ptpad-fbt-ripfix-nested.d che compila (ripfix) o
+# NON compila (originale). Uscita 0 = tutto coerente; 4 = STOP (elenco dei controlli falliti).
+set -u
+C=/mnt/linuxulator2/vm/nested-work/caldo
+FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+. $C/mc-sistema.sh
+. $C/mc-logica.sh
+nf=0
+ok() { echo "  ok      $*"; }
+no() { echo "  ERRATO  $*"; nf=$((nf+1)); }
+case "${1:-}" in originale|ripfix-nested) ;; *) echo "uso: $0 originale|ripfix-nested"; exit 4;; esac
+set -- $(mc_identita "$1") "$1"
+P=$1; SHA=$2; BID=$3; ID=$4
+echo "=== smoke $ID (sola lettura) ==="
+c=$(mc_caricato)
+[ "$c" = "completo $P" ] && ok "kld completo: $P" || no "kld '$c', atteso 'completo $P'"
+[ "$(s_sha "$P")" = "$SHA" ] && ok "sha del file caricato" || no "sha del file $P diverso dall'identita' $ID"
+[ "$(s_bid "$P")" = "$BID" ] && ok "build-id $BID" || no "build-id diverso"
+mc_oid_ok "$P" && ok "firma OID $mc_o1$mc_o2$mc_o3$mc_o4" || no "firma OID $mc_o1$mc_o2$mc_o3$mc_o4 non e' quella di $ID"
+if [ "$ID" = ripfix-nested ]; then
+	for o in hw.vmm.fatal_latches hw.vmm.vmx.nested_vept_mmio_unemulable; do
+		[ "$(s_sysctl_val $o)" = 0 ] && ok "$o = 0" || no "$o = '$(s_sysctl_val $o)'"
+	done
+fi
+n=$(s_pci | awk '$2 == "ppt"' | wc -l | tr -d ' ')
+[ "$n" = "$(mc_pptdevs | wc -l | tr -d ' ')" ] && [ "$n" = 6 ] && ok "6 dispositivi su ppt (= pptdevs)" || no "$n dispositivi su ppt"
+s_kld_loaded amdgpu.ko && no "amdgpu caricato" || ok "amdgpu non caricato"
+[ -z "$(s_vmm_nodes)" ] && ok "/dev/vmm vuoto" || no "/dev/vmm: $(s_vmm_nodes | tr '\n' ' ')"
+[ -z "$(s_vm_procs)" ] && ok "nessun processo bhyve/qemu" || no "processi VM: $(s_vm_procs | tr '\n' ' ')"
+/bin/pgrep -x dtrace >/dev/null && no "dtrace in esecuzione" || ok "nessun dtrace"
+for k in boot_safe devmatch_blocklist; do s_kenv_esiste $k && no "kenv $k presente ('$(s_kenv_get $k)')" || ok "kenv $k assente (come al preflight)"; done
+[ "$(s_loader_sha)" = "$MC_LOADER_SHA" ] && ok "loader.conf invariato" || no "loader.conf diverso"
+# #144 §3: le sonde per IDENTITA' (provider, modulo, funzione, nome), non per numero. sys/cddl/dev/sdt/sdt.c:165-181:
+# modulo vuoto -> nome del file del kld senza .ko (vmm-restore), funzione vuota -> "none". Le due del latch sono
+# quindi legate al kld vmm-restore; veptunemul ha modulo e funzione espliciti (vmx, nested), provider vmm.
+SONDE_ATTESE="vmm vmm-restore none fatal-latch|vmm vmm-restore none fatal-ritorno|vmm vmx nested veptunemul"
+sl=$(sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::fatal-ritorno' -n 'vmm:vmx:nested:veptunemul' \
+    -n ':::fatal-latch' -n ':::fatal-ritorno' -n ':::veptunemul' 2>/dev/null | awk 'NR > 1 {print $2, $3, $4, $5}' | sort -u)
+np=$(echo "$sl" | grep -c .)
+sudo -n /usr/sbin/dtrace -e -s $FBTR 1 >/dev/null 2>&1; dc=$?
+if [ "$ID" = ripfix-nested ]; then
+	[ "$sl" = "$(echo "$SONDE_ATTESE" | tr '|' '\n' | sort)" ] && ok "le 3 sonde del latch, ESATTAMENTE: $(echo "$sl" | tr '\n' ';')" || \
+	    no "sonde del latch: '$(echo "$sl" | tr '\n' ';')', attese '$SONDE_ATTESE' (nessun altro provider/modulo ammesso)"
+	[ $dc = 0 ] && ok "ptpad-fbt-ripfix-nested.d compila sul modulo caricato" || no "ptpad-fbt-ripfix-nested.d NON compila"
+else
+	[ "$np" = 0 ] && ok "nessuna sonda del latch, di nessun provider (modulo originale)" || no "sonde del latch col modulo originale: $(echo "$sl" | tr '\n' ';')"
+	[ $dc != 0 ] && ok "ptpad-fbt-ripfix-nested.d rifiutato dal modulo originale" || no "lo script RIPFIX compila sul modulo originale"
+fi
+[ $nf = 0 ] && { echo "SMOKE $ID: COERENTE"; exit 0; }
+echo "SMOKE $ID: STOP ($nf controlli falliti)"; exit 4

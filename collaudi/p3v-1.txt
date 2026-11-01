@@ -1,0 +1,22 @@
+  ok     pass                           uscita 0 (attesa 0): PASS: provocazione di P3 sullo stadio 11: 7 controlli KUT, 3 round completi (cicli 2998412000,2997130000,2996900000), correzione esercitata 41230 volt
+  ok     contatore_fermo                uscita 5 (attesa 5): INCONCLUSIVO: gla2gpa_restart_capped fermo: la contesa non si e' prodotta, la correzione NON e' stata esercitata
+  ok     contatore_illeggibile          uscita 5 (attesa 5): INCONCLUSIVO: contatori-p3.txt assente o non numerico: 'gla2gpa_restart_capped 0 illeggibile'
+  ok     contatore_sceso                uscita 5 (attesa 5): INCONCLUSIVO: gla2gpa_restart_capped e' DIMINUITO (-47): modulo ricaricato?
+  ok     p3_assente                     uscita 5 (attesa 5): INCONCLUSIVO: contatori-p3.txt assente o non numerico: ''
+  ok     piano_wsl                      uscita 5 (attesa 5): INCONCLUSIVO: riga "piano p3 modo --esegui" assente o diversa: [('wsl', '--esegui')] | traccia DTrace assente o non del programma dichiarato
+  ok     stadio10                       uscita 5 (attesa 5): INCONCLUSIVO: il manifest non dice stadio11 con firma 11111
+  ok     driver_non_valido              uscita 5 (attesa 5): INCONCLUSIVO: sessione del driver non valida: ['foto fallita']
+  ok     qemu_rc_assente                uscita 5 (attesa 5): INCONCLUSIVO: codice d'uscita della QEMU assente
+  ok     skip_una_cpu                   uscita 5 (attesa 5): INCONCLUSIVO: test saltato: ['SKIP: servono 2 CPU (-smp 2): trovate 1']
+  ok     dtrace_senza_fine              uscita 5 (attesa 5): INCONCLUSIVO: traccia DTrace non chiusa regolarmente (manca DTRACE_FINE)
+  ok     stderr_dtrace                  uscita 5 (attesa 5): INCONCLUSIVO: DTrace ha scritto su stderr: 'dtrace: 2 drops'
+  ok     controlli_mancanti             uscita 5 (attesa 5): INCONCLUSIVO: controlli KUT passati: 6 (attesi 7: PTE, VMXON, riferimento, 3 round, dopo)
+  ok     round_sbagliato                uscita 1 (attesa 1): FAIL: controlli KUT falliti: ['FAIL: round 1: VMPTRST completa con il valore giusto (0xffffffffffffffff)'] | KUT: SUMMARY: 7 tests, 1 unexpected failu
+  ok     round_mancante                 uscita 1 (attesa 1): FAIL: round di contesa incompleti: [1, 2] (attesi 1, 2, 3)
+  ok     qemu_fallita                   uscita 1 (attesa 1): FAIL: codice QEMU 3: il programma KUT non e' uscito con successo (atteso 1 = isa-debug-exit 0)
+  ok     timeout                        uscita 1 (attesa 1): FAIL: la QEMU e' arrivata al TIMEOUT del driver (test bloccato)
+  ok     latch_sonda                    uscita 1 (attesa 1): FAIL: sonde del latch scattate: ['OPNDFATAL vcpu=0 stadio=4 err=14 rip=0x1 gla=0x2']
+  ok     latch_contatori                uscita 1 (attesa 1): FAIL: contatori del latch cambiati: {'fatal_latches': 1, 'nested_vept_mmio_unemulable': 0, 'nested_operand_fatal': 1}
+  ok     panic_dmesg                    uscita 1 (attesa 1): FAIL: dmesg: ['panic: nested: loop su VM_EXITCODE_NESTED (vcpu0 rip=0x401000 count=2000000)']
+  ok     fail_e_fermo                   uscita 1 (attesa 1): FAIL: codice QEMU 3: il programma KUT non e' uscito con successo (atteso 1 = isa-debug-exit 0) (e INCONCLUSIVO: gla2gpa_restart_capped fermo: la conte
+SUMMARY: 21 ok, 0 errati

@@ -1,0 +1,51 @@
+#!/bin/sh
+# test-ferma-dtrace.sh -- Claude 31/10/2026, parere Opus H1. Collaudo di om_ferma_dtrace (opnd-manifest.sh) con le
+# letture e i segnali VERI: al posto di dtrace un `sleep` sotto sudo, lanciato in background da uno sh NON interattivo
+# esattamente come nel runner (SIGINT ignorato nel job). Nessuna VM, nessun modulo; solo processi sleep.
+# Uso: test-ferma-dtrace.sh <cartella nuova su ZFS>
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+O=${1:?cartella}
+case "$O" in $B/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+[ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
+mkdir -p "$O" || exit 2
+. ${OMT_PRODUTTORE:-$B/opnd-manifest.sh}
+nf=0; nok=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }
+no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
+caso() { N=$1; OM_OUT=$O/$1; mkdir -p "$OM_OUT"; : > "$OM_OUT/manifest.txt"; }
+
+echo "0. il difetto: SIGINT a sudo NON ferma il figlio (riproduzione)"
+caso c0
+sudo -n /bin/sleep 30 & S=$!; sleep 1
+sudo -n /bin/kill -INT $S; sleep 1
+F=$(o_figlio $S sleep)
+[ -n "$F" ] && ok "c0: dopo SIGINT a sudo il figlio sleep $F e' ancora vivo (difetto H1 riprodotto)" || no "c0: il figlio e' morto: H1 NON riprodotto"
+om_ferma_dtrace $S 5 sleep >/dev/null 2>&1
+
+echo "1. figlio che termina con SIGTERM"
+caso c1
+sudo -n /bin/sleep 300 & S=$!; sleep 1
+t0=$(date +%s); om_ferma_dtrace $S 5 sleep; r=$?; t1=$(date +%s)
+[ $r = 0 ] && [ "$OM_DT_FORZATO" = 0 ] && ok "c1: rc 0, non forzato" || no "c1: rc $r forzato $OM_DT_FORZATO"
+o_vivo $S && no "c1: sudo vivo" || ok "c1: sudo terminato"
+[ $((t1 - t0)) -le 3 ] && ok "c1: fermato in $((t1 - t0)) s (nessuna attesa inutile)" || no "c1: $((t1 - t0)) s"
+[ -s "$OM_OUT/manifest.txt" ] && no "c1: ATTENZIONE scritta senza motivo" || ok "c1: manifest intatto"
+
+echo "2. figlio che IGNORA SIGTERM: attesa limitata, poi SIGKILL e ATTENZIONE"
+caso c2
+sudo -n /bin/sh -c 'trap "" TERM; exec /bin/sleep 300' & S=$!; sleep 1
+t0=$(date +%s); om_ferma_dtrace $S 3 sleep; r=$?; t1=$(date +%s)
+[ $r = 0 ] && [ "$OM_DT_FORZATO" = 1 ] && ok "c2: rc 0, OM_DT_FORZATO=1" || no "c2: rc $r forzato $OM_DT_FORZATO"
+o_vivo $S && no "c2: sudo vivo" || ok "c2: sudo terminato"
+[ $((t1 - t0)) -ge 3 ] && [ $((t1 - t0)) -le 8 ] && ok "c2: attesa limitata ($((t1 - t0)) s)" || no "c2: $((t1 - t0)) s"
+grep -q '^ATTENZIONE: sleep non terminato con SIGTERM in 3 s: SIGKILL (traccia incompleta)$' "$OM_OUT/manifest.txt" && ok "c2: ATTENZIONE nel manifest" || no "c2: manifest: $(cat $OM_OUT/manifest.txt)"
+
+echo "3. figlio gia' uscito (dtrace terminato da solo, es. DTRACE_SCADUTO)"
+caso c3
+sudo -n /bin/sleep 1 & S=$!; sleep 2
+om_ferma_dtrace $S 3 sleep; r=$?
+[ $r = 0 ] && [ "$OM_DT_FORZATO" = 0 ] && ok "c3: rc 0, nulla da fermare" || no "c3: rc $r forzato $OM_DT_FORZATO"
+[ -n "$(pgrep -f 'sleep 30[0]')" ] && no "c3: processi sleep del collaudo ancora vivi: $(pgrep -lf 'sleep 30[0]')" || ok "nessun processo del collaudo rimasto"
+echo "SUMMARY: $nok ok, $nf errati"
+[ $nf = 0 ]

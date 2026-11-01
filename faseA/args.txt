@@ -1,0 +1,1 @@
+-d Debian -u root -- bash -c 'tr -d "\\r" < /mnt/c/claude/faseA/stress15.sh > /root/stress15.sh; bash /root/stress15.sh'

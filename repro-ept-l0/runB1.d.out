@@ -1,0 +1,42 @@
+== TRACCIA PRONTA ==
+11119096964693 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=0 vmx_eptgen[cpu]=0
+11119097000236 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=0 handled=0
+11119097020873 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=0 vmx_eptgen[cpu]=0
+11119097039485 REASON48 -> PAGING    vmx=fffffe01d21a7000 gpa=0x20000 qual=0x781 cpu6
+11119097042836 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=0 handled=0
+11119097048824 vm_fault gpa=0x20000 cpu6
+11119097054741 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=0 vmx_eptgen[cpu]=0
+11119097071662 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=0 handled=0
+11119097180793 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=0 vmx_eptgen[cpu]=0
+11119097199240 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=0 handled=0
+11119097294302 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=0 vmx_eptgen[cpu]=0
+11119097313092 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=0 handled=0
+11119097454868 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=1 vmx_eptgen[cpu]=0  -> INVEPT DOVUTO
+11119097477280 REASON48 -> PAGING    vmx=fffffe01d21a7000 gpa=0x20000 qual=0x781 cpu6
+11119097480030 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=1 handled=0
+11119097486716 vm_fault gpa=0x20000 cpu6
+11119097493391 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=1 vmx_eptgen[cpu]=1
+11119097510144 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=1 handled=0
+11119097632024 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=2 vmx_eptgen[cpu]=1  -> INVEPT DOVUTO
+11119097656815 REASON48 -> INST_EMUL vmx=fffffe01d21a7000 gpa=0x20000 cpu6
+11119097660207 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=2 handled=0
+11119097820153 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=2 vmx_eptgen[cpu]=2
+11119097840111 REASON48 -> PAGING    vmx=fffffe01d21a7000 gpa=0x20000 qual=0x781 cpu6
+11119097842476 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=2 handled=0
+11119097848589 vm_fault gpa=0x20000 cpu6
+11119097855015 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=2 vmx_eptgen[cpu]=2
+11119097871714 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=2 handled=0
+11119097960946 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=2 vmx_eptgen[cpu]=2
+11119097979430 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=2 handled=0
+11119098086842 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=3 vmx_eptgen[cpu]=2  -> INVEPT DOVUTO
+11119098113629 REASON48 -> PAGING    vmx=fffffe01d21a7000 gpa=0x20000 qual=0x781 cpu6
+11119098116187 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=3 handled=0
+11119098122527 vm_fault gpa=0x20000 cpu6
+11119098128747 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=3 vmx_eptgen[cpu]=3
+11119098145205 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=3 handled=0
+11119098267087 ENTRY vmx=fffffe01d21a7000 cpu6 eptp=0x1be52705e pm_pmltop=fffff801be527000 pm_eptgen=4 vmx_eptgen[cpu]=3  -> INVEPT DOVUTO
+11119098289158 REASON48 -> INST_EMUL vmx=fffffe01d21a7000 gpa=0x20000 cpu6
+11119098291388 EXIT  vmx=fffffe01d21a7000 cpu6 vmx_eptgen[cpu]=4 handled=0
+
+== TRACCIA CHIUSA ==
+

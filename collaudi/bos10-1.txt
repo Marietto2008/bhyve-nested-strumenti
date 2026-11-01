@@ -1,0 +1,99 @@
+estrazione 0-s9 fallita
+estrazione 1-R9 fallita
+estrazione 2-R9c fallita
+estrazione 3-K5 fallita
+estrazione 4-K3 fallita
+estrazione 5-K2 fallita
+estrazione 6-K6 fallita
+estrazione 7-K11 fallita
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante ritorno_0_su_host_fatale: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante gp_inventato_su_efault: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante ripartenza_su_efault: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante latch_senza_rollback: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante bogus_mancante: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante latch_sul_pf_autentico: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante senza_teardown: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante seconda_pagina_non_tradotta: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante vmread32_otto_byte: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante esito_prima_della_copia: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante k3_assente: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante sonda_doppia: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante getdesc_silenzioso: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante m128_tipo_dopo_lettura: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante gla_non_valida_dichiarata: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante vmread32_registro_non_troncato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante vmwrite32_registro_non_troncato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante nessuna_pretraduzione: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante dispatch_vmptrst_ritorna_0: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante prefisso_senza_statistiche: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante r8_guardia_senza_vmptrld: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante r8_guardia_senza_vmx_attiva: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante r8_guardia_dopo_shvmcs: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante eptp_non_controllato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante eptp_vmfail_ma_invalida: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante w4g_oltre_4gb: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante fsgs_base_ignorata: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante expand_down_invertito: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante ultimo_byte_non_controllato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante gla_troncato_a_32_bit: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante secondo_pezzo_non_copiato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante copia_prima_dell_ultimo_setup: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante eptp_capacita_fisiche: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante caso_host_fatale_dimenticato: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k1_limite_avvolto: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k2_assente: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k2_senza_k3: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k3_assente: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k6_assente: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k6_solo_capacita: non generato
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  mutante s10_k6_dopo_la_cpl: non generato
+  ERRATO  sanitizer: compilazione fallita
+In file included from /mnt/linuxulator2/vm/nested-work/collaudi/bos10-1/asan/banco.c:25:
+/mnt/linuxulator2/vm/nested-work/collaudi/bos10-1/asan/funzioni.inc:1:1: error: expected identifier or '('
+    1 | /mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+      | ^
+/mnt/linuxulator2/vm/nested-work/collaudi/bos10-1/asan/banco.c:88:90: error: use of undeclared identifier 'M64'
+/mnt/linuxulator2/vm/nested-work/banco-opnd-s10/run.sh: python3: not found
+  ERRATO  matrice non prodotta
+banco-opnd-s10: errori 51

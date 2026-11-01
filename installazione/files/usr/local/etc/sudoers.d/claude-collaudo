@@ -1,0 +1,4 @@
+# Claude 31/10/2026, parere Opus sull incidente del collaudo, par. 3.1: marietto puo diventare SOLO l utente
+# collaudo (mai root). collaudo non ha nessuna voce in sudoers: collaudi e mutanti non possono kldload,
+# devctl, sysctl, bhyvectl --destroy.
+[regola sudoers omessa]

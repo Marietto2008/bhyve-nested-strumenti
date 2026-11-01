@@ -1,0 +1,19 @@
+  ok   G[-n][/usr/sbin/devctl][freeze]
+  ok   G[-n][/usr/sbin/devctl][thaw]
+  ok   G[-n][/bin/kenv][boot_safe=YES]
+  ok   G[-n][/bin/kenv][devmatch_blocklist=if_cdce amdgpu]
+  ok   G[-n][/bin/kenv][devmatch_blocklist=]
+  ok   G[-n][/bin/kenv][-u][boot_safe]
+  ok   G[-n][/sbin/kldunload][-n][vmm-restore.ko]
+  ok   G[-n][/sbin/kldload][/boot/kernel/vmm-restore.ko]
+  ok   G[-n][/usr/sbin/bhyvectl][--vm=vm2][--destroy]
+  ok   nessun '+=' nell'argv
+  ok   guardia che rifiuta: s_freeze non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_thaw non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_kenv_set boot_safe YES non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_kenv_unset boot_safe non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_kldunload non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_kldload /boot/kernel/vmm-restore.ko non chiama sudo (rc 1)
+  ok   guardia che rifiuta: s_vm_destroy vm2 non chiama sudo (rc 1)
+  ok   guardia vera: s_freeze rifiutato come collaudo
+SUMMARY: 18 ok, 0 FAIL

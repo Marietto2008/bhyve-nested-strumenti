@@ -1,0 +1,126 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-ptpad-kut.sh.non-conforme
+echo "INERTE: run-ptpad-kut.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-ptpad-kut.sh.non-conforme" >&2; exit 4
+# run-ptpad-kut.sh -- Claude 27/10/2026, pareri #101, #106, #107. Runner del test deterministico
+# AUDIT-PTP-HOLD sotto QEMU `-accel bhyve` (lo stesso percorso di kut-run.sh e della campagna
+# b1race: VM "vm2", UNA vCPU, cpuset sulla CPU 6). MAI la vm0:12 Windows. Nessuna patch, nessun
+# sysctl scritto (solo letture).
+#
+#   run-ptpad-kut.sh --prova  <piano> <out>   preflight a freddo + comando: NESSUNA VM
+#   run-ptpad-kut.sh --esegui <piano> <out>   SOLO dopo consenso esplicito: sessione SENZA casi D
+#   run-ptpad-kut.sh --esegui-d <piano> <out> SOLO dopo consenso SEPARATO: sessione con UN caso D
+#
+# Il piano lo esegue L1 (parere #106 D1): la .flat legge il piano dalla COM1 e lo ripete; senza
+# questo runner non esegue alcun caso. Il driver (ptpad-drive.py) fa l'handshake per caso, fotografa
+# il contatore a L1 fermo, apre la traccia FBT prima di QEMU, e su "Error running vm" chiude il
+# caso con TERM bhyve_died e uccide QEMU (D3: QEMU non muore da solo, rientra in vm_run).
+# Nessun riavvio, nessuna corsa successiva automatica: un D per avvio, l'altro resta NOT_RUN.
+# Parere #107: il driver NON manda l'ACK al caso successivo se il caso appena chiuso non e' pulito
+# (cancello B; delta != 1; esito non ARCH_PASS/H1). COM1 su un chardev stdio ESPLICITO e non
+# multiplexato, niente monitor. Il preflight collauda la traccia DTrace sull'host (senza VM).
+# USCITA: 0 sessione eseguita e analizzata senza TEST_ERROR; 3 analisi con TEST_ERROR;
+#         2 STOP del driver; 4 STOP al preflight (nessuna VM); 5 VM ancora viva o nodo rimasto.
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+N=$B/freebsd-nested/tools/nested
+MOD=/boot/kernel/vmm-restore.ko
+MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9	# modulo 27125f004917
+FLAT_RITIRATA=8d10c1f5d79cad3065c962fafc95e42c52c582a6f39507804699ab9061092bc1	# #104: eseguiva sempre i D
+MOD_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+# sessione 1 (27/10): la .flat p106 (0b723262) faceva SKIP prima del piano (D su pagina GRANDE)
+# sessione 1b (27/10): la s1fix (77025a6b) azzerava D, ma l'IOAPIC a 8 byte legge 0: dwr cieco -> sentinella
+# sessione 1c (27/10): la s1b (1181e2cb) ha riprodotto H1 in A/A_D ma senza il controllo hardware H
+FLAT=$B/logs/ptpad-build-freebsd-20261027-h/vmx-ptpad.flat
+FLAT_SHA=2b750b31953d34ae4729b6f2686b95d6b884fc4f73dc2e857d2b3d4b14c93086
+DRV=$N/ptpad-drive.py;	DRV_SHA=d1acedcd6dd2d5975bb3c7fab1bd53e9b9bb4a5b8b4da6ed03c6d04fa08f4088
+FBT=$N/ptpad-fbt.d;	FBT_SHA=3e5f76d18024467d03e84bc0028fd17bc6dbd776439730fcae5154641c584d9a
+FBC=$N/ptpad-fbt-collaudo.sh;	FBC_SHA=1288acdbc41599d0bfca363f6798f7149f5995f2fc63aa7c44d49622fa365994
+AN=$B/ptpad_an.py;	AN_SHA=89c6e2436f8c90fbbd1f8bbb9fa07733d0158df1e0ae802e19f9c05cf7d87f2f
+QEMU=$B/stage/current/bin/qemu-system-x86_64
+PCBIOS=$B/qemu-nested/pc-bios
+PY=/usr/local/bin/python3
+VMPAT='[b]hyve|[q]emu-system'
+
+[ $# -eq 3 ] || { echo "uso: $0 --prova|--esegui|--esegui-d <piano> <out>"; exit 4; }
+MODO=$1; PIANO=$2; OUT=$3
+ferma() { echo "STOP: $*"; exit 4; }
+case "$PIANO" in
+*D_DATA*|*D_PTP*) [ "$MODO" = --esegui ] && ferma "il piano ha un caso D: serve --esegui-d (consenso separato)"; TMO=60;;
+*) [ "$MODO" = --esegui-d ] && ferma "--esegui-d senza caso D nel piano"; TMO=120;;
+esac
+case "$MODO" in --prova|--esegui|--esegui-d) ;; *) ferma "modo $MODO";; esac
+[ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
+
+vm_vive() { /bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'; }	# solo il NOME: la riga di comando di altri processi puo' contenere "bhyve"
+vmm_aperti() { for v in /dev/vmm/*; do [ -e "$v" ] || continue; sudo -n /usr/bin/fstat "$v" 2>/dev/null | /usr/bin/sed 1d; done; }
+
+echo "=== preflight a freddo (sola lettura) ==="
+[ "$(sha256 -q $MOD)" = "$MOD_SHA" ] || ferma "modulo diverso da 27125f004917 (sha 149fa57e)"
+readelf -n $MOD 2>/dev/null | grep -q "Build ID: $MOD_BUILDID" || ferma "build-id diverso: offset dell'audit non validi"
+kldstat -n vmm-restore.ko >/dev/null 2>&1 || ferma "vmm-restore.ko non caricato"
+[ "$FLAT_SHA" != "$FLAT_RITIRATA" ] || ferma "configurazione che punta alla .flat RITIRATA"
+[ "$(sha256 -q $FLAT)" != "$FLAT_RITIRATA" ] || ferma "la .flat e' quella RITIRATA (8d10c1f5)"
+[ "$(sha256 -q $FLAT)" = "$FLAT_SHA" ] || ferma ".flat diversa da quella congelata (parere #106)"
+strings "$FLAT" | grep -q 'PTPAD WAIT piano' || ferma "la .flat non ha l'handshake del parere #106"
+case "$PIANO" in *H*) strings "$FLAT" | grep -q 'pteaddr=' || ferma "piano con casi H ma la .flat non stampa pteaddr";; esac
+[ "$(sha256 -q $DRV)" = "$DRV_SHA" ] || ferma "ptpad-drive.py diverso da quello collaudato"
+[ "$(sha256 -q $FBT)" = "$FBT_SHA" ] || ferma "ptpad-fbt.d diverso da quello collaudato"
+[ "$(sha256 -q $AN)" = "$AN_SHA" ] || ferma "ptpad_an.py diverso da quello collaudato"
+[ "$(sha256 -q $FBC)" = "$FBC_SHA" ] || ferma "ptpad-fbt-collaudo.sh diverso da quello collaudato"
+[ -x "$QEMU" ] || ferma "manca $QEMU"
+strings "$QEMU" | grep -q 'Error running vm' || ferma "QEMU senza il messaggio d'errore atteso dal driver"
+v=$(vm_vive); [ -n "$v" ] && { echo "$v"; ferma "una VM e' gia' viva"; }
+v=$(vmm_aperti); [ -n "$v" ] && { echo "$v"; ferma "un nodo /dev/vmm e' aperto"; }
+# vm2 presente e NON aperto e' normale: QEMU lo distrugge e lo ricrea all'avvio
+# (qemu-nested/accel/bhyve/bhyve-all.c:3654-3661); i nodi aperti li ha gia' esclusi vmm_aperti
+NODI0=$(ls /dev/vmm 2>/dev/null | grep -vx vm2 | tr '\n' ' ')
+sudo -n /usr/sbin/dtrace -e -s $FBT 1 >/dev/null 2>&1 || ferma "ptpad-fbt.d non compila sul modulo caricato"
+mkdir -p "$OUT" || ferma "mkdir $OUT"
+sh $N/test-ptpad.sh "$OUT/collaudo" > "$OUT/collaudo.txt" 2>&1 || ferma "collaudo offline dell'oracolo e del driver fallito ($OUT/collaudo.txt)"
+sh $FBC "$OUT/collaudo-fbt" > "$OUT/collaudo-fbt.txt" 2>&1 || ferma "collaudo DTrace sull'host fallito ($OUT/collaudo-fbt.txt)"
+echo "preflight OK: modulo $MOD_SHA, flat $FLAT_SHA, collaudo $(grep -c '^  ok' $OUT/collaudo.txt) ok, DTrace $(grep -c '^  ok' $OUT/collaudo-fbt.txt) ok"
+
+# #107 §2: COM1 su chardev stdio ESPLICITO, non multiplexato, senza segnali; nessun monitor
+VMCMD="/usr/bin/cpuset -l 6 /usr/bin/timeout -k 1s $((TMO + 30))s $QEMU -L $PCBIOS --no-reboot -nodefaults \
+-accel bhyve,nested=on -device pc-testdev -device isa-debug-exit,iobase=0xf4,iosize=0x4 -display none \
+-monitor none -chardev stdio,id=ptpad,mux=off,signal=off -serial chardev:ptpad \
+-device pci-testdev -smp 1 -m 256 -cpu max -kernel $FLAT -append vmx_ptpad_fidelity_test"
+# #107 §5.3: controllo STATICO della riga effettiva
+for x in ' -accel bhyve,nested=on ' ' -smp 1 ' ' -monitor none ' 'stdio,id=ptpad,mux=off,signal=off' \
+    ' -serial chardev:ptpad ' " -kernel $FLAT " ' -append vmx_ptpad_fidelity_test'; do
+	case "$VMCMD" in *"$x"*) ;; *) ferma "riga QEMU senza '$x'";; esac
+done
+for x in 'mon:stdio' '-nographic' 'mux=on' '-serial stdio' 'vm0' '-daemonize'; do
+	case "$VMCMD" in *"$x"*) ferma "riga QEMU con '$x'";; esac
+done
+[ "$(echo "$VMCMD" | grep -o -- '-serial' | wc -l | tr -d ' ')" = 1 ] || ferma "piu' di una -serial"
+{
+	echo "piano $PIANO modo $MODO timeout $TMO"
+	echo "modulo $MOD_SHA build-id $MOD_BUILDID"
+	echo "flat $FLAT_SHA driver $DRV_SHA fbt $FBT_SHA collaudo-fbt $FBC_SHA oracolo $AN_SHA script $(sha256 -q $0)"
+	echo "flat ritirata (rifiutata): $FLAT_RITIRATA"
+	echo "vm: $VMCMD"
+	echo "nodi /dev/vmm: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')"
+	/sbin/sysctl hw.vmm.vmx.nested_ept_mmio_emulated hw.vmm.vmx.nested_ept12_viol_reflected kern.osrelease
+} > "$OUT/manifest.txt"
+if [ "$MODO" = --prova ]; then
+	cat "$OUT/manifest.txt"
+	echo "PROVA: nessuna VM avviata. Il comando del driver sarebbe:"
+	echo "  sudo -n $PY $DRV --piano $PIANO --out $OUT/drv --fbt $FBT --oracolo $AN --timeout $TMO -- $VMCMD"
+	exit 0
+fi
+
+echo "=== sessione $PIANO: avvio (UNA VM, vm2) ==="
+sudo -n $PY $DRV --piano "$PIANO" --out "$OUT/drv" --fbt $FBT --oracolo $AN --timeout $TMO -- $VMCMD | tee "$OUT/driver.out"
+i=0; vivo=""
+until [ -z "$(vm_vive)" ] && [ -z "$(vmm_aperti)" ]; do
+	i=$((i + 1)); [ $i -gt 150 ] && { vivo=1; break; }; sleep 0.2
+done
+echo "nodi /dev/vmm dopo: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')" | tee -a "$OUT/manifest.txt"
+$PY $AN "$OUT/drv/combinato.txt" > "$OUT/verdetto.txt" 2>&1; an=$?
+cat "$OUT/verdetto.txt"
+(cd "$OUT" && sha256 -r manifest.txt driver.out verdetto.txt drv/* > SHA256SUMS 2>/dev/null)
+[ -n "$vivo" ] && { echo "ATTENZIONE: VM ancora viva o nodo aperto dopo 30 s"; exit 5; }
+[ "$(ls /dev/vmm 2>/dev/null | grep -vx vm2 | tr '\n' ' ')" = "$NODI0" ] || { echo "ATTENZIONE: nodi /dev/vmm cambiati oltre vm2"; exit 5; }
+grep -q 'USCITA=2' "$OUT/driver.out" && exit 2
+[ $an = 0 ] && exit 0 || exit 3

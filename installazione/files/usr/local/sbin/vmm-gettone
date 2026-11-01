@@ -1,0 +1,25 @@
+#!/bin/sh
+# vmm-gettone -- Claude 31/10-01/11/2026, pareri Opus par. 3.2 e «wrapper di root» par. 2. COPIA INSTALLATA:
+# /usr/local/sbin/vmm-gettone, root:wheel 0555 (write_files). PREPARATA OFFLINE, NON INSTALLATA.
+# Crea il gettone d'autorizzazione. Lo esegue SOLO l'utente, nel SUO terminale, con la password:
+#   sudo /usr/local/sbin/vmm-gettone <ore 1-12> <passi: scambio,distruggi,ombra,avvio-vm> <descrizione>
+# sudoers: regola SENZA [omesso] e timestamp_timeout=0 (nessuna credenziale riusabile da Claude Code).
+set -u
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+CONF=/usr/local/etc/claude-vmm.conf
+W=$(sed -n 's/^area_di_lavoro=//p' "$CONF" 2>/dev/null)
+case "$W" in /*) ;; *) echo "area_di_lavoro assente in $CONF"; exit 4;; esac
+L=$W/APPROVATI-sequenza.sha256
+G=/var/run/claude-gettone
+[ "$(/usr/bin/id -u)" = 0 ] || { echo "solo via sudo"; exit 4; }
+[ $# = 3 ] || { echo "uso: sudo $0 <ore 1-12> <passi> <descrizione>"; exit 4; }
+case "$1" in [1-9]|1[0-2]) ;; *) echo "ore fra 1 e 12"; exit 4;; esac
+for o in $(echo "$2" | tr ',' ' '); do case " scambio distruggi ombra avvio-vm " in *" $o "*) ;; *) echo "passo sconosciuto: $o"; exit 4;; esac; done
+[ -r "$L" ] || { echo "elenco degli strumenti approvati assente: $L"; exit 4; }
+S=$(sha256 -q "$L"); ORA=$(date +%s)
+echo "Elenco approvati: $L"; echo "  sha $S"; grep -v '^#' "$L" | sed 's/^/  /'
+printf 'Confermi il gettone per %s ore, passi %s, "%s"? [si/no] ' "$1" "$2" "$3"; read r
+[ "$r" = si ] || { echo "nessun gettone"; exit 4; }
+umask 022
+printf 'gettone 1\ncreato %s\nscade %s\nelenco %s\npassi %s\nsequenza %s\n' "$ORA" $((ORA + $1 * 3600)) "$S" "$2" "$3" > "$G.nuovo" &&
+	chown root:wheel "$G.nuovo" && chmod 644 "$G.nuovo" && mv "$G.nuovo" "$G" && echo "gettone scritto: $G" && cat "$G"

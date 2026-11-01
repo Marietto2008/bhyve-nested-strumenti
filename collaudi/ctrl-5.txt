@@ -1,0 +1,29 @@
+controllo-azioni.sh 4356c92ee9ad9b7c796ef2c8efb117d828292108477f40f73e8d098f07132964 controllo-azioni.py 25ee683e55412882cf143d20915b42407a6f916205a9ace21b47e4c762c097e8
+  ERRATO  positivo rc=1         ^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh' 
+  ok      kldload_senza_guardia: preso (non e' una lettura)
+  ok      sudo_in_stringa: preso (non e' una lettura)
+  ok      kill_come_lettura: preso (non e' una lettura)
+  ok      dtrace_con_o: preso (non e' una lettura)
+  ok      dtrace_con_c: preso (non e' una lettura)
+  ok      ldd: preso (non e' una lettura)
+  ok      get_memseg_con_destroy: preso (non e' una lettura)
+  ok      lettura_e_azione_stessa_riga: preso (non e' una lettura)
+  ok      due_sudo_una_guardia: preso (non e' una lettura)
+  ok      due_sudo_un_comando: preso (non e' una lettura)
+  ok      guardia_con_or: preso (non e' una lettura)
+  ok      messaggio_che_copre: preso (non e' una lettura)
+  ok      dtrace_l_con_c: preso (non e' una lettura)
+  ok      true_con_coda: preso (non e' una lettura)
+  ok      sudo_percorso_completo: preso (non e' una lettura)
+  ok      doas: preso (non e' una lettura)
+  ok      su_in_testa: preso (non e' una lettura)
+  ok      su_dopo_separatore: preso (non e' una lettura)
+  ok      guardia_senza_caricarla: preso (non carica guardia.sh)
+  ERRATO  sequenza diretta rc=1
+  ERRATO  vmm-gettone rc=1
+  ERRATO  solo-commento non segnalato: 
+  ok      inerte nella forma esatta: saltato
+  ok      suite col preambolo: saltata
+  ok      script con la guardia: conforme
+  ERRATO  su-parola:   DIFETTO /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh:0: illeggibile: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh'
+SUMMARY: 22 ok, 5 errati

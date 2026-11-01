@@ -1,0 +1,212 @@
+### percorsi normali
+== T01-orig-orig (rc=0)
+  ok   T01-orig-orig rc=0
+  ok   T01-orig-orig kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T01-orig-orig frozen=0
+  ok   T01-orig-orig 6 ppt
+  ok   T01-orig-orig amdgpu NON caricato
+  ok   T01-orig-orig kenv identico a prima (valore ed esistenza)
+  ok   T01-orig-orig nessun evento 'VIOLAZIONE'
+  ok   T01-orig-orig nessun evento 'ASTA SENZA PPT'
+== T02-orig-r110 (rc=0)
+  ok   T02-orig-r110 rc=0
+  ok   T02-orig-r110 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
+  ok   T02-orig-r110 frozen=0
+  ok   T02-orig-r110 6 ppt
+  ok   T02-orig-r110 amdgpu NON caricato
+  ok   T02-orig-r110 kenv identico a prima (valore ed esistenza)
+  ok   T02-orig-r110 nessun evento 'VIOLAZIONE'
+  ok   T02-orig-r110 nessun evento 'ASTA SENZA PPT'
+== T03-r110-orig (rc=0)
+  ok   T03-r110-orig rc=0
+  ok   T03-r110-orig kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T03-r110-orig frozen=0
+  ok   T03-r110-orig 6 ppt
+  ok   T03-r110-orig amdgpu NON caricato
+  ok   T03-r110-orig kenv identico a prima (valore ed esistenza)
+  ok   T03-r110-orig nessun evento 'VIOLAZIONE'
+== T05-vm2-residuo (rc=0)
+  ok   T05-vm2-residuo rc=0
+  ok   T05-vm2-residuo evento 'destroy vm2'
+  ok   T05-vm2-residuo 6 ppt
+  ok   T05-vm2-residuo kenv identico a prima (valore ed esistenza)
+### kenv (#117 P0)
+== K1-blocklist-assente (rc=0)
+  ok   K1-blocklist-assente evento 'kenv boot_safe=YES'
+  ok   K1-blocklist-assente evento 'kenv devmatch_blocklist=amdgpu'
+  ok   K1-blocklist-assente evento 'kenv -u devmatch_blocklist'
+  ok   K1-blocklist-assente evento 'kenv -u boot_safe'
+  ok   K1-blocklist-assente kenv identico a prima (valore ed esistenza)
+== K2-blocklist-vuota (rc=0)
+  ok   K2-blocklist-vuota rc=0
+  ok   K2-blocklist-vuota evento 'kenv devmatch_blocklist=amdgpu'
+  ok   K2-blocklist-vuota nessun evento 'kenv -u devmatch_blocklist'
+  ok   K2-blocklist-vuota kenv identico a prima (valore ed esistenza)
+== K3-blocklist-altri (rc=0)
+  ok   K3-blocklist-altri rc=0
+  ok   K3-blocklist-altri evento 'kenv devmatch_blocklist=if_cdce foo amdgpu'
+  ok   K3-blocklist-altri kenv identico a prima (valore ed esistenza)
+== K4-blocklist-ha-amdgpu (rc=0)
+  ok   K4-blocklist-ha-amdgpu rc=0
+  ok   K4-blocklist-ha-amdgpu evento 'kenv devmatch_blocklist=foo amdgpu$'
+  ok   K4-blocklist-ha-amdgpu nessun evento 'amdgpu amdgpu'
+  ok   K4-blocklist-ha-amdgpu kenv identico a prima (valore ed esistenza)
+== K5-boot_safe-preesistente (rc=0)
+  ok   K5-boot_safe-preesistente rc=0
+  ok   K5-boot_safe-preesistente evento 'kenv boot_safe=YES'
+  ok   K5-boot_safe-preesistente evento 'kenv boot_safe=NO'
+  ok   K5-boot_safe-preesistente kenv identico a prima (valore ed esistenza)
+== K6-kenv-non-impostabile (rc=4)
+  ok   K6-kenv-non-impostabile rc=4
+  ok   K6-kenv-non-impostabile nessun evento 'freeze'
+  ok   K6-kenv-non-impostabile nessun evento 'kld'
+  ok   K6-kenv-non-impostabile kenv identico a prima (valore ed esistenza)
+  ok   K6-kenv-non-impostabile uscita contiene 'protezione kenv non impostabile'
+== K7-kenv-rilettura-diversa (rc=4)
+  ok   K7-kenv-rilettura-diversa rc=4
+  ok   K7-kenv-rilettura-diversa nessun evento 'freeze'
+  ok   K7-kenv-rilettura-diversa nessun evento 'kld'
+  ok   K7-kenv-rilettura-diversa kenv identico a prima (valore ed esistenza)
+== K8-kenv-ripristino-fallito (rc=6)
+  ok   K8-kenv-ripristino-fallito rc=6
+  ok   K8-kenv-ripristino-fallito kld='completo /boot/kernel/vmm-restore.ko'
+  ok   K8-kenv-ripristino-fallito 6 ppt
+  ok   K8-kenv-ripristino-fallito uscita contiene 'kenv NON ripristinato'
+  ok   K8-kenv-ripristino-fallito uscita contiene 'OPERATORE'
+### errori di caricamento
+== T06-r110-non-carica (rc=5)
+  ok   T06-r110-non-carica rc=5
+  ok   T06-r110-non-carica kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T06-r110-non-carica frozen=0
+  ok   T06-r110-non-carica 6 ppt
+  ok   T06-r110-non-carica amdgpu NON caricato
+  ok   T06-r110-non-carica kenv identico a prima (valore ed esistenza)
+  ok   T06-r110-non-carica nessun evento 'ASTA SENZA PPT'
+== T07-niente-si-carica (rc=6)
+  ok   T07-niente-si-carica rc=6
+  ok   T07-niente-si-carica kld='nessuno'
+  ok   T07-niente-si-carica frozen=1
+  ok   T07-niente-si-carica 6 funzioni libere e intoccate
+  ok   T07-niente-si-carica amdgpu NON caricato
+  ok   T07-niente-si-carica protezione kenv LASCIATA
+  ok   T07-niente-si-carica nessun evento 'ASTA SENZA PPT'
+  FAIL T07-niente-si-carica uscita senza 'STATO DI EMERGENZA'
+== T08-unload-rifiutato (rc=5)
+  ok   T08-unload-rifiutato rc=5
+  ok   T08-unload-rifiutato kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T08-unload-rifiutato frozen=0
+  ok   T08-unload-rifiutato pci invariata
+  ok   T08-unload-rifiutato kenv identico a prima (valore ed esistenza)
+== T09-unload-parziale (rc=6)
+  ok   T09-unload-parziale rc=6
+  ok   T09-unload-parziale frozen=1
+  ok   T09-unload-parziale 6 funzioni libere e intoccate
+  ok   T09-unload-parziale amdgpu NON caricato
+  ok   T09-unload-parziale protezione kenv LASCIATA
+  ok   T09-unload-parziale nessun evento 'ASTA SENZA PPT'
+== T10-ritorno-non-carica (rc=6)
+  ok   T10-ritorno-non-carica rc=6
+  ok   T10-ritorno-non-carica kld='nessuno'
+  ok   T10-ritorno-non-carica frozen=1
+  ok   T10-ritorno-non-carica 6 funzioni libere e intoccate
+  ok   T10-ritorno-non-carica amdgpu NON caricato
+  ok   T10-ritorno-non-carica protezione kenv LASCIATA
+### catture e interferenze (#117 P1)
+== T11-cattura-xhci-orig (rc=6)
+  ok   T11-cattura-xhci-orig rc=6
+  ok   T11-cattura-xhci-orig frozen=0
+  ok   T11-cattura-xhci-orig uscita contiene 'VERIFICA FALLITA'
+  ok   T11-cattura-xhci-orig uscita contiene 'OPERATORE'
+  ok   T11-cattura-xhci-orig uscita contiene 'pci0:4:0:2 -> pci0:4:0:2 xhci'
+== T12-cattura-xhci-r110 (rc=6)
+  ok   T12-cattura-xhci-r110 rc=6
+  ok   T12-cattura-xhci-r110 kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T12-cattura-xhci-r110 uscita contiene 'torno all'originale'
+== T13-freeze-occupato (rc=4)
+  ok   T13-freeze-occupato rc=4
+  ok   T13-freeze-occupato kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T13-freeze-occupato pci invariata
+  ok   T13-freeze-occupato kenv identico a prima (valore ed esistenza)
+== T14a-devmatch-estraneo (rc=0)
+  ok   T14a-devmatch-estraneo rc=0
+  ok   T14a-devmatch-estraneo evento 'boot_safe=YES, esce subito'
+  ok   T14a-devmatch-estraneo nessun evento 'devmatch estraneo: THAW'
+  ok   T14a-devmatch-estraneo nessun evento 'ASTA SENZA PPT'
+  ok   T14a-devmatch-estraneo amdgpu NON caricato
+  ok   T14a-devmatch-estraneo 6 ppt
+  ok   T14a-devmatch-estraneo kenv identico a prima (valore ed esistenza)
+== T14b-thaw-a-mano (rc=6)
+  ok   T14b-thaw-a-mano rc=6
+  ok   T14b-thaw-a-mano uscita contiene 'ANOMALIA: thaw rifiutato'
+  ok   T14b-thaw-a-mano evento 'thaw EBUSY'
+  ok   T14b-thaw-a-mano amdgpu NON caricato
+== T15-segnale-dopo-unload (rc=5)
+  ok   T15-segnale-dopo-unload rc=5
+  ok   T15-segnale-dopo-unload kld='completo /boot/kernel/vmm-restore.ko'
+  ok   T15-segnale-dopo-unload frozen=0
+  ok   T15-segnale-dopo-unload 6 ppt
+  ok   T15-segnale-dopo-unload amdgpu NON caricato
+  ok   T15-segnale-dopo-unload kenv identico a prima (valore ed esistenza)
+  ok   T15-segnale-dopo-unload uscita contiene 'TRAP'
+### devmatch gia' in volo (#118 T25)
+== T25a-inflight-si-quieta (rc=0)
+  ok   T25a-inflight-si-quieta rc=0
+  ok   T25a-inflight-si-quieta uscita contiene 'barriera: attendo un devmatch gia' avviato'
+  ok   T25a-inflight-si-quieta uscita contiene 'barriera: nessun devmatch in esecuzione (attesa 3s)'
+  ok   T25a-inflight-si-quieta uscita contiene 'seconda rilettura kenv prima del freeze'
+  ok   T25a-inflight-si-quieta nessun evento 'devmatch IN VOLO'
+  ok   T25a-inflight-si-quieta nessun evento 'ASTA SENZA PPT'
+  ok   T25a-inflight-si-quieta 6 ppt
+  ok   T25a-inflight-si-quieta amdgpu NON caricato
+  ok   T25a-inflight-si-quieta kenv identico a prima (valore ed esistenza)
+== T25b-inflight-non-si-quieta (rc=4)
+  ok   T25b-inflight-non-si-quieta rc=4
+  ok   T25b-inflight-non-si-quieta nessun evento 'freeze'
+  ok   T25b-inflight-non-si-quieta nessun evento 'kld'
+  ok   T25b-inflight-non-si-quieta kenv identico a prima (valore ed esistenza)
+  ok   T25b-inflight-non-si-quieta uscita contiene 'barriera: devmatch ANCORA in esecuzione'
+  ok   T25b-inflight-non-si-quieta uscita contiene 'barriera devmatch non superata'
+### preflight: STOP senza toccare nulla
+== T16-iommu-usato (rc=4)
+  ok   T16-iommu-usato rc=4
+  ok   T16-iommu-usato nessun evento sul sistema
+  ok   T16-iommu-usato STOP annotato nel diario
+== T17-vm-viva (rc=4)
+  ok   T17-vm-viva rc=4
+  ok   T17-vm-viva nessun evento sul sistema
+  ok   T17-vm-viva STOP annotato nel diario
+== T18-nodo-estraneo (rc=4)
+  ok   T18-nodo-estraneo rc=4
+  ok   T18-nodo-estraneo nessun evento sul sistema
+  ok   T18-nodo-estraneo STOP annotato nel diario
+== T19-vm2-aperto (rc=4)
+  ok   T19-vm2-aperto rc=4
+  ok   T19-vm2-aperto nessun evento sul sistema
+  ok   T19-vm2-aperto STOP annotato nel diario
+== T20-amdgpu-gia (rc=4)
+  ok   T20-amdgpu-gia rc=4
+  ok   T20-amdgpu-gia nessun evento sul sistema
+  ok   T20-amdgpu-gia STOP annotato nel diario
+== T21-staging-r109 (rc=4)
+  ok   T21-staging-r109 rc=4
+  ok   T21-staging-r109 nessun evento sul sistema
+  ok   T21-staging-r109 STOP annotato nel diario
+== T22-da-sbagliato (rc=4)
+  ok   T22-da-sbagliato rc=4
+  ok   T22-da-sbagliato nessun evento sul sistema
+  ok   T22-da-sbagliato STOP annotato nel diario
+== T23-pci-incompleta (rc=4)
+  ok   T23-pci-incompleta rc=4
+  ok   T23-pci-incompleta nessun evento sul sistema
+  ok   T23-pci-incompleta STOP annotato nel diario
+== T24-prova (rc=0)
+  ok   T24-prova rc=0
+  ok   T24-prova nessun evento sul sistema
+  ok   T24-prova nessun diario
+  ok   T24-prova uscita contiene 'PROVA, nessuna azione'
+### statico
+  ok   statico: s_thaw chiamato in UN solo punto (mc_thaw_nostro)
+  ok   statico: thaw solo con freeze nostro
+  ok   statico: nessun '+=' con kenv
+
+SUMMARY: 168 ok, 1 FAIL

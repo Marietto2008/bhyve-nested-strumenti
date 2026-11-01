@@ -1,0 +1,46 @@
+#!/bin/sh
+# vmm-azione -- Claude 31/10/2026, pareri Opus par. 3.2 (separazione) e 3.1-3.5. PREPARATO OFFLINE, NON INSTALLATO.
+# Wrapper ROOT, l'UNICA via per le operazioni d'host che cambiano stato. Fa solo: controllo root, DECISIONE
+# (vmm_azione_decidi, collaudata senza privilegi), gettone valido per l'operazione decisa, registro, esecuzione.
+# RESIDUO DICHIARATO (par. 3.6): nella finestra di validita' il gettone vale per QUALUNQUE processo di marietto, non solo
+# per la sequenza autorizzata (non per i collaudi: collaudo non ha sudo). Finestre brevi: per una sequenza KUT, 1 ora.
+set -u
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
+L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+G=/var/run/claude-gettone
+D=/var/log/claude-vmm-azione.log
+registra() { [ "$(id -u)" = 0 ] && echo "$(date '+%F %T') $*" >> $D; return 0; }
+rifiuta() { registra "RIFIUTO $*"; echo "vmm-azione: RIFIUTO: $*" >&2; exit 4; }
+[ "$(id -u)" = 0 ] || rifiuta "non sono root"
+# letture vere per la decisione (eseguite come root, senza argomenti dell'utente)
+va_ctime()  { stat -f '%c' "/dev/vmm/$1" 2>/dev/null; }
+va_memseg() { ( set -o pipefail; bhyvectl --vm="$1" --get-memseg 2>&1 | sha256 -q ); }
+# originali del kenv: registrati come root alla PRIMA operazione kenv della finestra del gettone (stato root, non nel
+# workspace di marietto), per ammettere il ripristino esatto
+SD=/var/db/claude-vmm-azione
+kenv_ora() { if kenv -q "$1" >/dev/null 2>&1; then kenv -q "$1"; else echo "<assente>"; fi; }
+kenv_stato() { echo "$SD/kenv-$(sed -n 's/^creato //p' "$G" 2>/dev/null)"; }
+va_kenv_originale() {
+	f=$(kenv_stato)
+	if [ -f "$f" ]; then awk -F'\t' -v k="$1" '$1 == k {print $2}' "$f"; else kenv_ora "$1"; fi
+}
+va_blocklist() {
+	for u in $(pciconf -l | awk -F'[@:]' '/^ppt[0-9]/ {sub(/^ppt/, "", $1); print $1}'); do
+		devmatch -p "? at $(sysctl -n dev.ppt.$u.%location 2>/dev/null) $(sysctl -n dev.ppt.$u.%pnpinfo 2>/dev/null) on $(sysctl -n dev.ppt.$u.%parent 2>/dev/null)" 2>/dev/null
+	done | sed 's/\.ko$//' | sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+v=$(vmm_azione_valuta "$L" "$G" "$(date +%s)" 0 "$@") || rifiuta "$*: ${v#RIFIUTO }"
+op=$(echo "$v" | sed -n '1s/^OP //p'); m=$(echo "$v" | sed -n '2s/^GETTONE //p')
+IFS='
+'
+set -f; set -- $(echo "$v" | sed 1,2d); set +f
+unset IFS
+case "$1" in /bin/kenv)
+	f=$(kenv_stato)
+	[ -f "$f" ] || { mkdir -p -m 700 "$SD" && printf 'boot_safe\t%s\ndevmatch_blocklist\t%s\n' "$(kenv_ora boot_safe)" "$(kenv_ora devmatch_blocklist)" > "$f"; } || rifiuta "stato degli originali del kenv non scrivibile";;
+esac
+registra "ESEGUO ($op, $m): $*"
+"$@"; r=$?
+registra "FINE rc=$r: $*"
+exit $r

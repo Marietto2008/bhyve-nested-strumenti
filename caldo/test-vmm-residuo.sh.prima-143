@@ -1,0 +1,55 @@
+#!/bin/sh
+# test-vmm-residuo.sh -- Claude 30/10/2026, parere #142. Collaudo di vmm-residuo.sh su un sistema SIMULATO (stato in
+# file, funzioni r_* sovrascritte via VR_FINTO). Nessun sudo, nessun bhyvectl. Uso: test-vmm-residuo.sh <cartella su ZFS>
+set -u
+D=$(cd "$(dirname "$0")" && pwd)
+O=${1:?cartella}
+case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+[ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
+mkdir -p "$O" || exit 2
+nf=0; nok=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }
+no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
+cat > "$O/finto.sh" <<'FINE_FINTO_VR_142'
+r_nodi()    { cat "$VS/nodi"; }
+r_ctime()   { cat "$VS/ctime.$1" 2>/dev/null; }
+r_memseg()  { cat "$VS/memseg.$1" 2>/dev/null; }
+r_aperto()  { [ -e "$VS/aperto.$1" ]; }
+r_vm_vive() { cat "$VS/vive" 2>/dev/null; }
+r_modulo()  { [ ! -e "$VS/nessun_modulo" ]; }
+r_distruggi() { echo "destroy $1" >> "$VS/eventi"; [ -e "$VS/destroy_inefficace" ] && return 1; grep -vx "$1" "$VS/nodi" > "$VS/nodi.n"; cat "$VS/nodi.n" >| "$VS/nodi"; }
+r_ora()     { echo "2026-10-30 00:00:00"; }
+FINE_FINTO_VR_142
+# caso <nome> <rc atteso> <argomenti...>; iniezioni in $INI (file da creare in VS)
+caso() {
+	N=$1; A=$2; shift 2
+	VS=$O/$N; mkdir -p "$VS"; printf 'vm2\nvm0:12\n' >| "$VS/nodi"; echo 1793362388 >| "$VS/ctime.vm2"; echo aaaa >| "$VS/memseg.vm2"
+	echo 1700000000 >| "$VS/ctime.vm0:12"; echo bbbb >| "$VS/memseg.vm0:12"; : >| "$VS/eventi"
+	for i in ${INI:-}; do : >| "$VS/$i"; done
+	[ -n "${VIVE:-}" ] && echo "$VIVE" >| "$VS/vive"
+	VS=$VS VR_FINTO=$O/finto.sh VR_DIARIO=$VS/diario sh "$D/vmm-residuo.sh" "$@" > "$VS/out" 2>&1; r=$?
+	[ $r = $A ] && ok "$N rc=$r" || no "$N rc=$r, atteso $A ($(head -2 $VS/out))"
+}
+distrutto() { grep -qx "destroy vm2" "$VS/eventi" && ok "$N vm2 distrutto" || no "$N vm2 NON distrutto"; }
+intatto()   { [ -s "$VS/eventi" ] && no "$N azioni: $(cat $VS/eventi)" || ok "$N nessuna azione"; }
+vm0_vivo()  { grep -qx 'vm0:12' "$VS/nodi" && ok "$N vm0:12 intatta" || no "$N vm0:12 toccata"; }
+
+echo "V1: percorsi"
+caso v1-verifica 0 --verifica;                      intatto; grep -q 'vm2 ctime=1793362388 memseg=aaaa aperto=no' "$VS/out" && ok "v1 identita' di vm2 stampata" || no "v1 identita': $(cat $VS/out)"
+caso v2-autorizzato 0 --distruggi vm2 1793362388 aaaa; distrutto; vm0_vivo; grep -q 'ESITO 0' "$VS/diario" && ok "v2 diario" || no "v2 diario"
+echo "V2: rifiuti (nulla fatto)"
+caso v3-ctime-diverso 4 --distruggi vm2 1793357072 aaaa; intatto; grep -q "NON e' il nodo autorizzato" "$VS/out" && ok "v3 motivo" || no "v3 motivo"
+caso v4-memseg-diverso 4 --distruggi vm2 1793362388 cccc; intatto
+caso v5-altro-nome 4 --distruggi vm0:12 1700000000 bbbb; intatto; vm0_vivo
+INI=aperto.vm2 caso v6-aperto 4 --distruggi vm2 1793362388 aaaa; intatto
+VIVE="4242 qemu-system-x86_64" caso v7-vm-viva 4 --distruggi vm2 1793362388 aaaa; intatto
+INI=nessun_modulo caso v8-senza-modulo 4 --distruggi vm2 1793362388 aaaa; intatto
+caso v9-argomenti 4 --distruggi vm2 1793362388; intatto
+# ogni rifiuto per il SUO motivo (un'iniezione rimasta dal caso precedente non deve far passare il caso)
+for x in "v4-memseg-diverso:memseg di vm2" "v5-altro-nome:solo vm2" "v6-aperto:e' aperto" "v7-vm-viva:VM viva" "v8-senza-modulo:nessun modulo" "v9-argomenti:uso:"; do
+	grep -q -- "${x#*:}" "$O/${x%%:*}/out" && ok "${x%%:*}: motivo '${x#*:}'" || no "${x%%:*}: motivo diverso: $(head -1 $O/${x%%:*}/out)"
+done
+echo "V3: distruzione inefficace"
+INI=destroy_inefficace caso v12-inefficace 6 --distruggi vm2 1793362388 aaaa; grep -q 'ESITO 6' "$VS/diario" && ok "v12 operatore dichiarato" || no "v12"
+echo "SUMMARY: $nok ok, $nf errati"
+[ $nf = 0 ]

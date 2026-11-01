@@ -1,0 +1,9 @@
+scenari: SUMMARY: 537 ok, 0 FAIL; azioni registrate: 530
+azioni della campagna: 495 ammesse, 9 RIFIUTATE
+kldload di moduli non della campagna (rifiuto atteso, non contato): {'modules': 17, 'ripfix-congelato-20261030-r5': 5, 'logs': 4}
+  DIFETTO    5 volte, 5 scenari: distruggi -> RIFIUTO distruggi: uso distruggi vm2 <ctime> <sha memseg> (es. T05-vm2-residuo, T104-destroy-fallita, T105-destroy-rc0-nodo-resta)
+  DIFETTO    1 volte, 1 scenari: kenv-set devmatch_blocklist -> RIFIUTO kenv-set devmatch_blocklist '': ammesso solo l'elenco di devmatch -p per i ppt ('amdgpu') (es. K2-blocklist-vuota)
+  DIFETTO    1 volte, 1 scenari: kenv-set devmatch_blocklist -> RIFIUTO kenv-set devmatch_blocklist 'if_cdce foo amdgpu': ammesso solo l'elenco di devmatch -p per i ppt ('amdgpu') (es. K3-blocklist-altri)
+  DIFETTO    1 volte, 1 scenari: kenv-set devmatch_blocklist -> RIFIUTO kenv-set devmatch_blocklist 'if_cdce foo': ammesso solo l'elenco di devmatch -p per i ppt ('amdgpu') (es. K3-blocklist-altri)
+  DIFETTO    1 volte, 1 scenari: kenv-set boot_safe -> RIFIUTO kenv-set boot_safe: solo YES (es. K5-boot_safe-preesistente)
+SUMMARY: 5 tipi di rifiuto

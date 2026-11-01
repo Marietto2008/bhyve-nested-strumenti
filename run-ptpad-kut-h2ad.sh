@@ -1,0 +1,343 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-ptpad-kut-h2ad.sh.non-conforme
+echo "INERTE: run-ptpad-kut-h2ad.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-ptpad-kut-h2ad.sh.non-conforme" >&2; exit 4
+# run-ptpad-kut-h2ad.sh -- Claude 30/10/2026, parere #123 §3-§5. Runner delle sessioni KUT H2-AD e dell'ORACOLO
+# HARDWARE dei livelli A/D. Primo argomento in piu': il modulo che DEVE essere caricato.
+#   <modo> originale B,HD_DATA,HD_DATA_PDE,HD_DATA_ALL,HD_PTP,HD_PTP_ALL <out>   oracolo hardware (G0, fatto 30/10)
+#   <modo> originale B,HD_CONFLICT,HD_CONFLICT_PDE <out>                        oracolo della PRECEDENZA (G1, fatto 30/10)
+#   <modo> originale B,H,H_PDE,HD_CONFLICT,HD_CONFLICT_PDE <out>                G1b: precedenza CON i controlli positivi (#126)
+#   --esegui   originale B,HD_PTP,HM_RAM,HM_PTP <out>                            H2_MMIO hardware (#131), HM_PTP ultimo
+#   --esegui-d originale B,HM_RAM,DM_PTP <out>                                   H2_MMIO emulato (#131), VM terminale
+#        solo --esegui: nessun caso emulato oltre B, nessun cambio di modulo (col modulo /boot, 149fa57e)
+#   <modo> h2ad B,C,H,A,H_D,A_D <out>                                           regressione H1, --esegui
+#   <modo> h2ad B,HD_DATA,D_DATA | B,HD_DATA_PDE,D_DATA_PDE | B,HD_DATA_ALL,D_DATA_ALL | B,HD_PTP,D_PTP |
+#               B,HD_PTP_ALL,D_PTP_ALL | B,H,HD_CONFLICT,D_CONFLICT | B,H_PDE,HD_CONFLICT_PDE,D_CONFLICT_PDE <out>  --esegui-d
+#   --esegui-d ripfix-nested-porta B,HM_RAM,DM_PTP | B,HD_PTP,HM_RAM,HM_PTP <out>   #142: kernel RIPFIX con nesting
+#        (hot-swap a parte), SOLO con la QEMU protetta; i due casi sono TERMINALI (latch EMUL / Fase C)
+#   <modo> ripfix-nested-porta-regr <piani di h2ad2> <out>   #143 §4: regressioni H1/H2-AD, stesso modulo e QEMU
+# h2ad2 = walk H2-AD rev.2 (superiori rinviati, G0; precedenza DATO, G1b; ptp_pend su tutto il vettore, #127 A).
+# h2ad0/h2ad1/h2ad (e29cd0b3) sono ritirati.
+# Uscita 7 (#123 §4.6): sessione eseguita ma NON_PULITA secondo l'oracolo (riga PULIZIA).
+# --- testo del runner H2 ---
+# run-ptpad-kut-h2.sh -- Claude 29/10/2026, parere #119 §3.2-3.3: runner delle sessioni KUT col modulo della
+# correzione di H2/P3 (h2, 07013a44, sopra r110). Derivato da run-ptpad-kut-h1fix.sh (che resta per r110).
+# Piani ammessi, UNO per invocazione, nessun rilancio automatico:
+#   --esegui   B,C,H,A,H_D,A_D       regressione di H1 sotto il modulo h2 (nessun caso D)
+#   --esegui-d B,HD_DATA,D_DATA      H2 sul dato, col suo controllo hardware (consenso SEPARATO)
+#   --esegui-d B,HD_PTP,D_PTP        H2 sulla tabella, col suo controllo hardware (consenso SEPARATO)
+# Protezioni (#119 §3.3): una VM (vm2) e un vCPU; timeout per caso del driver; terminazione del process group;
+# uscita SOLO su ZFS; dimensione dei file limitata (ulimit -f) e controllata alla fine; modulo h2 GIA' caricato
+# da caldo/modulo-caldo.sh --esegui originale h2 (consenso separato). Il modulo si cambia con quello script.
+# --- testo del runner h1fix ---
+# run-ptpad-kut-h1fix.sh -- Claude 28/10/2026, parere #111 §5: runner della SOLA sessione KUT col modulo
+# della correzione di H1 (r110, d0465140). Derivato da run-ptpad-kut.sh (che resta per il modulo originale).
+# Richiede che il modulo nuovo sia GIA' caricato da caldo/modulo-caldo.sh --esegui originale r110 (consenso separato); qui il
+# piano e' SOLO B,C,H,A,H_D,A_D, nessun caso D, nessun --esegui-d. Dopo la sessione: caldo/modulo-caldo.sh
+# --esegui r110 originale. Uscita 6 = modulo nuovo non caricato (in --prova: controlli fatti, nessuna VM).
+# --- testo originale ---
+# run-ptpad-kut.sh -- Claude 27/10/2026, pareri #101, #106, #107. Runner del test deterministico
+# AUDIT-PTP-HOLD sotto QEMU `-accel bhyve` (lo stesso percorso di kut-run.sh e della campagna
+# b1race: VM "vm2", UNA vCPU, cpuset sulla CPU 6). MAI la vm0:12 Windows. Nessuna patch, nessun
+# sysctl scritto (solo letture).
+#
+#   run-ptpad-kut.sh --prova  <piano> <out>   preflight a freddo + comando: NESSUNA VM
+#   run-ptpad-kut.sh --esegui <piano> <out>   SOLO dopo consenso esplicito: sessione SENZA casi D
+#   run-ptpad-kut.sh --esegui-d <piano> <out> SOLO dopo consenso SEPARATO: sessione con UN caso D
+#
+# Il piano lo esegue L1 (parere #106 D1): la .flat legge il piano dalla COM1 e lo ripete; senza
+# questo runner non esegue alcun caso. Il driver (ptpad-drive.py) fa l'handshake per caso, fotografa
+# il contatore a L1 fermo, apre la traccia FBT prima di QEMU, e su "Error running vm" chiude il
+# caso con TERM bhyve_died e uccide QEMU (D3: QEMU non muore da solo, rientra in vm_run).
+# Nessun riavvio, nessuna corsa successiva automatica: un D per avvio, l'altro resta NOT_RUN.
+# Parere #107: il driver NON manda l'ACK al caso successivo se il caso appena chiuso non e' pulito
+# (cancello B; delta != 1; esito non ARCH_PASS/H1). COM1 su un chardev stdio ESPLICITO e non
+# multiplexato, niente monitor. Il preflight collauda la traccia DTrace sull'host (senza VM).
+# USCITA: 0 sessione eseguita e analizzata senza TEST_ERROR; 3 analisi con TEST_ERROR;
+#         2 STOP del driver; 4 STOP al preflight (nessuna VM); 5 VM ancora viva o nodo rimasto.
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+N=$B/freebsd-nested/tools/nested
+MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+FLAT_RITIRATA=8d10c1f5d79cad3065c962fafc95e42c52c582a6f39507804699ab9061092bc1	# #104: eseguiva sempre i D
+P3_OID=hw.vmm.gla2gpa_restart_capped		# solo nella variante RITIRATA con P3: deve mancare
+R110_OID=hw.vmm.vmx.nested_ept12_viol_emul_reflected
+MOD_OID=hw.vmm.vmx.vept_h2_viol_final		# esiste in h2 e nelle sue derivate (h2ad)
+FATAL_OID=hw.vmm.fatal_latches			# #142: esiste SOLO nei moduli RIPFIX
+LIMITE_BLOCCHI=2097152				# ulimit -f in blocchi da 512 byte: 1 GiB per file
+# sessione 1 (27/10): la .flat p106 (0b723262) faceva SKIP prima del piano (D su pagina GRANDE)
+# sessione 1b (27/10): la s1fix (77025a6b) azzerava D, ma l'IOAPIC a 8 byte legge 0: dwr cieco -> sentinella
+# sessione 1c (27/10): la s1b (1181e2cb) ha riprodotto H1 in A/A_D ma senza il controllo hardware H
+# 28/10 (#111 §5.5): .flat con la riga XINFO (GLA e RIP dal VMCS12); codice di L2 identico alla 1d
+# 29/10 (#119): .flat con i controlli hardware HD_DATA/HD_PTP; codice di L2 identico (movs 406f40, store 406f4e)
+# 30/10 (#123): .flat con i casi _PDE/_ALL e la riga LIV; (#124 G1) + _CONFLICT e pdeaddr nella MAP;
+# codice di L2 identico (movs 406f40, store 406f4e)
+# (#126 G1b) + H_PDE e la riga EPT; codice di L2 identico
+# (#132) regioni chiuse da PCI_SCAN_COMPLETE (ROM, BARBAD, bridge a 64 bit), EPTW/EPTBAD/EPTPOST: L2 non parte se EPT12 non e' quella del caso
+FLAT=$B/logs/ptpad-build-freebsd-20261030-132/vmx-ptpad.flat
+FLAT_SHA=d25208a55109c960ce340c6f168b5b3cb9f6613e402fd4901139f7bb92528df8
+DRV=$N/ptpad-drive.py;	DRV_SHA=ada4c3324522d69b5aacceb56439653c63ec21c4f6dbff16b3380834945a395d
+FBT=$N/ptpad-fbt.d;	FBT_SHA=33ec5e87e54768017b0304ea43a0aaefb646da8f7d8a9c08aa8371578affb958
+FBT_RIPFIX_SHA=30ce9e9f732bbbf1d1dd0ffb40102abe70da05a33db0851e0cc4841c9702a6f3	# ptpad-fbt-ripfix-nested.d (#142)
+FBC=$N/ptpad-fbt-collaudo.sh;	FBC_SHA=defcd1ec727230929351ba3a2d0f63d389d46e7105af9b9ae8939b26d0a02745
+AN=$B/ptpad_an.py;	AN_SHA=088ce89822b4d2c793edccb3ee4aed0dc8dbcee7d6258447444039441ccf9531
+QEMU=$B/stage/current/bin/qemu-system-x86_64
+# #132 §3.1: modello di macchina ESPLICITO (gli MMIO fissi della .flat vengono da qui); oggi e' anche il predefinito
+QEMU_MACCHINA=pc-i440fx-10.2
+PCBIOS=$B/qemu-nested/pc-bios
+PY=/usr/local/bin/python3
+VMPAT='[b]hyve|[q]emu-system'
+
+[ $# -eq 4 ] || { echo "uso: $0 --prova|--esegui|--esegui-d originale|originale-porta|h2ad2|ripfix-nested-porta|ripfix-nested-porta-regr <piano> <out>"; exit 4; }
+MODO=$1; MODULO=$2; PIANO=$3; OUT=$4
+ferma() { echo "STOP: $*"; exit 4; }
+# #139 §4: TUTTO cio' che dipende dal modo viene dalla tabella dichiarativa (runner-modi.sh, collaudata da
+# test-runner-modi.sh): modulo e identita', firma degli oid, frontend QEMU e identita', piani, hot-swap implicato
+. "$B/runner-modi.sh"
+modo_carica "$MODULO" || ferma "modulo '$MODULO': originale, originale-porta, h2ad2, ripfix-nested-porta o ripfix-nested-porta-regr"
+# #142: la traccia DTrace e' del modo (lo script RIPFIX compila solo col modulo RIPFIX caricato)
+FBT=$MOD_FBT
+case "$FBT" in */ptpad-fbt-ripfix-nested.d) FBT_SHA=$FBT_RIPFIX_SHA;; */ptpad-fbt.d) ;; *) ferma "traccia DTrace sconosciuta: $FBT";; esac
+piano_ammesso "$MODULO" "$PIANO" || ferma "piano '$PIANO' rifiutato per $MODULO"
+# #119 §3.3: uscita solo su ZFS, dentro il workspace
+case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
+case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+[ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS: $OUT"
+ulimit -f $LIMITE_BLOCCHI			# ogni file scritto da qui in giu' (driver, dtrace, QEMU) ha un tetto
+# #142: piano TERMINALE dalla tabella (un caso D, o HM_PTP col modulo RIPFIX: la Fase C ferma il vCPU)
+if piano_terminale "$MODULO" "$PIANO"; then
+	[ "$MODO" = --esegui ] && ferma "il piano ha un caso terminale: serve --esegui-d (consenso separato)"; TMO=60
+else
+	[ "$MODO" = --esegui-d ] && ferma "--esegui-d senza caso terminale nel piano"; TMO=120
+fi
+case "$MODO" in --prova|--esegui|--esegui-d) ;; *) ferma "modo $MODO";; esac
+[ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
+
+vm_vive() { /bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'; }	# solo il NOME: la riga di comando di altri processi puo' contenere "bhyve"
+vmm_aperti() { for v in /dev/vmm/*; do [ -e "$v" ] || continue; sudo -n /usr/bin/fstat "$v" 2>/dev/null | /usr/bin/sed 1d; done; }
+
+echo "=== preflight a freddo (sola lettura) ==="
+"$QEMU" -machine help 2>/dev/null | grep -q "^$QEMU_MACCHINA " || ferma "QEMU senza la macchina $QEMU_MACCHINA"
+[ "$(sha256 -q $MOD)" = "$MOD_SHA" ] || ferma "modulo $MODULO diverso da quello atteso"
+readelf -n $MOD 2>/dev/null | grep -q "Build ID: $MOD_BUILDID" || ferma "build-id del modulo di staging diverso"
+kldstat -n vmm-restore.ko >/dev/null 2>&1 || ferma "vmm-restore.ko non caricato"
+CAR=$(/sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | head -1)
+NONCAR=""
+# firma degli oid (r110, h2, P3, fatal): originale 0000, h2ad2 1100, ripfix-nested 1101 (tabella dei modi)
+sig=0; /sbin/sysctl -n $R110_OID >/dev/null 2>&1 && sig=1; sig=$sig$(/sbin/sysctl -n $MOD_OID >/dev/null 2>&1 && echo 1 || echo 0)
+sig=$sig$(/sbin/sysctl -n $P3_OID >/dev/null 2>&1 && echo 1 || echo 0)
+sig=$sig$(/sbin/sysctl -n $FATAL_OID >/dev/null 2>&1 && echo 1 || echo 0)
+# originale-porta = lo STESSO modulo originale (cambia solo QEMU): firma 000. Prima ricadeva in 110 (h2ad2) e la
+# prima sessione si e' fermata qui, nel preflight, prima di avviare la VM (30/10)
+atteso=$OID_ATTESO		# dalla tabella dei modi
+if [ "$CAR" != "$MOD" ] || [ "$(sha256 -q "$CAR")" != "$MOD_SHA" ] || [ "$sig" != "$atteso" ]; then
+	[ "$MODO" = --prova ] || { echo "STOP: caricato $CAR (oid $sig), non il modulo $MODULO (oid $atteso)"; exit 6; }
+	NONCAR="caricato $CAR ($(sha256 -q "$CAR"), oid $sig): il modulo $MODULO NON e' caricato"
+fi
+strings "$FLAT" | grep -qx 'HD_DATA_ALL' || ferma "la .flat non ha i casi H2-AD (#123)"
+strings "$FLAT" | grep -qx 'HD_CONFLICT_PDE' || ferma "la .flat non ha i casi di precedenza (#124)"
+strings "$FLAT" | grep -qx 'H_PDE' || ferma "la .flat non ha il controllo H_PDE (#126)"
+strings "$FLAT" | grep -q 'PTPAD EPT' || ferma "la .flat non stampa la riga EPT (#126)"
+strings "$FLAT" | grep -qx 'HM_PTP' || ferma "la .flat non ha i casi H2_MMIO (#131)"
+strings "$FLAT" | grep -q 'PTPAD BAR bdf' || ferma "la .flat non stampa le BAR (#131)"
+strings "$FLAT" | grep -q 'PTPAD PCI_SCAN_COMPLETE' || ferma "la .flat non chiude la scansione PCI (#132)"
+strings "$FLAT" | grep -q 'PTPAD EPTBAD' || ferma "la .flat non verifica EPT12 prima dell'entrata (#132)"
+strings "$FLAT" | grep -q 'PTPAD LIV' || ferma "la .flat non stampa la riga LIV (#123)"
+strings "$FLAT" | grep -q 'PTPAD XINFO' || ferma "la .flat non stampa XINFO (#111 §5.5)"
+[ "$FLAT_SHA" != "$FLAT_RITIRATA" ] || ferma "configurazione che punta alla .flat RITIRATA"
+[ "$(sha256 -q $FLAT)" != "$FLAT_RITIRATA" ] || ferma "la .flat e' quella RITIRATA (8d10c1f5)"
+[ "$(sha256 -q $FLAT)" = "$FLAT_SHA" ] || ferma ".flat diversa da quella congelata (parere #106)"
+strings "$FLAT" | grep -q 'PTPAD WAIT piano' || ferma "la .flat non ha l'handshake del parere #106"
+case "$PIANO" in *H*) strings "$FLAT" | grep -q 'pteaddr=' || ferma "piano con casi H ma la .flat non stampa pteaddr";; esac
+[ "$(sha256 -q $DRV)" = "$DRV_SHA" ] || ferma "ptpad-drive.py diverso da quello collaudato"
+[ "$(sha256 -q $FBT)" = "$FBT_SHA" ] || ferma "$(basename $FBT) diverso da quello collaudato"
+# #142: ogni sonda SDT dello script del modo deve esistere nel modulo di staging (controllo statico, anche a modulo
+# non caricato); la compilazione vera (dtrace -e) richiede il modulo caricato
+for x in $MOD_SDT; do
+	nm "$MOD" 2>/dev/null | grep -q " $x\$" || ferma "sonda $x assente dal modulo $MODULO: lo script $(basename $FBT) non compilerebbe"
+done
+[ "$(sha256 -q $AN)" = "$AN_SHA" ] || ferma "ptpad_an.py diverso da quello collaudato"
+[ "$(sha256 -q $FBC)" = "$FBC_SHA" ] || ferma "ptpad-fbt-collaudo.sh diverso da quello collaudato"
+[ -x "$QEMU" ] || ferma "manca $QEMU"
+strings "$QEMU" | grep -q 'Error running vm' || ferma "QEMU senza il messaggio d'errore atteso dal driver"
+# #136 §1: la libvmmapi EFFETTIVAMENTE risolta dal loader per questa QEMU (non quella dello stage: RUNPATH /usr/local/lib)
+# #137 §4: ldd sotto sudo, cioe' nello stesso ambiente in cui il driver lancia la VM (sudo ripulisce LD_*)
+LIBV=$(sudo -n /usr/bin/ldd "$QEMU" | awk '/libvmmapi/{print $3}')
+[ -n "$LIBV" ] && [ -f "$LIBV" ] || ferma "libvmmapi non risolta per $QEMU"
+LIBV_SHA=$(sha256 -q "$LIBV")
+if [ "$FRONTEND" = porta ]; then
+	[ "$(sha256 -q "$QEMU")" = "$QEMU_ATTESO_SHA" ] || ferma "QEMU con la porta diversa da quella costruita (#136 §1)"
+	strings "$QEMU" | grep -q 'porta della VM chiusa dal vCPU' || ferma "QEMU senza la porta della VM (#136 §3)"
+	[ "$LIBV" = "$LIBV_ATTESA" ] && [ "$LIBV_SHA" = "$LIBV_ATTESA_SHA" ] || ferma "libvmmapi risolta $LIBV ($LIBV_SHA) diversa da quella attesa"
+	# #143 §4: il frontend porta non impone piu' --esegui-d da solo; lo decide piano_terminale (tabella), gia'
+	# controllato sopra. originale-porta ammette comunque solo il piano DM, terminale.
+fi
+v=$(vm_vive); [ -n "$v" ] && { echo "$v"; ferma "una VM e' gia' viva"; }
+v=$(vmm_aperti); [ -n "$v" ] && { echo "$v"; ferma "un nodo /dev/vmm e' aperto"; }
+# vm2 presente e NON aperto e' normale: QEMU lo distrugge e lo ricrea all'avvio
+# (qemu-nested/accel/bhyve/bhyve-all.c:3654-3661); i nodi aperti li ha gia' esclusi vmm_aperti
+NODI0=$(ls /dev/vmm 2>/dev/null | grep -vx vm2 | tr '\n' ' ')
+# #133 §5.1/§6: un'istanza vm2 residua (QEMU -accel bhyve la distrugge solo al poweroff) va IDENTIFICATA; per DM
+# nessuna istanza deve esistere prima dell'avvio: la distruzione e' un passo a parte, autorizzato dall'utente
+if [ -e /dev/vmm/vm2 ]; then
+	VM2_PRIMA="$(stat -f '%c' /dev/vmm/vm2) $(sudo -n /usr/sbin/bhyvectl --vm=vm2 --get-memseg 2>&1 | tr -s ' \n' ' ')"
+else
+	VM2_PRIMA="assente"
+fi
+PROVA_STOP=""
+VUOTO=0
+case "$PIANO" in *DM_PTP*) VUOTO=1;; esac
+case "$MODULO" in ripfix-nested-porta*) VUOTO=1;; esac	# #142/#143: nessuna distruzione implicita di un residuo
+if [ $VUOTO = 1 ]; then
+	if [ -n "$(ls /dev/vmm 2>/dev/null)" ]; then
+		m="/dev/vmm deve essere VUOTO (piano terminale o modo RIPFIX: nessuna distruzione implicita); presenti: $(ls /dev/vmm | tr '\n' ' ')(vm2: $VM2_PRIMA). Distruzione solo con autorizzazione: sudo bhyvectl --vm=vm2 --destroy"
+		# #139 §4: la prova a secco NON si ferma qui (prima lo faceva, e nascondeva i controlli successivi: la firma
+		# oid sbagliata di originale-porta e' emersa solo al primo lancio vero). Registra e prosegue; esce con 6.
+		[ "$MODO" = --prova ] || ferma "$m"
+		PROVA_STOP="$m"
+	fi
+fi
+# #142: in prova, a modulo del modo NON caricato, lo script del modo non puo' compilare (sonde assenti): si compila e
+# si collauda la traccia di base, e lo si dichiara. In esecuzione il modulo e' quello giusto (NONCAR vuoto).
+FBTC=$FBT
+if [ -n "$NONCAR" ] && [ "$FBT" != "$RM_FBT" ]; then
+	FBTC=$RM_FBT
+	PROVA_FBT="compilazione e collaudo di $(basename $FBT) RINVIATI al modulo $MODULO caricato (sonde: ${MOD_SDT:-nessuna}, presenti nel file); provati qui con ptpad-fbt.d"
+fi
+sudo -n /usr/sbin/dtrace -e -s $FBTC 1 >/dev/null 2>&1 || ferma "$(basename $FBTC) non compila sul modulo caricato"
+mkdir -p "$OUT" || ferma "mkdir $OUT"
+sh $N/test-ptpad.sh "$OUT/collaudo" > "$OUT/collaudo.txt" 2>&1 || ferma "collaudo offline dell'oracolo e del driver fallito ($OUT/collaudo.txt)"
+sh $FBC "$OUT/collaudo-fbt" "$FBTC" > "$OUT/collaudo-fbt.txt" 2>&1 || ferma "collaudo DTrace sull'host fallito ($OUT/collaudo-fbt.txt)"
+echo "preflight OK: modulo $MOD_SHA, flat $FLAT_SHA, collaudo $(grep -c '^  ok' $OUT/collaudo.txt) ok, DTrace $(grep -c '^  ok' $OUT/collaudo-fbt.txt) ok"
+
+# #107 §2: COM1 su chardev stdio ESPLICITO, non multiplexato, senza segnali; nessun monitor
+VMCMD="/usr/bin/cpuset -l 6 /usr/bin/timeout -k 1s $((TMO + 30))s $QEMU -L $PCBIOS --no-reboot -nodefaults \
+-machine $QEMU_MACCHINA -accel bhyve,nested=on -device pc-testdev -device isa-debug-exit,iobase=0xf4,iosize=0x4 -display none \
+-monitor none -chardev stdio,id=ptpad,mux=off,signal=off -serial chardev:ptpad \
+-device pci-testdev -smp 1 -m 256 -cpu max -kernel $FLAT -append vmx_ptpad_fidelity_test"
+# #140 §3: col frontend della porta, socket QMP per registrare la causa dell'arresto (host-error)
+QMPOPT=""
+if [ "$FRONTEND" = porta ]; then
+	QMPS="$OUT/qmp.sock"
+	[ ${#QMPS} -lt 100 ] || ferma "percorso del socket QMP troppo lungo per AF_UNIX: $QMPS"
+	# #141 §3.1: -S = la VM parte FERMA; il driver la fa partire con QMP 'cont' solo dopo aver negoziato il monitor
+	VMCMD="$VMCMD -S -qmp unix:$QMPS,server=on,wait=off"
+	QMPOPT="--qmp $QMPS"
+fi
+# #107 §5.3: controllo STATICO della riga effettiva
+for x in " -machine $QEMU_MACCHINA " ' -accel bhyve,nested=on ' ' -smp 1 ' ' -monitor none ' 'stdio,id=ptpad,mux=off,signal=off' \
+    ' -serial chardev:ptpad ' " -kernel $FLAT " ' -append vmx_ptpad_fidelity_test'; do
+	case "$VMCMD" in *"$x"*) ;; *) ferma "riga QEMU senza '$x'";; esac
+done
+for x in 'mon:stdio' '-nographic' 'mux=on' '-serial stdio' 'vm0' '-daemonize'; do
+	case "$VMCMD" in *"$x"*) ferma "riga QEMU con '$x'";; esac
+done
+[ "$(echo "$VMCMD" | grep -o -- '-serial' | wc -l | tr -d ' ')" = 1 ] || ferma "piu' di una -serial"
+{
+	echo "piano $PIANO modo $MODO timeout $TMO"
+	echo "modulo $MOD_SHA build-id $MOD_BUILDID"
+	echo "tabella dei modi runner-modi.sh $(sha256 -q "$B/runner-modi.sh"): $MODULO -> oid $OID_ATTESO frontend $FRONTEND hot-swap $HOTSWAP"
+	echo "flat $FLAT_SHA driver $DRV_SHA fbt $(basename $FBT) $FBT_SHA collaudo-fbt $FBC_SHA oracolo $AN_SHA script $(sha256 -q $0)"
+	echo "flat ritirata (rifiutata): $FLAT_RITIRATA"
+	echo "qemu $QEMU $(sha256 -q "$QEMU") $("$QEMU" --version | head -1) macchina $QEMU_MACCHINA"
+	echo "libvmmapi risolta $LIBV $LIBV_SHA"
+	echo "vm: $VMCMD"
+	echo "nodi /dev/vmm: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')"
+	echo "vm2 prima: $VM2_PRIMA"
+	/sbin/sysctl hw.vmm.vmx.nested_ept_mmio_emulated hw.vmm.vmx.nested_ept12_viol_reflected kern.osrelease
+	/sbin/sysctl hw.vmm.vmx.nested_ept12_viol_emul_reflected hw.vmm.vmx.nested_ept12_viol_emul_stale \
+	    hw.vmm.vmx.nested_ept12_viol_emul_nocache hw.vmm.vmx.vept_ptp_write_retry_xlate \
+	    hw.vmm.vmx.vept_ptp_write_retry_remap 2>&1
+	/sbin/sysctl hw.vmm.vmx.vept_h2_viol_final hw.vmm.vmx.vept_h2_viol_ptp hw.vmm.vmx.vept_h2_misconf \
+	    hw.vmm.vmx.vept_h2_unread hw.vmm.vmx.vept_h2_already hw.vmm.vmx.nested_ept12_misconf_emul_reflected \
+	    hw.vmm.gla2gpa_restart_capped 2>&1
+	/sbin/sysctl hw.vmm.fatal_latches hw.vmm.vmx.nested_vept_mmio_unemulable 2>&1	# #142 (solo RIPFIX)
+	echo "limite file: ulimit -f $(ulimit -f) blocchi (sotto sudo: $(sudo -n /bin/sh -c 'ulimit -f')); uscita su $(df -T "$OUT" | awk 'NR==2{print $2}')"
+	echo "modulo caricato: $CAR $(sha256 -q "$CAR")"
+	/usr/sbin/pciconf -l | grep '^ppt'
+} > "$OUT/manifest.txt"
+if [ "$MODO" = --prova ]; then
+	cat "$OUT/manifest.txt"
+	[ -n "$NONCAR" ] && echo "PROVA: $NONCAR"
+	[ -n "$PROVA_STOP" ] && echo "PROVA: la sessione si fermerebbe qui: $PROVA_STOP"
+	[ -n "${PROVA_FBT:-}" ] && echo "PROVA: $PROVA_FBT"
+	echo "PROVA: traccia DTrace del modo $(basename $FBT); piano terminale: $(piano_terminale "$MODULO" "$PIANO" && echo si || echo no)"
+	echo "PROVA: modo $MODULO -> modulo $MOD_SHA, oid $OID_ATTESO, frontend $FRONTEND, hot-swap $HOTSWAP"
+	echo "PROVA: messaggio finale previsto: $(messaggio_finale "$MODULO" | grep . || echo nessuno)"
+	echo "PROVA: nessuna VM avviata. Il comando del driver sarebbe:"
+	echo "  sudo -n $PY $DRV --piano $PIANO --out $OUT/drv --fbt $FBT --oracolo $AN --timeout $TMO $QMPOPT -- $VMCMD"
+	[ -n "$NONCAR" ] && exit 6
+	[ -n "$PROVA_STOP" ] && exit 6
+	exit 0
+fi
+
+echo "=== sessione $PIANO: avvio (UNA VM, vm2) ==="
+# #143 §3.3: il buffer dei messaggi del kernel, in SOLA LETTURA, prima e dopo: le righe nuove sono quelle della
+# sessione (la diagnosi "istruzione non completabile" del latch, coi campi n.d.)
+/sbin/dmesg > "$OUT/dmesg-prima.txt" 2>&1
+T_AVVIO=$(date +%s)
+sudo -n $PY $DRV --piano "$PIANO" --out "$OUT/drv" --fbt $FBT --oracolo $AN --timeout $TMO $QMPOPT -- $VMCMD | tee "$OUT/driver.out"
+# #134 §7: un dtrace della sessione rimasto vivo (driver crollato: sessione DM reale) si chiude QUI e si registra
+orfani=$(pgrep -f "$(basename $FBT) -o $OUT/drv/fbt.txt" | tr '\n' ' ')	# #142: il nome dello script del MODO
+if [ -n "$orfani" ]; then
+	echo "ATTENZIONE: dtrace orfano della sessione ($orfani): chiuso dal runner" | tee -a "$OUT/manifest.txt"
+	sudo -n kill -TERM $orfani; sleep 2
+fi
+i=0; vivo=""
+until [ -z "$(vm_vive)" ] && [ -z "$(vmm_aperti)" ]; do
+	i=$((i + 1)); [ $i -gt 150 ] && { vivo=1; break; }; sleep 0.2
+done
+echo "nodi /dev/vmm dopo: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')" | tee -a "$OUT/manifest.txt"
+# #137 §4: identita' di ESECUZIONE (procstat dal driver): il binario e la libvmmapi IN USO nel processo QEMU
+id=$(grep -m1 '^IDENT ' "$OUT/drv/combinato.txt")
+echo "identita' di esecuzione: ${id:-ASSENTE}" | tee -a "$OUT/manifest.txt"
+IDENT_KO=
+if [ "$FRONTEND" = porta ]; then
+	ib=$(echo "$id" | sed -n 's/.* bin=\([^ ]*\) .*/\1/p')
+	il=$(echo "$id" | sed -n 's/.* libvmmapi=\([^ ]*\)$/\1/p')
+	# #138 §3.2: senza IDENT (procstat non acquisito in vita) NON si ripiega sull'ldd del preflight
+	if [ -z "$id" ]; then
+		echo "INCONCLUSIVE_IDENTITY: nessuna identita' di esecuzione acquisita durante la sessione" | tee -a "$OUT/manifest.txt"
+		IDENT_KO=1
+	else
+		echo "identita' ricontrollate sui file: bin $ib $(sha256 -q "$ib" 2>/dev/null) libvmmapi $il $(sha256 -q "$il" 2>/dev/null)" | tee -a "$OUT/manifest.txt"
+		if [ "$ib" != "$(realpath "$QEMU")" ] || [ "$(sha256 -q "$ib" 2>/dev/null)" != "$QEMU_ATTESO_SHA" ] || \
+		    [ "$il" != "$LIBV_ATTESA" ] || [ "$(sha256 -q "$il" 2>/dev/null)" != "$LIBV_ATTESA_SHA" ]; then
+			echo "INCONCLUSIVE_IDENTITY: identita' di esecuzione diversa da quella attesa ($id)" | tee -a "$OUT/manifest.txt"
+			IDENT_KO=1
+		fi
+	fi
+fi
+# #133 §6: prova che vm2 e' l'istanza di QUESTA sessione (creata dopo l'avvio), non un residuo riusato
+if [ -e /dev/vmm/vm2 ]; then
+	c2=$(stat -f '%c' /dev/vmm/vm2)
+	echo "vm2 dopo: creata $c2 (avvio sessione $T_AVVIO) $(sudo -n /usr/sbin/bhyvectl --vm=vm2 --get-memseg 2>&1 | tr -s ' \n' ' ')" | tee -a "$OUT/manifest.txt"
+	[ "$c2" -ge "$T_AVVIO" ] || { echo "ATTENZIONE: vm2 NON creata da questa sessione ($c2 < $T_AVVIO)"; exit 5; }
+fi
+/sbin/dmesg > "$OUT/dmesg-dopo.txt" 2>&1
+$PY - "$OUT/dmesg-prima.txt" "$OUT/dmesg-dopo.txt" > "$OUT/dmesg-sessione.txt" <<'FINE_PY_DMESG_143'
+import sys, collections
+prima = collections.Counter(open(sys.argv[1], errors='replace').read().splitlines())
+for r in open(sys.argv[2], errors='replace').read().splitlines():
+	if prima[r] > 0:
+		prima[r] -= 1
+	else:
+		print(r)
+FINE_PY_DMESG_143
+echo "dmesg della sessione: $(wc -l < "$OUT/dmesg-sessione.txt" | tr -d ' ') righe nuove, $(grep -c 'istruzione non completabile' "$OUT/dmesg-sessione.txt") del latch" | tee -a "$OUT/manifest.txt"
+$PY $AN "$OUT/drv/combinato.txt" > "$OUT/verdetto.txt" 2>&1; an=$?
+cat "$OUT/verdetto.txt"
+(cd "$OUT" && sha256 -r manifest.txt driver.out verdetto.txt dmesg-prima.txt dmesg-dopo.txt dmesg-sessione.txt drv/* > SHA256SUMS 2>/dev/null)
+[ -n "$vivo" ] && { echo "ATTENZIONE: VM ancora viva o nodo aperto dopo 30 s"; exit 5; }
+[ -n "$IDENT_KO" ] && { echo "INCONCLUSIVE_IDENTITY: il verdetto dell'oracolo NON vale (identita' di esecuzione assente o diversa)"; exit 5; }
+# #119 §3.3: nessun file della sessione al tetto (un file troncato = evidenza incompleta)
+grande=$(find "$OUT" -type f -size +$((LIMITE_BLOCCHI - 2048)) 2>/dev/null)
+[ -n "$grande" ] && { echo "ATTENZIONE: file al limite di dimensione (troncati?): $grande"; exit 5; }
+[ "$(ls /dev/vmm 2>/dev/null | grep -vx vm2 | tr '\n' ' ')" = "$NODI0" ] || { echo "ATTENZIONE: nodi /dev/vmm cambiati oltre vm2"; exit 5; }
+# #132 §3.2: killpg fallito o processi del gruppo superstiti: lo stato della VM e' IGNOTO
+grep -q 'RUNNER=UNKNOWN' "$OUT/driver.out" && { echo "ATTENZIONE: RUNNER=UNKNOWN, ripristino NON verificato (EVENT KILL_FAILED/SURVIVORS in drv/combinato.txt)"; exit 5; }
+grep -q 'USCITA=2' "$OUT/driver.out" && exit 2
+grep -q '^PULIZIA: PULITA' "$OUT/verdetto.txt" && echo "SESSIONE PULITA" || echo "SESSIONE NON PULITA: $(grep '^PULIZIA' "$OUT/verdetto.txt")"
+messaggio_finale "$MODULO"	# solo per i modi che cambiano il modulo a caldo (tabella)
+[ $an = 0 ] && exit 0
+[ $an = 4 ] && exit 7
+exit 3

@@ -1,0 +1,46 @@
+fasi: avvio +0 s, desktop +120 s, wsl_inizio +229 s, wsl_fine +349 s, spegnimento +356 s
+
+  t(s) fase        uscite L2 motivi principali (L2)                       riflesse       L2in      rifl      slow      emul      immx      intw      migr
+     9 avvio           19433 EPTVIOL 92%, VMCALL 3%, CPUID 1%                 1272  
+    19 avvio         1835681 EPTVIOL 93%, EXTINT 2%, VMCALL 1%              132462      77484     77483   1946043    414759       113       680     77751
+    29 avvio         1566264 EPTVIOL 92%, IO 6%, EXTINT 0%                  106865     124426    124426   2682555     99220       111       516    124438
+    39 avvio         3001534 EPTVIOL 98%, IO 0%, EXTINT 0%                   40742      75936     75935   3256522     13724        64       162     76175
+    49 avvio         2290792 EPTVIOL 99%, EXTINT 0%, WRMSR 0%                 5246       6931      6932   3016506     10803        72       133      6996
+    59 avvio          203286 EPTVIOL 87%, EXTINT 6%, WRMSR 1%                12630       6306      6306    500025      8961        42       102      6759
+    69 avvio         2070131 EPTVIOL 95%, VMCALL 2%, WRMSR 0%                87496      67294     67294   1838008     56721       322       569     67622
+    79 avvio         2303769 EPTVIOL 96%, EXTINT 1%, WRMSR 1%                84482      85873     85872   3146946     82531       537      1182     85998
+    89 avvio         2063108 EPTVIOL 95%, EXTINT 1%, WRMSR 1%                85539      84119     84119   3009547    101556       797      1729     84119
+    99 avvio         1478891 EPTVIOL 94%, EXTINT 1%, WRMSR 1%                79954      77970     77970   2423844    103904       612      1489     78051
+   109 avvio         1133848 EPTVIOL 92%, EXTINT 2%, WRMSR 2%                78963      75660     75661   1733465     91325       730      1697     75745
+   119 avvio         1273057 EPTVIOL 92%, EXTINT 2%, WRMSR 2%                81922      92531     92531   2120555    116824       757      2049     92565
+   129 desktop       1440274 EPTVIOL 92%, EXTINT 2%, WRMSR 2%               103583      77663     77662   2183493     99239       723      1590     77663
+   139 desktop       1992898 EPTVIOL 94%, EXTINT 2%, WRMSR 1%                96983     119567    119569   2386428    149556      2604      4535    119619
+   149 desktop       2908094 EPTVIOL 97%, EXTINT 1%, WRMSR 0%                74810      70206     70204   3904932    101721       590      1057     70209
+   159 desktop       1428673 EPTVIOL 91%, EXTINT 3%, WRMSR 2%               106057     100141    100141   2500772    131663      1561      2950    100144
+   169 desktop       1005914 EPTVIOL 87%, EXTINT 6%, WRMSR 3%                94456     104237    104237   2072113    145422      2057      3934    104238
+   179 desktop       1251841 EPTVIOL 90%, EXTINT 4%, WRMSR 2%                92042      86132     86133   1843990    118511      1617      2756     86133
+   189 desktop       1264270 EPTVIOL 92%, EXTINT 3%, WRMSR 1%                75819      82453     82453   1807268    121926      1661      3046     83478
+   199 desktop       1487853 EPTVIOL 92%, EXTINT 3%, WRMSR 2%                90941      89384     89383   2344791    120368      1443      2739     89388
+   209 desktop        879064 EPTVIOL 87%, EXTINT 5%, WRMSR 3%                90074      87236     87236   1670876    118403      1289      2596     87704
+   219 desktop       1445728 EPTVIOL 91%, EXTINT 3%, WRMSR 2%               108735      98765     98766   2172512    134133      1762      3319     99011
+   229 wsl_inizio     850984 EPTVIOL 82%, EXTINT 7%, WRMSR 5%               128484     123491    123491   2310450    159175      2649      4851    123492
+   239 wsl_inizio    1130862 EPTVIOL 86%, EXTINT 5%, WRMSR 4%               129180     125213    125213   1959488    160565      2569      4295    125213
+   249 wsl_inizio    1396004 EPTVIOL 90%, EXTINT 4%, WRMSR 2%               108266     117571    117570   2527470    159110      2336      4014    117571
+   259 wsl_inizio    1276803 EPTVIOL 91%, EXTINT 4%, WRMSR 2%                80926      98758     98758   2193155    139736      1759      3070     98758
+   269 wsl_inizio    1813758 EPTVIOL 95%, EXTINT 2%, WRMSR 1%                71145      70889     70889   1959753    109573      1026      1750     70890
+   279 wsl_inizio    2266766 EPTVIOL 96%, EXTINT 1%, WRMSR 0%                78356      72936     72937   2870874    108316       900      1552     72936
+   289 wsl_inizio    1991306 EPTVIOL 94%, EXTINT 1%, WRMSR 1%               101094      92352     92351   3657714    107630      1532      2525     92352
+   299 wsl_inizio    1712059 EPTVIOL 92%, EXTINT 2%, WRMSR 2%               120109     116695    116695   2842700    136451      2864      4507    116700
+   309 wsl_inizio    1912886 EPTVIOL 94%, EXTINT 1%, WRMSR 1%               109958     114842    114842   3113891    129536      3153      5055    114845
+   319 wsl_inizio    2050292 EPTVIOL 94%, EXTINT 1%, WRMSR 1%               116923     119343    119344   3342662    129882      2890      4571    119347
+   329 wsl_inizio    2047389 EPTVIOL 94%, EXTINT 1%, WRMSR 1%               102940     105941    105940   3334769    121366      2381      3714    105946
+   339 wsl_inizio    2137526 EPTVIOL 95%, EXTINT 1%, WRMSR 1%                92191     100543    100543   2890928    120913      2702      3562    100549
+   349 wsl_fine      2808908 EPTVIOL 96%, VMCALL 1%, EXTINT 0%               94646      88041     88042   3603706     93101       968      1809     88042
+   359 spegnimento   1352214 EPTVIOL 90%, EXTINT 3%, WRMSR 2%               107997  
+   369 spegnimento   1884525 EPTVIOL 93%, EXTINT 2%, WRMSR 1%               106933  
+   379 spegnimento   1708782 EPTVIOL 95%, EXTINT 1%, WRMSR 1%                65364  
+   389 spegnimento   2000901 EPTVIOL 96%, WRMSR 0%, VMCALL 0%                64709  
+   399 spegnimento   1095326 EPTVIOL 93%, VMCALL 1%, WRMSR 1%                73757  
+   404 spegnimento     61424 EPTVIOL 93%, WRMSR 1%, INTWIN 1%                 3880  
+
+motivi sull'intera corsa: EPTVIOL 61922378 (94.0%), EXTINT 1488512 (2.3%), WRMSR 1023957 (1.6%), VMCALL 428098 (0.7%), INTWIN 353367 (0.5%), TPR 259914 (0.4%), IO 143559 (0.2%), CPUID 88987 (0.1%), HLT 71536 (0.1%), PREEMPT 51619 (0.1%)

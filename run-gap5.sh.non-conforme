@@ -1,0 +1,177 @@
+#!/bin/sh
+# Claude 24/10/2026 -- parere #42 §3/§9: prova A/B/A su autoMemoryReclaim, tre SESSIONI WSL
+# distinte (wsl --shutdown fra le fasi), a 2 VP reali, modulo 0572294 (baseline diagnostica):
+#   A1 nessun .wslconfig (come e' sempre stato);
+#   B  .wslconfig con [experimental] autoMemoryReclaim=disabled;
+#   A2 .wslconfig tolto (RINOMINATO in .wslconfig.claude-gap5-B, non cancellato).
+# In ogni fase faseA/gapmem.sh: verifiche preliminari del parere (page_reporting_order, dmesg
+# di hv_balloon e free page reporting, meminfo, vmstat), W cicli di riscaldamento esclusi
+# dalle statistiche, poi D s di prova ext4 con gapmon e memmon (memoria Linux ogni 100 ms) e
+# un marcatore a ogni passo del ciclo dd/sha/sync/drop/rilettura.
+# Sonde, come gap4 salvo dove detto:
+#   partsamp.d (campionatore per contesto), rootcall5.d (= rootcall.d + contatori TSC/EPT02
+#   letti dalla memoria del kernel a ogni finestra da 100 ms: costo nullo per la VM);
+#   exitrsn.d (ragioni delle uscite dell'L1 per 100 ms, ~260.000 eventi/s): ACCESA SOLO NEI
+#   CICLI PARI e spenta nei dispari, cosi' il suo costo si misura sugli stessi dati e i cicli
+#   dispari restano puliti (parere #42 §9: verificare che le sonde non rallentino).
+# Windows: hvperf.ps1 -Tag F (contatori Hyper-V, istanze di WSL nate prima del suo avvio) e
+#   memwin.ps1 -Tag F (working set di vmmem, memoria libera), avviati dopo l'avvio di WSL,
+#   fermati a fine fase. Guardia WSL in pausa per tutta la corsa (i wsl --shutdown sono voluti).
+D=${1:-480}; W=${2:-3}
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+O=$B/logs/gap5-$(date +%Y%m%d-%H%M); mkdir -p "$O"
+H=IP-HOST
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+task() {	# task <nome> <comando>: lanciato nella sessione dell'utente
+	w "schtasks /create /tn $1 /tr \"$2\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn $1 >nul"
+}
+attendi_wsl() {	# aspetta che il task claude-wsl sia finito
+	k=0; while w "schtasks /query /tn claude-wsl /fo csv /nh" | /usr/bin/grep -qiE "esecuzione|running"; do sleep 5; k=$((k+1)); [ $k -gt 60 ] && break; done
+}
+wslrun() {	# wslrun <argomenti di wsl.exe>: nella sessione dell'utente, senza attendere
+	printf '%s' "$1" > "$O/wsl-args.txt"
+	cpw "$O/wsl-args.txt" marietto@win11:'C:/claude/wsl-args.txt'
+	task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+}
+fase() { echo "FASE $1 $(date +%s.%N) $(date +%T)" | tee -a "$O/fasi.txt"; }
+calib() {	# calib <etichetta>: ora, contatori, tempo CPU dei thread vCPU
+	{
+		echo "CALIB $1 $(date +%s.%N)"
+		sysctl hw.vmm.vmx.nested_l1_tsc hw.vmm.vmx.nested_l2_tsc
+		sysctl hw.vmm.vmx | /usr/bin/grep -E "\.vst_"
+		ps -H -o lwp,time,comm -p "$(pgrep -x bhyve | head -1)" | /usr/bin/grep vcpu
+	} >> "$O/calib.txt"
+}
+EXR=""
+exr_on() {	# exr_on <fase> <ciclo>
+	[ -n "$EXR" ] && return
+	sudo -n dtrace -C -D ROOTA=$RA -D ROOTB=$RB -s "$T/exitrsn.d" -o "$O/exr-$1-$2.txt" 2>>"$O/exr.err" &
+	EXR=$!
+	echo "$(date +%s.%N) ON $1 $2" >> "$O/exr-commutazioni.txt"
+}
+exr_off() {	# exr_off <fase> <ciclo>
+	[ -n "$EXR" ] || return
+	sudo -n pkill -TERM -f "exitrsn.d"; wait "$EXR" 2>/dev/null; EXR=""
+	echo "$(date +%s.%N) OFF $1 $2" >> "$O/exr-commutazioni.txt"
+}
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+echo "== host prima: $(swapinfo -h | tail -1)"
+vmstat -w 1 > "$O/vmstat.txt" &
+VS=$!
+( while :; do echo "$(date +%T) $(swapinfo -k | tail -1)"; sleep 30; done ) > "$O/swap.txt" &
+SW=$!
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 hw.vmm.vmx.vept_test_race=0 >/dev/null
+sysctl hw.vmm.vmx.vept_scan_hold_keep > "$O/modulo.txt"; md5 /boot/kernel/vmm-restore.ko >> "$O/modulo.txt"
+python3 "$C/tsecho.py" 7123 "$O/tsecho.txt" &
+TS=$!
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s "$T/partsamp.d" -o "$O/samp.txt" 2>"$O/samp.err" &
+sleep 4
+sudo -n sh "$N/${VMS:-12-Windows-11-vm12-senza-gpu}" > "$O/script.log" 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; kill $TS $VS $SW; sudo -n pkill -TERM -f "partsamp.d"; exit 1; }
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; done
+echo "ssh pronto dopo circa $i s"
+w "schtasks /delete /tn claude-vita /f & schtasks /delete /tn claude-clk /f" > /dev/null 2>&1
+sleep 90
+w "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors | Format-List | Out-String).Trim()\"" | tee "$O/topologia.txt"
+for f in gapmon.c memmon.c gapmem.sh hvperf.ps1 memwin.ps1; do cpw "$C/$f" marietto@win11:"C:/claude/faseA/$f"; done
+sh "$B/guardia-win.sh" aggiorna > "$O/guardia.txt" 2>&1
+sleep 30	# la guardia, quando parte, cancella il file di pausa: lo si crea DOPO
+pausa() {	# pausa: la guardia non deve rilanciare WSL fra un --shutdown e l'altro
+	w "if exist C:\\claude\\guardia-pausa (echo GIA) else (echo pausa > C:\\claude\\guardia-pausa & echo CREATA)" | tail -1
+}
+echo "guardia in pausa dalle $(date +%T) (tutta la corsa): $(pausa)" >> "$O/guardia.txt"
+UP=$(w "echo %USERPROFILE%" | tail -1)
+echo "USERPROFILE=$UP" > "$O/wslinfo.txt"
+# il .wslconfig dell'utente NON deve esistere: la fase A1 e' "come e' sempre stato"
+if w "if exist \"$UP\\.wslconfig\" (echo ESISTE) else (echo ASSENTE)" | /usr/bin/grep -q ESISTE; then
+	echo "!!! esiste gia' un .wslconfig: prova annullata per non toccarlo" | tee -a "$O/wslinfo.txt"
+	w "type \"$UP\\.wslconfig\"" >> "$O/wslinfo.txt"
+	ANNULLA=1
+fi
+w "ver" >> "$O/wslinfo.txt"
+echo "######## C0: Windows senza WSL, per i contesti della radice $(date +%T)"
+wslrun "--shutdown"; sleep 20; attendi_wsl
+fase C0-windows-inattivo; calib C0-inizio; sleep 60; calib C0-fine
+fase C0-fine
+R=$(python3 - "$O" <<'EOF'
+import re, sys
+d = sys.argv[1]
+f = {l.split()[1]: float(l.split()[2]) for l in open(f"{d}/fasi.txt")}
+a, b = f["C0-windows-inattivo"], f["C0-fine"]
+g = {}; t = None
+for l in open(f"{d}/samp.txt", errors="replace"):
+    if l.startswith("T "): t = int(l.split()[1]) / 1e9; continue
+    m = re.match(r"\s+v\d+ (0x[0-9a-f]+) guest (\d+)", l)
+    if m and t and a <= t <= b: g[m.group(1)] = g.get(m.group(1), 0) + int(m.group(2))
+r = sorted(g, key=lambda c: -g[c])[:2] + ["0x1", "0x1"]
+print(r[0], r[1])
+EOF
+)
+set -- $R; RA=$1; RB=$2
+echo "contesti della radice: $RA $RB" | tee "$O/radice.txt"
+sudo -n dtrace -C -D ROOTA=$RA -D ROOTB=$RB -s "$T/rootcall5.d" -o "$O/rc.txt" 2>"$O/rc.err" &
+sleep 3
+printf '[experimental]\r\nautoMemoryReclaim=disabled\r\n' > "$O/wslconfig-B"
+for F in A1 B A2; do
+	[ -n "$ANNULLA" ] && break
+	pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+	echo "######## fase $F $(date +%T)"
+	echo "fase $F, pausa della guardia: $(pausa)" >> "$O/guardia.txt"
+	# configurazione della sessione
+	case $F in
+	B)	cpw "$O/wslconfig-B" marietto@win11:"$(echo "$UP" | tr '\\' '/')/.wslconfig" ;;
+	A2)	w "move \"$UP\\.wslconfig\" \"$UP\\.wslconfig.claude-gap5-B\"" > /dev/null ;;
+	esac
+	{ echo "== $F $(date +%T)"; w "if exist \"$UP\\.wslconfig\" (type \"$UP\\.wslconfig\") else (echo NESSUN .wslconfig)"; } >> "$O/wslconfig-fasi.txt"
+	wslrun "--shutdown"; sleep 15; attendi_wsl
+	{ echo "== $F dopo --shutdown: processi vmmem"; w "powershell -NoProfile -Command \"Get-Process -Name vmmem* -ErrorAction SilentlyContinue | Format-Table -AutoSize | Out-String\""; } >> "$O/wslconfig-fasi.txt"
+	fase "$F-inizio"; calib "$F-inizio"
+	w "del C:\\claude\\faseA\\gapmem-$F.log 2>nul & del C:\\claude\\wsl-log.txt 2>nul" > /dev/null
+	wslrun "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/gapmem.sh > /root/gapmem.sh; bash /root/gapmem.sh $D $H $F $W'"
+	cp "$O/wsl-args.txt" "$O/args-$F.txt"
+	# contatori di Windows: con WSL gia' vivo (typeperf con (*) non vede istanze nate dopo)
+	k=0; until cpw marietto@win11:"C:/claude/faseA/gapmem-$F.log" "$O/gapmem-$F.log" 2>/dev/null && /usr/bin/grep -q RISCALDAMENTO-INIZIO "$O/gapmem-$F.log"; do sleep 5; k=$((k+1)); [ $k -gt 120 ] && break; done
+	task claude-hvperf "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\hvperf.ps1 -Sec 3000 -Tag $F" > /dev/null
+	task claude-memwin "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\memwin.ps1 -Sec 3000 -Tag $F" > /dev/null
+	fase "$F-contatori-windows"
+	# exitrsn.d nei cicli pari (contando anche il riscaldamento), spenta nei dispari
+	kv=0; k=0; MAXK=$(( (W * 150 + D + 900) / 5 ))
+	until /usr/bin/grep -q GAP-FINE "$O/gapmem-$F.log"; do
+		pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+		sleep 5; k=$((k+1)); [ $k -gt $MAXK ] && { echo "fase $F non finita"; break; }
+		cpw marietto@win11:"C:/claude/faseA/gapmem-$F.log" "$O/gapmem-$F.log" 2>/dev/null || continue
+		kn=$(/usr/bin/grep -c "^CICLO .* dd " "$O/gapmem-$F.log")
+		if [ "$kn" != "$kv" ]; then
+			kv=$kn; cn=$(/usr/bin/grep "^CICLO .* dd " "$O/gapmem-$F.log" | tail -1 | awk '{print $2}')
+			if [ $((kn % 2)) -eq 0 ]; then exr_on "$F" "$cn"; else exr_off "$F" "$cn"; fi
+		fi
+	done
+	exr_off "$F" fine
+	fase "$F-fine"; calib "$F-fine"
+	w "taskkill /im typeperf.exe /f & echo stop > C:\\claude\\faseA\\memwin-stop" > /dev/null
+	sleep 25	# hvperf scambia i marcatori "dopo", memwin si ferma
+	for f in gapmem-$F.log gapmem-pre-$F.txt gapmem-post-$F.txt gapmem-dmesg-pre-$F.txt gapmem-dmesg-post-$F.txt gapmem-gapmon-$F.txt gapmem-memmon-$F.txt hvperf$F.csv hvperf-sync$F.txt memwin$F.txt; do
+		cpw marietto@win11:"C:/claude/faseA/$f" "$O/$f" 2>/dev/null || echo "manca $f" >> "$O/mancanti.txt"
+	done
+	cpw marietto@win11:'C:/claude/wsl-log.txt' "$O/wsl-log-$F.txt" 2>/dev/null
+	echo "fase $F: buchi $(/usr/bin/grep -c '^BUCO' "$O/gapmem-gapmon-$F.txt" 2>/dev/null)"
+done
+# A2 deve lasciare Windows come l'ha trovato: nessun .wslconfig
+w "if exist \"$UP\\.wslconfig\" (echo .wslconfig ANCORA PRESENTE) else (echo nessun .wslconfig)" | tee -a "$O/wslconfig-fasi.txt"
+fase fine-prova; calib fine-prova
+sh "$B/guardia-win.sh" riprendi >> "$O/guardia.txt" 2>&1
+w "schtasks /delete /tn claude-wsl /f & schtasks /delete /tn claude-hvperf /f & schtasks /delete /tn claude-memwin /f" > /dev/null 2>&1
+w "shutdown /s /t 0" >/dev/null 2>&1
+i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+sleep 3
+sudo -n pkill -TERM -f "partsamp.d|rootcall5.d|exitrsn.d"; kill $TS $VS $SW
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sysctl hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 >/dev/null
+sysctl hw.vmm.vmx | /usr/bin/grep -E "\.vst_h_" > "$O/hold-quiescenza.txt"
+echo "== host dopo: $(swapinfo -h | tail -1)"
+echo "OUTPUT $O"

@@ -1,0 +1,148 @@
+#!/bin/sh
+# run-opnd-kut.sh (v4: manifest da opnd-manifest.sh, tre contatori nel verdetto, #168) -- Claude 31/10/2026, pareri #166-#167R1 (sezione B del dossier): collaudo dello stadio 9.
+# Il modulo dello stadio 9 deve essere GIA' caricato (scambio a caldo, passo separato col suo consenso:
+# modulo-caldo.sh --esegui originale stadio9) dalla copia CONGELATA logs/stadio9-congelato-20261031 (v3: non piu'
+# dallo staging, che e' ricompilabile); QEMU protetta (porta); nested=on; una VM (vm2), 1 vCPU su CPU 6.
+# v3 (#167R1 par. 9.5): manifest.txt nel formato letto da vmm-residuo.sh --classifica-ritorno ("vm2 dopo: creata ...")
+# e da smoke-modulo.sh stadio9 --continuita ("modulo caricato:", "avvio sessione:", "contatori dopo:"), dmesg della
+# sessione, SHA256SUMS di tutti i file della sessione.
+#
+#   run-opnd-kut.sh --prova    F1,F2,F3|F4 <out>   controlli in sola lettura + comando: NESSUNA VM
+#   run-opnd-kut.sh --esegui   F1,F2,F3    <out>   F1-F3 (sottoinsiemi ammessi), nessun caso terminale
+#   run-opnd-kut.sh --esegui-d F4          <out>   F4 da sola, TERMINALE (latch, VM_RUN 95): consenso separato
+#
+# Nessun rilancio, mai; dopo F4 nessun rientro: la QEMU protetta si ferma da se'. Nessuna distruzione di vm2.
+# Verdetto: opnd-verdetto.py (#167R1 §6). USCITA: la sua (0 PASS, 1 FAIL, 5 INCONCLUSIVO); 4 STOP ai controlli;
+# 6 modulo non caricato (--prova); 7 DTrace non attivata (nessuna VM avviata); 5 anche se dtrace ha richiesto SIGKILL,
+# se lo shadow VMCS di L0 e' acceso (parere Opus V1: VMREAD/VMWRITE non uscirebbero), se vm2 risulta creata PRIMA
+# dell'avvio, o se il kld non e' piu' l'istanza dell'apertura (loadcnt, #168 par. 3): la sessione non conta.
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+MOD=$B/logs/stadio9-congelato-20261031/vmm-restore.ko
+MOD_SHA=f158dec46712e6ad03c7f1b66333b3270185c6be4dd7f64cc50052762439022d
+MOD_BUILDID=1d369697acaae9cfd5354a716570f6b1f66d24ad
+OIDS="hw.vmm.vmx.nested_ept12_viol_emul_reflected hw.vmm.vmx.vept_h2_viol_final hw.vmm.gla2gpa_restart_capped hw.vmm.fatal_latches hw.vmm.vmx.nested_operand_fatal"
+OID_ATTESO=11011			# r5 (1101) + nested_operand_fatal
+FLAT=$B/logs/kut-opnd-build-opus/vmx-opnd.flat
+FLAT_SHA=a57b9eca86378d1e06429a857030c9e3a5ff5ef67a0be7a4c9c772f56f0f2430
+DRV=$B/kut-drive.py
+DRV_SHA=fa4da538e95f01ba05e439f6dc4229e76417e57fdf87408d627b5e320d69fb79
+VER=$B/opnd-verdetto.py
+VER_SHA=6de32ade800f58eb72d4538d8a18ed137307dbcc9368a90d06fee506b42bcfc6
+OM=$B/opnd-manifest.sh
+KLDD_SHA=add66720ecd65a1e0620f93e81ec5bb9f98f32a103cff5e9fcf9f8839eb02b10
+OM_SHA=6536c4aef24f17a7550db4be60c28ef39a3ec38f3ff687dc7c51ab9489c3699a
+QEMU=$B/build-qemu-gate-nested-sr/qemu-system-x86_64
+QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+LIBV_ATTESA=/usr/lib/libvmmapi.so.7
+LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
+LOADER_SHA=4f3d0c57da4372da8cb501096aa45c359edebf7c11e061c8996e314898022230
+PCBIOS=$B/qemu-nested/pc-bios
+MACCHINA=pc-i440fx-10.2
+PY=/usr/local/bin/python3
+LIMITE_BLOCCHI=2097152
+SONDE='BEGIN { inizio = timestamp; printf("DTRACE_ATTIVO\n"); }
+fbt:vmm-restore:nested_vmread:entry { @n["nested_vmread"] = count(); }
+fbt:vmm-restore:nested_vmwrite:entry { @n["nested_vmwrite"] = count(); }
+fbt:vmm-restore:nested_operand_copy:entry { @n["nested_operand_copy"] = count(); }
+END { printa("FBT %s %@d\n", @n); printf("DTRACE_FINE\n"); }
+vmm:vmx:nested:opndfatal { printf("OPNDFATAL vcpu=%d stadio=%d err=%d rip=%#lx gla=%#lx\n", arg0, arg1, arg2, arg3, arg4); }
+vmm:::fatal-latch { printf("FATAL_LATCH vcpu=%d errno=%d stadio=%d rip=%#lx gpa=%#lx gla=%#lx\n", arg0, arg1, arg2, arg3, arg4, arg5); }
+vmm:::fatal-ritorno { printf("FATAL_RITORNO vcpu=%d nextrip=%#lx rip=%#lx len=%d fatal_rip=%#lx\n", arg0, arg1, arg2, arg3, arg4); }'
+
+[ $# -eq 3 ] || { echo "uso: $0 --prova|--esegui|--esegui-d <piano> <out>"; exit 4; }
+# #168 par. 4: nessun aggancio di simulazione nell'ambiente di una sessione vera
+for v in FS SM_FINTO VR_FINTO OM_FINTO SM_DIARIO; do eval "x=\${$v:-}"; [ -z "$x" ] || { echo "STOP: variabile di collaudo $v nell'ambiente"; exit 4; }; done
+MODO=$1; PIANO=$2; OUT=$3
+ferma() { echo "STOP: $*"; exit 4; }
+case "$MODO" in --prova|--esegui|--esegui-d) ;; *) ferma "modo $MODO";; esac
+case "$PIANO" in
+F4) [ "$MODO" = --esegui ] && ferma "F4 e' terminale: serve --esegui-d (consenso separato)"; TMO=90;;
+F1|F2|F3|F1,F2|F1,F3|F2,F3|F1,F2,F3) [ "$MODO" = --esegui-d ] && ferma "--esegui-d solo per F4"; TMO=300;;
+*) ferma "piano '$PIANO': F1,F2,F3 (o un sottoinsieme in quest'ordine) oppure F4 da sola";;
+esac
+case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
+case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+[ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
+[ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
+ulimit -f $LIMITE_BLOCCHI
+
+echo "=== preflight (sola lettura) ==="
+[ "$(sha256 -q "$MOD")" = "$MOD_SHA" ] || ferma "copia congelata diversa dallo stadio 9"
+readelf -n "$MOD" 2>/dev/null | grep -q "Build ID: $MOD_BUILDID" || ferma "build-id della copia congelata diverso"
+for x in sdt_vmm_vmx_nested_opndfatal sdt_vmm___fatal__latch sdt_vmm___fatal__ritorno; do
+	nm "$MOD" | grep -q " $x\$" || ferma "sonda $x assente dal modulo"
+done
+CAR=$(/sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | head -1)
+sig=""; for o in $OIDS; do sig=$sig$(/sbin/sysctl -n $o >/dev/null 2>&1 && echo 1 || echo 0); done
+NONCAR=""
+if [ "$CAR" != "$MOD" ] || [ "$sig" != "$OID_ATTESO" ]; then
+	[ "$MODO" = --prova ] || { echo "STOP: caricato '$CAR' (oid $sig), non lo stadio 9 (oid $OID_ATTESO)"; exit 6; }
+	NONCAR="caricato '$CAR' (oid $sig): lo stadio 9 NON e' caricato (lo scambio e' un passo separato)"
+fi
+[ "$(sha256 -q /boot/loader.conf)" = "$LOADER_SHA" ] || ferma "loader.conf cambiato"
+[ "$(sha256 -q "$FLAT")" = "$FLAT_SHA" ] || ferma "vmx-opnd.flat diversa da quella congelata"
+for x in 'OPND PIANO?' 'OPND ATTESI casi=' 'OPND CASO' 'OPND CONTROLLO' 'OPND F4 INIZIO' 'OPND F4 RITORNATO' 'OPND FINE casi='; do strings "$FLAT" | grep -q "$x" || ferma "la .flat non stampa '$x'"; done
+[ "$(sha256 -q "$DRV")" = "$DRV_SHA" ] || ferma "kut-drive.py diverso da quello congelato"
+[ "$(sha256 -q "$VER")" = "$VER_SHA" ] || ferma "opnd-verdetto.py diverso da quello congelato"
+[ "$(sha256 -q "$OM")" = "$OM_SHA" ] || ferma "opnd-manifest.sh diverso da quello collaudato"
+[ "$(sha256 -q $B/kld-loadcnt.d)" = "$KLDD_SHA" ] || ferma "kld-loadcnt.d diverso da quello provato"
+. "$OM"
+[ "$(sha256 -q "$QEMU")" = "$QEMU_SHA" ] || ferma "QEMU diversa da quella protetta"
+strings "$QEMU" | grep -q 'porta della VM chiusa dal vCPU' || ferma "QEMU senza la porta della VM"
+# parere Opus V1: con lo shadow VMCS di L0 VMREAD/VMWRITE dell'L1 le esegue il silicio (nessuna uscita): copertura nulla
+[ "$(/sbin/sysctl -n hw.vmm.vmx.nested_shadow_vmcs 2>/dev/null)" = 0 ] || [ -n "$NONCAR" ] || ferma "hw.vmm.vmx.nested_shadow_vmcs != 0"
+LIBV=$(sudo -n /usr/bin/ldd "$QEMU" | awk '/libvmmapi/{print $3}')
+[ "$LIBV" = "$LIBV_ATTESA" ] && [ "$(sha256 -q "$LIBV")" = "$LIBV_SHA" ] || ferma "libvmmapi $LIBV diversa da quella attesa"
+v=$(/bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'); [ -n "$v" ] && { echo "$v"; ferma "una VM e' gia' viva"; }
+[ -z "$(ls /dev/vmm 2>/dev/null)" ] || ferma "/dev/vmm non vuoto ($(ls /dev/vmm | tr '\n' ' ')): nessuna distruzione implicita"
+[ "$(pciconf -l 2>/dev/null | grep -c '^ppt')" = 6 ] || ferma "i ppt legati non sono 6"
+kldstat -q -n amdgpu.ko && ferma "amdgpu caricato"
+
+# parere Opus H1: rete di sicurezza, dtrace non sopravvive mai alla sessione (TMO + 60 s)
+SONDE="$SONDE
+tick-1s /timestamp - inizio > $((TMO + 60))000000000/ { printf(\"DTRACE_SCADUTO\\n\"); exit(0); }"
+VMCMD="/usr/bin/cpuset -l 6 /usr/bin/timeout -k 1s $((TMO + 30))s $QEMU -L $PCBIOS --no-reboot -nodefaults \
+-machine $MACCHINA -accel bhyve,nested=on -device isa-debug-exit,iobase=0xf4,iosize=0x4 -display none -monitor none \
+-chardev stdio,id=opnd,mux=off,signal=off -serial chardev:opnd -smp 1 -m 256 -cpu max -kernel $FLAT \
+-append vmx_opnd_test"
+case "$VMCMD" in *mon:stdio*|*-daemonize*|*vm0*) ferma "riga QEMU non ammessa";; esac
+FOTO="/sbin/sysctl hw.vmm.fatal_latches hw.vmm.vmx.nested_operand_fatal"
+REGOLE="--regola 'OPND INIZIO|foto|' --regola 'OPND PIANO?||$PIANO'"
+[ "$PIANO" = F4 ] || REGOLE="$REGOLE --regola 'OPND FINE casi=|foto|'"
+DRVCMD="$PY $DRV --out $OUT/drv --timeout $TMO $REGOLE --foto-cmd '$FOTO' -- $VMCMD"
+echo "preflight OK: stadio 9 congelato $MOD_SHA ($MOD_BUILDID), flat $FLAT_SHA, QEMU $QEMU_SHA, libvmmapi $LIBV_SHA"
+[ -n "$NONCAR" ] && echo "PROVA: $NONCAR"
+echo "comando: sudo -n $DRVCMD"
+[ "$MODO" = --prova ] && { echo "PROVA: nessuna VM avviata"; [ -n "$NONCAR" ] && exit 6; exit 0; }
+
+mkdir -p "$OUT" || ferma "mkdir $OUT"
+# #168 par. 4: il manifest lo scrive il produttore collaudato (opnd-manifest.sh), non codice inline
+QEMU_VER=$("$QEMU" --version | head -1); OM_SCRIPT_SHA=$(sha256 -q "$0")
+om_apri "$OUT" || { om_non_avviata "lettura iniziale fallita o vm2 gia' presente"; echo "STOP: $(tail -2 "$OUT/manifest.txt" | tr '\n' ' ')"; exit 4; }
+sudo -n /usr/sbin/dtrace -q -n "$SONDE" -o "$OUT/sonde.txt" 2> "$OUT/sonde-err.txt" &
+DT=$!
+i=0; while [ $i -lt 15 ] && ! grep -q DTRACE_ATTIVO "$OUT/sonde.txt" 2>/dev/null; do sleep 1; i=$((i + 1)); done
+if ! grep -q DTRACE_ATTIVO "$OUT/sonde.txt" 2>/dev/null; then
+	om_ferma_dtrace $DT 30
+	om_non_avviata "DTrace non attivata in 15 s"
+	echo "STOP: DTrace non attivata in 15 s ($(cat "$OUT/sonde-err.txt")): nessuna VM avviata"; exit 7
+fi
+eval sudo -n $DRVCMD > "$OUT/driver.out" 2>&1
+DRC=$?
+cat "$OUT/driver.out"
+# i produttori dei log si chiudono PRIMA delle letture finali e del sigillo
+sleep 1; om_ferma_dtrace $DT 30 || echo "ATTENZIONE: sudo di dtrace ancora vivo: operatore"
+cat "$OUT/sonde-err.txt" >> "$OUT/sonde.txt"
+om_chiudi
+grep -E '^(contatori dopo|vm2 dopo|ATTENZIONE)' "$OUT/manifest.txt"
+echo "driver: uscita $DRC (0 = sessione valida)"
+$PY "$VER" "$OUT" "$PIANO" > "$OUT/VERDETTO" 2>&1
+VRC=$?
+cat "$OUT/VERDETTO"
+om_sigilla
+echo "/dev/vmm dopo: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')(nessuna distruzione da questo runner)"
+[ $OM_VM2_ESTRANEA = 1 ] && { echo "sessione NON valida: vm2 non e' l'istanza della sessione (uscita 5)"; exit 5; }
+[ $OM_DT_FORZATO = 1 ] && { echo "sessione NON valida: dtrace fermato con SIGKILL, traccia incompleta (uscita 5)"; exit 5; }
+[ $OM_RICARICATO = 1 ] && { echo "sessione NON valida: il modulo non e' l'istanza dell'apertura (uscita 5)"; exit 5; }
+exit $VRC

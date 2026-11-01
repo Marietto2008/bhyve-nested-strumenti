@@ -1,0 +1,14 @@
+controllo-azioni.sh cf4cd6548981c1e28aff1a0d5c475dfe6840a79f5e9a087ceab825c4f1443f41
+  ERRATO  positivo rc=1   totale non conformi e non inerti: 0 SUMMARY: 1 difetti 
+  ok      kldload_senza_guardia: preso (non e' una lettura)
+  ok      sudo_in_stringa: preso (non e' una lettura)
+  ok      kill_come_lettura: preso (non e' una lettura)
+  ok      dtrace_con_o: preso (non e' una lettura)
+  ok      dtrace_con_c: preso (non e' una lettura)
+  ok      ldd: preso (non e' una lettura)
+  ok      get_memseg_con_destroy: preso (non e' una lettura)
+  ok      guardia_senza_caricarla: preso (non carica guardia.sh)
+  ok      sequenza con chiamata diretta: presa
+  ok      script che nomina vmm-gettone: preso
+SUMMARY: 10 ok, 1 errati
+SUMMARY: 10 ok, 1 errati

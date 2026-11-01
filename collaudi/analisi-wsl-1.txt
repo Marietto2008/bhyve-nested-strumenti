@@ -1,0 +1,17 @@
+fasi: avvio +0 s, desktop +15 s, wsl_inizio +22 s
+
+  t(s) fase        uscite L2 motivi principali (L2)                       riflesse       L2in      rifl      slow      emul      immx      intw      migr
+    10 avvio            1000 EPTVIOL 90%, IO 10%                                50    1384003   1384003  19519791   1450677     50325     84668   1393005
+    20 desktop         10000 EPTVIOL 90%, EXTINT 10%                          4000    4152009   4152009  58559371   4352031    150976    254003   4179014
+    30 wsl_inizio          0 -                                                   0    6920013   6920013  97598954   7253386    251625    423339   6965023
+
+motivi sull'intera corsa: EPTVIOL 9900 (90.0%), EXTINT 1000 (9.1%), IO 100 (0.9%)
+
+  ok     uscita 0
+  ok     riga delle fasi
+  ok     finestra +10 s: ['    10 avvio            1000 EPTVIOL 90%, IO 10%                                50    1384003   1384003  19519791   1450677     50325     84668   1393005']
+  ok     incremento degli ingressi in L2 nella finestra +10 s (1384003)
+  ok     finestra +20 s: ['    20 desktop         10000 EPTVIOL 90%, EXTINT 10%                          4000    4152009   4152009  58559371   4352031    150976    254003   4179014']
+  ok     riepilogo dei motivi
+  ok     una corsa con le sonde v1 (corsa 2 vera): uscita 5, niente analisi
+SUMMARY: 7 ok, 0 errati

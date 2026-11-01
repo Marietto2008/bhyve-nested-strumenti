@@ -1,0 +1,61 @@
+#!/bin/sh
+# vmm-residuo.sh -- Claude 30/10/2026, parere #142 (gestione AUTORIZZATA dei residui /dev/vmm). Un nodo /dev/vmm/vm2
+# lasciato da QEMU (-accel bhyve lo distrugge solo al poweroff) si distrugge SOLO se e' esattamente quello che
+# l'utente ha autorizzato: stesso nome, stesso ctime, stessa mappa di memoria (hash di bhyvectl --get-memseg).
+#
+#   vmm-residuo.sh --verifica                       sola lettura: identita' di ogni nodo (da mostrare all'utente)
+#   vmm-residuo.sh --distruggi vm2 <ctime> <memseg> distrugge vm2 SOLO se ctime e hash memseg coincidono
+#
+# Rifiuta (uscita 4, nulla fatto): nome diverso da vm2 (MAI vm0:12 o altri), nodo aperto, processi bhyve/qemu vivi,
+# altri nodi oltre vm2 non sono un motivo di rifiuto ma non si toccano, ctime o memseg diversi, modulo vmm assente.
+# Uscita 0 = distrutto e /dev/vmm/vm2 assente; 6 = distruzione tentata ma il nodo resta (operatore).
+# Accesso al sistema solo dalle funzioni r_* (sovrascritte dal collaudo, test-vmm-residuo.sh).
+set -u
+r_nodi()    { /bin/ls /dev/vmm 2>/dev/null; }
+r_ctime()   { /usr/bin/stat -f '%c' "/dev/vmm/$1" 2>/dev/null; }
+r_memseg()  { sudo -n /usr/sbin/bhyvectl --vm="$1" --get-memseg 2>&1 | /sbin/sha256 -q; }
+r_aperto()  { [ -n "$(sudo -n /usr/bin/fstat "/dev/vmm/$1" 2>/dev/null | /usr/bin/sed 1d)" ]; }
+r_vm_vive() { /bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'; }
+r_modulo()  { /sbin/kldstat -q -n vmm-restore.ko || /sbin/kldstat -q -n vmm.ko; }
+r_distruggi() { sudo -n /usr/sbin/bhyvectl --vm="$1" --destroy; }
+r_ora()     { /bin/date '+%F %T'; }
+[ -n "${VR_FINTO:-}" ] && . "$VR_FINTO"
+VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/nested-work/logs/vmm-residuo/diario.txt}
+
+vr_dice() { echo "$*"; [ "${VR_SCRIVI:-0}" = 1 ] && echo "$(r_ora) $*" >> "$VR_DIARIO"; return 0; }
+vr_stop() { vr_dice "RIFIUTO: $*; nulla fatto"; exit 4; }
+
+vr_identita() {	# stampa una riga per nodo: nome ctime memseg aperto
+	for n in $(r_nodi); do
+		a=no; r_aperto "$n" && a=si
+		echo "$n ctime=$(r_ctime "$n") memseg=$(r_memseg "$n") aperto=$a"
+	done
+}
+
+case "${1:-}" in
+--verifica)
+	[ $# = 1 ] || { echo "uso: $0 --verifica"; exit 4; }
+	r_modulo || vr_stop "nessun modulo vmm caricato"
+	v=$(r_vm_vive); [ -n "$v" ] && echo "processi VM vivi: $v"
+	i=$(vr_identita)
+	[ -n "$i" ] && echo "$i" || echo "/dev/vmm vuoto"
+	exit 0;;
+--distruggi)
+	[ $# = 4 ] || { echo "uso: $0 --distruggi vm2 <ctime> <memseg>"; exit 4; }
+	n=$2; c=$3; m=$4
+	mkdir -p "$(dirname "$VR_DIARIO")" && VR_SCRIVI=1
+	[ "$n" = vm2 ] || vr_stop "solo vm2 (residuo di QEMU) si distrugge con questo strumento, non '$n'"
+	r_modulo || vr_stop "nessun modulo vmm caricato"
+	v=$(r_vm_vive); [ -n "$v" ] && vr_stop "VM viva: $(echo "$v" | tr '\n' ' ')"
+	r_nodi | grep -qx vm2 || vr_stop "/dev/vmm/vm2 non esiste"
+	r_aperto vm2 && vr_stop "/dev/vmm/vm2 e' aperto"
+	c0=$(r_ctime vm2); m0=$(r_memseg vm2)
+	[ "$c0" = "$c" ] || vr_stop "ctime di vm2 $c0, autorizzato $c: NON e' il nodo autorizzato"
+	[ "$m0" = "$m" ] || vr_stop "memseg di vm2 $m0, autorizzato $m: NON e' il nodo autorizzato"
+	vr_dice "vm2 ctime=$c0 memseg=$m0 chiuso, nessuna VM viva: distruggo (autorizzato)"
+	r_distruggi vm2; rc=$?
+	if r_nodi | grep -qx vm2; then vr_dice "ESITO 6: bhyvectl --destroy rc=$rc ma /dev/vmm/vm2 resta. Operatore."; exit 6; fi
+	vr_dice "ESITO 0: vm2 distrutto (rc=$rc); /dev/vmm: $(r_nodi | tr '\n' ' ')"
+	exit 0;;
+*) echo "uso: $0 --verifica | --distruggi vm2 <ctime> <memseg>"; exit 4;;
+esac

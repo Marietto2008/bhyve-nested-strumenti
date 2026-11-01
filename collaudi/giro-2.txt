@@ -1,0 +1,20 @@
+sequenza rc=0 (12 s): SUMMARY: 119 ok, 0 errati
+mutanti-sequenza rc=0 (147 s): SUMMARY: 13 presi, 0 non presi
+gettone rc=0 (1 s): SUMMARY: 20 ok, 0 errati
+vmm-residuo rc=0 (4 s): SUMMARY: 178 ok, 0 errati
+smoke-stadio9 rc=0 (7 s): SUMMARY: 111 ok, 0 errati
+opnd-manifest rc=0 (19 s): SUMMARY: 136 ok, 0 errati
+verdetti rc=0 (50 s): test-verdetti: 139 ok, 0 errati
+ombra rc=0 (5 s): SUMMARY: 9 ok, 0 errati
+mutanti-verdetto rc=0 (502 s): mutanti del verdetto: errori 0
+banco-r9c rc=0 (0 s): SUMMARY: 22 ok, 0 errati
+mutanti-r9c rc=0 (0 s): mutanti: errori 0
+banco-kut-r3 rc=0 (1 s): SUMMARY: 16 ok, 0 errati
+banco-opnd-s10 rc=0 (64 s): banco-opnd-s10: errori 0
+modulo-caldo rc=0 (154 s): SUMMARY: 537 ok, 0 FAIL
+argv rc=0 (0 s): SUMMARY: 18 ok, 0 FAIL
+ferma-dtrace rc=0 (7 s): SUMMARY: 14 ok, 0 errati
+controllo-azioni rc=0 (28 s): SUMMARY: 11 ok, 0 errati
+gettone-azione rc=0 (1 s): SUMMARY: 37 ok, 0 errati
+scritture rc=0 (18 s): collaudo non puo' scrivere nulla fuori da collaudi/
+GIRO giro-2: 0 suite fallite

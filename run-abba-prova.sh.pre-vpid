@@ -1,0 +1,174 @@
+#!/bin/sh
+# Claude 24/10/2026 -- parere #47: UNA prova del benchmark ABBA (A..D), derivata da run-fase06.sh
+# (testo originale sotto). Variabili: MOD (A|B|C|D), S0 (0|1), SH (0|1), VF (verifica, 0), O (cartella).
+# In piu': memoria dell'host (vm.stats, swapinfo) e working set di vmmem* all'inizio e alla fine.
+# Claude 24/10/2026 -- parere #46: FASE 06, Windows 11 + Hyper-V + WSL2 a 2 VP col modulo
+# 19fc4ebf6189 e lo SHADOW VMCS acceso con la VERIFICA, S0 spenta. Solo contatori nativi.
+# Configurazione (parere #46 §3), applicata PRIMA di creare la VM (lo shadow si fissa alla
+# creazione del vCPU nested): nested_shadow_vmcs=1 nested_shadow_verify=1
+# nested_fast_field_validate=0 vept_keep=1 vept_test_race=0 vept_scan_hold_keep=0 e, come la
+# baseline Windows a 2 VP, vept_scan_retries=1 vept_verify_hpa=1. Script della VM invariato
+# (12-Windows-11-vm12-senza-gpu, senza -x).
+# Passi: 01 avvio Windows + Hyper-V (checkpoint) -> 02 Windows senza WSL 120 s -> 03 avvio WSL2
+# (checkpoint) -> 04 prova ext4 480 s (gapmem.sh) -> 05 compilazione kbuild4.sh -> 06 spegnimento,
+# interruttori a 0. A ogni passo: tutti gli hw.vmm.vmx.*, bhyvectl --get-stats per vCPU, tempo
+# CPU dei thread vCPU (foto.txt). Criteri sui DELTA dalla foto iniziale (nested_sh_faults vale
+# gia' 3 per le iniezioni): DELTA nested_sh_faults = 0, nested_sh_entry_after_fault = 0.
+# Al primo errore nuovo dello shadow la sessione SI FERMA (parere #46 §4): nessun altro passo.
+D=${1:-480}; W=${2:-2}
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA
+O=${O:?cartella}; mkdir -p "$O"; : "${S0:?}" "${SH:?}" "${VF:=0}" "${MOD:?}"
+H=IP-HOST
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+task() {
+	w "schtasks /create /tn $1 /tr \"$2\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn $1 >nul"
+}
+attendi_wsl() {
+	k=0; while w "schtasks /query /tn claude-wsl /fo csv /nh" | /usr/bin/grep -qiE "esecuzione|running"; do sleep 5; k=$((k+1)); [ $k -gt 720 ] && break; done
+}
+wslrun() {
+	printf '%s' "$1" > "$O/wsl-args.txt"
+	cpw "$O/wsl-args.txt" marietto@win11:'C:/claude/wsl-args.txt'
+	task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+}
+fase() { echo "FASE $1 $(date +%s.%N) $(date +%T)" | tee -a "$O/fasi.txt"; }
+foto() {
+	{
+		echo "FOTO $1 $(date +%s.%N)"
+		sysctl hw.vmm.vmx
+		ps -H -o lwp,time,comm -p "$(pgrep -x bhyve | head -1)" 2>/dev/null | /usr/bin/grep vcpu
+		for c in 0 1; do echo "== vcpu $c"; sudo -n bhyvectl --vm=vm0:12 --get-stats --cpu=$c 2>/dev/null; done
+	} >> "$O/foto.txt" 2>&1
+}
+F0=$(sysctl -n hw.vmm.vmx.nested_sh_faults); E0=$(sysctl -n hw.vmm.vmx.nested_sh_entry_after_fault)
+STOP=""
+controlla() {	# controlla <punto>: criterio del parere #46; se violato, la sessione si ferma
+	f=$(( $(sysctl -n hw.vmm.vmx.nested_sh_faults) - F0 ))
+	e=$(( $(sysctl -n hw.vmm.vmx.nested_sh_entry_after_fault) - E0 ))
+	vv=0; vi=0
+	for c in 0 1; do
+		s=$(sudo -n bhyvectl --vm=vm0:12 --get-stats --cpu=$c 2>/dev/null)
+		vv=$(( vv + $(echo "$s" | awk -F'\t' '/VMfailValid restituiti/{print $NF+0}') ))
+		vi=$(( vi + $(echo "$s" | awk -F'\t' '/VMfailInvalid restituiti/{print $NF+0}') ))
+	done
+	echo "CHECKPOINT $1 $(date +%T): delta errori shadow $f, ingressi dopo errore $e, VMfailValid $vv, VMfailInvalid $vi, bhyve $(pgrep -x bhyve >/dev/null && echo vivo || echo USCITO)" | tee -a "$O/checkpoint.txt"
+	if [ "$f" -ne 0 ] || [ "$e" -ne 0 ]; then
+		echo "!!! ERRORE NUOVO DELLO SHADOW al punto $1: sessione FERMATA (parere #46 §4)" | tee -a "$O/checkpoint.txt"
+		sysctl hw.vmm.vmx | /usr/bin/grep "nested_sh_" >> "$O/checkpoint.txt"
+		dmesg | /usr/bin/grep "nested shadow" | tail -5 >> "$O/checkpoint.txt"
+		STOP=1
+	fi
+}
+pausa() {
+	w "if exist C:\\claude\\guardia-pausa (echo GIA) else (echo pausa > C:\\claude\\guardia-pausa & echo CREATA)" | tail -1
+}
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+vmstat -w 1 > "$O/vmstat.txt" &
+VS=$!
+python3 "$C/tsecho.py" 7123 "$O/tsecho.txt" &
+TS=$!
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sha256 /boot/kernel/vmm-restore.ko > "$O/modulo.txt"; kldstat | /usr/bin/grep vmm >> "$O/modulo.txt"
+sudo -n sysctl hw.vmm.vmx.nested_shadow_vmcs=$SH hw.vmm.vmx.nested_shadow_verify=$VF \
+    hw.vmm.vmx.nested_fast_field_validate=$S0 hw.vmm.vmx.nested_shadow_inject=0 \
+    hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_test_race=0 hw.vmm.vmx.vept_scan_hold_keep=0 \
+    hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 > "$O/configurazione.txt"
+echo "modalita' $MOD: S0=$S0 shadow=$SH verifica=$VF" | tee -a "$O/configurazione.txt"
+memoria() {	# memoria <etichetta>: host e vmmem*
+	{
+		echo "== $1 $(date +%T)"
+		sysctl -n vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vm.stats.vm.v_laundry_count hw.pagesize | tr '\n' ' '; echo "(pagine libere, inattive, laundry, pagesize)"
+		swapinfo -k | tail -1
+		pgrep -x bhyve >/dev/null && w "powershell -NoProfile -Command \"Get-Process -Name vmmem* -ErrorAction SilentlyContinue | Select-Object ProcessName,WorkingSet64,PrivateMemorySize64 | Format-Table -AutoSize | Out-String\""
+	} >> "$O/memoria.txt" 2>&1
+}
+memoria 00-prima
+cat "$O/configurazione.txt"
+foto 00-prima
+fase 01-avvio
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sh "$N/12-Windows-11-vm12-senza-gpu" > "$O/script.log" 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; kill $TS $VS; exit 1; }
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; pgrep -x bhyve >/dev/null || break; done
+echo "ssh pronto dopo circa $i s"
+sleep 90
+foto 01-avvio
+{ echo "== Hyper-V e VBS"; w "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem).HypervisorPresent; Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard | Select-Object VirtualizationBasedSecurityStatus,SecurityServicesRunning | Format-List | Out-String\""; } > "$O/hyperv.txt" 2>&1
+cat "$O/hyperv.txt"
+controlla 01-avvio-Windows
+if [ -z "$STOP" ]; then
+	for f in gapmon.c memmon.c gapmem.sh kbuild4.sh; do cpw "$C/$f" marietto@win11:"C:/claude/faseA/$f"; done
+	sh "$B/guardia-win.sh" aggiorna > "$O/guardia.txt" 2>&1
+	sleep 30
+	echo "guardia: $(pausa)" >> "$O/guardia.txt"
+	fase 02-windows-senza-wsl
+	wslrun "--shutdown"; sleep 20; attendi_wsl
+	foto 02-inizio; sleep 120; foto 02-fine
+	controlla 02-Windows-inattivo
+fi
+if [ -z "$STOP" ]; then
+	fase 03-avvio-wsl
+	w "del C:\\claude\\wsl-log.txt 2>nul" > /dev/null
+	wslrun "-d Debian -u root -- sh -c 'uname -a; nproc; grep -c ^processor /proc/cpuinfo; uptime; dmesg | grep -i -E \"hv_|hyperv\" | head -5; echo WSL-OK' "
+	sleep 20; attendi_wsl
+	cpw marietto@win11:'C:/claude/wsl-log.txt' "$O/wsl-avvio.txt" 2>/dev/null
+	cat "$O/wsl-avvio.txt"
+	foto 03-wsl
+	/usr/bin/grep -q WSL-OK "$O/wsl-avvio.txt" || { echo "!!! WSL non ha risposto" | tee -a "$O/checkpoint.txt"; STOP=1; }
+	controlla 03-avvio-WSL2
+fi
+if [ -z "$STOP" ]; then
+	memoria 04-prima-ext4
+	fase 04-ext4
+	w "del C:\\claude\\faseA\\gapmem-A.log 2>nul" > /dev/null
+	wslrun "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/gapmem.sh > /root/gapmem.sh; bash /root/gapmem.sh $D $H A $W'"
+	r=0; k=0
+	until /usr/bin/grep -q GAP-FINE "$O/gapmem-A.log" 2>/dev/null; do
+		pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+		sleep 10; k=$((k+1)); [ $k -gt $(( (W * 150 + D + 900) / 10 )) ] && { echo "ext4 non finita"; break; }
+		[ $(( $(sysctl -n hw.vmm.vmx.nested_sh_faults) - F0 )) -ne 0 ] && break
+		cpw marietto@win11:"C:/claude/faseA/gapmem-A.log" "$O/gapmem-A.log" 2>/dev/null || continue
+		if [ $r -eq 0 ] && /usr/bin/grep -q RISCALDAMENTO-FINE "$O/gapmem-A.log"; then r=1; foto 04-prova-inizio; fi
+	done
+	foto 04-fine
+	for f in gapmem-A.log gapmem-gapmon-A.txt gapmem-memmon-A.txt gapmem-pre-A.txt gapmem-post-A.txt; do
+		cpw marietto@win11:"C:/claude/faseA/$f" "$O/$f" 2>/dev/null
+	done
+	echo "ext4: cicli $(/usr/bin/grep -c 'CICLO [0-9]* ok' "$O/gapmem-A.log" 2>/dev/null), ERRORI DI VERIFICA sha256 $(/usr/bin/grep -c ERRORE "$O/gapmem-A.log" 2>/dev/null), buchi $(/usr/bin/grep -c '^BUCO' "$O/gapmem-gapmon-A.txt" 2>/dev/null)" | tee -a "$O/checkpoint.txt"
+	controlla 04-ext4
+fi
+if [ -z "$STOP" ]; then
+	memoria 05-prima-compilazione
+	fase 05-compilazione
+	w "del C:\\claude\\faseA\\kbuild.log 2>nul" > /dev/null
+	wslrun "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/kbuild4.sh > /root/kbuild4.sh; bash /root/kbuild4.sh'"
+	foto 05-inizio
+	k=0
+	until cpw marietto@win11:'C:/claude/faseA/kbuild.log' "$O/kbuild.log" 2>/dev/null && /usr/bin/grep -q KBUILD-FINE "$O/kbuild.log"; do
+		pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+		[ $(( $(sysctl -n hw.vmm.vmx.nested_sh_faults) - F0 )) -ne 0 ] && break
+		sleep 30; k=$((k+1)); [ $k -gt 240 ] && { echo "compilazione non finita in 2 h"; break; }
+	done
+	foto 05-fine
+	/usr/bin/grep -E "^real|^user|^sys|kernel rc" "$O/kbuild.log" | tee -a "$O/checkpoint.txt"
+	controlla 05-compilazione
+fi
+memoria 06-prima-spegnimento
+fase 06-spegnimento
+sh "$B/guardia-win.sh" riprendi >> "$O/guardia.txt" 2>&1
+w "schtasks /delete /tn claude-wsl /f" > /dev/null 2>&1
+if pgrep -x bhyve >/dev/null; then
+	w "shutdown /s /t 0" >/dev/null 2>&1
+	i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+	pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+fi
+foto 06-fine
+controlla 06-dopo-lo-spegnimento
+sleep 3
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sysctl hw.vmm.vmx.nested_shadow_vmcs=0 hw.vmm.vmx.nested_shadow_verify=0 \
+    hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 > /dev/null
+kill $TS $VS
+echo "OUTPUT $O $( [ -n "$STOP" ] && echo FERMATA || echo COMPLETA)"

@@ -1,0 +1,49 @@
+/* eptp.c -- generato da eptp-equiv.sh (Claude, #163 §5.6): espressione inline di prima contro nested_eptp_ok */
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+
+static int cpu_maxphyaddr;
+
+/* l'espressione inline del VM entry, stadio 6: VERA ("se vera -> VMfail") */
+static bool
+vecchio(uint64_t cap, uint64_t e)
+{
+	uint64_t mt = e & 7;
+
+	if (@@VECCHIO@@)
+		return (false);
+	return (true);
+}
+
+/* nested_eptp_ok dello stadio 7, estratta */
+@@NUOVO@@
+
+int
+main(void)
+{
+	static const uint64_t alti[] = { 0, 1ULL << 38, 1ULL << 39, 1ULL << 45, 1ULL << 46, 1ULL << 51, 1ULL << 62,
+	    1ULL << 63 };
+	static const uint64_t ind[] = { 0, 0x1000, 0xabc000 };
+	static const int mp[] = { 39, 46 };
+	long n = 0, diversi = 0;
+	int p, h, a;
+	uint64_t cb, lo, cap, e;
+
+	for (p = 0; p < 2; p++)
+		for (cb = 0; cb < 16; cb++) {		/* capacita' 8 (UC), 14 (WB), 21 (A/D), 6 (walk 4) */
+			cap = ((cb & 1) << 8) | ((cb & 2) << 13) | ((cb & 4) << 19) | ((cb & 8) << 3);
+			cpu_maxphyaddr = mp[p];
+			for (lo = 0; lo < 0x1000; lo++)	/* tutti i 12 bit bassi: tipo, walk, A/D, 11:7 */
+				for (h = 0; h < 8; h++)
+					for (a = 0; a < 3; a++) {
+						e = lo | alti[h] | ind[a];
+						n++;
+						if (vecchio(cap, e) != nested_eptp_ok(cap, e) && diversi++ < 5)
+							printf("DIVERSO cap %#lx eptp %#lx\n", (unsigned long)cap,
+							    (unsigned long)e);
+					}
+		}
+	printf("eptp: %ld combinazioni, %ld diverse\n", n, diversi);
+	return (diversi != 0);
+}

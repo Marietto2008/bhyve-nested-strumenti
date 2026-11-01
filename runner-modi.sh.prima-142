@@ -1,0 +1,73 @@
+# runner-modi.sh -- Claude 30/10/2026, parere #139 §4. Tabella DICHIARATIVA dei modi del runner KUT
+# (run-ptpad-kut-h2ad.sh la sorge; test-runner-modi.sh la collauda). Una sola fonte per: modulo e sua identita',
+# firma degli oid, frontend QEMU e sue identita', piani ammessi, e se il modo implica un cambio di modulo a caldo.
+# Due difetti del 30/10 avevano la stessa radice -- condizioni sparse "modo = originale" che trattavano un modo
+# nuovo di FRONTEND come un modulo diverso: firma oid attesa 110 per originale-porta (STOP nel preflight) e il
+# consiglio di un hot-swap di ritorno stampato dove nessun modulo era stato cambiato.
+#
+#   modo              modulo                    oid  frontend    hot-swap
+#   originale         /boot, 149fa57e           000  riferimento no
+#   originale-porta   /boot, 149fa57e (STESSO)  000  porta       no
+#   h2ad2             staging h2ad2, 4882d73d   110  riferimento si (procedura e consenso a parte)
+#
+# Funzioni pure: impostano variabili, non toccano l'host.
+
+RM_B=/mnt/linuxulator2/vm/nested-work
+RM_MOD_ORIG=/boot/kernel/vmm-restore.ko
+RM_MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+RM_MOD_ORIG_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+RM_QEMU_RIF=$RM_B/stage/current/bin/qemu-system-x86_64
+# #139 §3 e Q8: QEMU con la porta, la causa host-error (stato d'uscita EXIT_FAILURE) e l'ammissione con in_volo
+RM_QEMU_PORTA=$RM_B/build-qemu-gate-nested-sr/qemu-system-x86_64
+RM_QEMU_PORTA_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+RM_LIBV=/usr/lib/libvmmapi.so.7
+RM_LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
+
+# modo_carica <modo>: 0 e variabili impostate, oppure 1 (modo sconosciuto)
+modo_carica() {
+	MOD=; MOD_SHA=; MOD_BUILDID=; OID_ATTESO=; FRONTEND=; HOTSWAP=; QEMU_ATTESO_SHA=; LIBV_ATTESA=; LIBV_ATTESA_SHA=
+	case "$1" in
+	originale)
+		MOD=$RM_MOD_ORIG; MOD_SHA=$RM_MOD_ORIG_SHA; MOD_BUILDID=$RM_MOD_ORIG_BUILDID
+		OID_ATTESO=000; FRONTEND=riferimento; HOTSWAP=no; QEMU=$RM_QEMU_RIF;;
+	originale-porta)
+		MOD=$RM_MOD_ORIG; MOD_SHA=$RM_MOD_ORIG_SHA; MOD_BUILDID=$RM_MOD_ORIG_BUILDID
+		OID_ATTESO=000; FRONTEND=porta; HOTSWAP=no; QEMU=$RM_QEMU_PORTA; QEMU_ATTESO_SHA=$RM_QEMU_PORTA_SHA
+		LIBV_ATTESA=$RM_LIBV; LIBV_ATTESA_SHA=$RM_LIBV_SHA;;
+	h2ad2)
+		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+		MOD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
+		MOD_BUILDID=6df2856a10e94608a69a3844ff78965e25ad97fe
+		OID_ATTESO=110; FRONTEND=riferimento; HOTSWAP=si; QEMU=$RM_QEMU_RIF;;
+	*) return 1;;
+	esac
+	return 0
+}
+
+# piano_ammesso <modo> <piano>: 0 se il piano e' ammesso per il modo
+piano_ammesso() {
+	case "$1" in
+	originale)
+		case "$2" in
+		"B,HD_DATA,HD_DATA_PDE,HD_DATA_ALL,HD_PTP,HD_PTP_ALL"|"B,HD_CONFLICT,HD_CONFLICT_PDE") return 0;;
+		"B,H,H_PDE,HD_CONFLICT,HD_CONFLICT_PDE") return 0;;
+		"B,HD_PTP,HM_RAM,HM_PTP"|"B,HM_RAM,DM_PTP") return 0;;	# #131 H2_MMIO
+		esac;;
+	originale-porta)
+		[ "$2" = "B,HM_RAM,DM_PTP" ] && return 0;;		# #136 §6.1: solo il caso DM
+	h2ad2)
+		case "$2" in
+		"B,C,H,A,H_D,A_D") return 0;;
+		"B,HD_DATA,D_DATA"|"B,HD_DATA_PDE,D_DATA_PDE"|"B,HD_DATA_ALL,D_DATA_ALL"|"B,HD_PTP,D_PTP"|"B,HD_PTP_ALL,D_PTP_ALL") return 0;;
+		"B,H,HD_CONFLICT,D_CONFLICT"|"B,H_PDE,HD_CONFLICT_PDE,D_CONFLICT_PDE") return 0;;
+		esac;;
+	esac
+	return 1
+}
+
+# messaggio_finale <modo>: il passo successivo OBBLIGATORIO, solo se il modo ha cambiato il modulo a caldo
+messaggio_finale() {
+	modo_carica "$1" || return 0
+	[ "$HOTSWAP" = si ] && echo "PROSSIMO PASSO OBBLIGATORIO: sh $RM_B/caldo/modulo-caldo.sh --esegui $1 originale (ritorno al modulo originale)"
+	return 0
+}

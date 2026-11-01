@@ -1,0 +1,126 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-gap2.sh.non-conforme
+echo "INERTE: run-gap2.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-gap2.sh.non-conforme" >&2; exit 4
+# Claude 24/10/2026 -- parere #38 (buchi) §7: a 2 VP reali, nell'ordine
+#  1) CALIBRAZIONE del campionatore partsamp.d (unica sonda attiva) contro i contatori TSC
+#     interni (nested_l1_tsc/l2_tsc) e il tempo CPU dei thread vCPU, in tre regimi:
+#     C0 Windows inattivo (molti HLT), C1 WSL con due yes verificati (ciclo CPU),
+#     C2 compilazione -j4 (molte uscite, lavoro di L0);
+#  2) prova ext4 (gapcg.sh, tre fasi da D s) con partsamp.d + wslrefl.d (anello degli
+#     ultimi eventi per VP di WSL, HLT dell'L1) e i contatori Hyper-V (nomi localizzati);
+#     gapmon manda all'host un marcatore per ogni buco (tsecho.txt).
+# Niente gaphost.d ne' win-lat.d (sonde minime). Modulo: vept_keep=1, retry 1, verifica HPA
+# accesa, come le prove di confronto. Memoria: vmstat 1, swapinfo ogni 30 s.
+D=${1:-480}
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+O=$B/logs/gap2-$(date +%Y%m%d-%H%M); mkdir -p "$O"
+H=IP-HOST
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+task() {	# task <nome> <comando>: lanciato nella sessione dell'utente
+	w "schtasks /create /tn $1 /tr \"$2\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn $1 >nul"
+}
+wslrun() {	# wslrun <argomenti di wsl.exe>: nella sessione dell'utente, senza attendere
+	printf '%s' "$1" > "$O/wsl-args.txt"
+	cpw "$O/wsl-args.txt" marietto@win11:'C:/claude/wsl-args.txt'
+	task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+}
+fase() { echo "FASE $1 $(date +%s.%N) $(date +%T)" | tee -a "$O/fasi.txt"; }
+calib() {	# calib <etichetta>: ora, contatori TSC, tempo CPU dei thread vCPU
+	{
+		echo "CALIB $1 $(date +%s.%N)"
+		sysctl hw.vmm.vmx.nested_l1_tsc hw.vmm.vmx.nested_l2_tsc
+		ps -H -o lwp,time,comm -p "$(pgrep -x bhyve | head -1)" | /usr/bin/grep vcpu
+	} >> "$O/calib.txt"
+}
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+echo "== host prima: $(swapinfo -h | tail -1)"
+vmstat -w 1 > "$O/vmstat.txt" &
+VS=$!
+( while :; do echo "$(date +%T) $(swapinfo -k | tail -1)"; sleep 30; done ) > "$O/swap.txt" &
+SW=$!
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 hw.vmm.vmx.vept_test_race=0 >/dev/null
+python3 "$C/tsecho.py" 7123 "$O/tsecho.txt" &
+TS=$!
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s "$T/partsamp.d" -o "$O/samp.txt" 2>"$O/samp.err" &
+sleep 4
+sudo -n sh "$N/${VMS:-12-Windows-11-vm12-senza-gpu}" > "$O/script.log" 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; kill $TS $VS $SW; sudo -n pkill -TERM -f "partsamp.d"; exit 1; }
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; done
+echo "ssh pronto dopo circa $i s"
+w "schtasks /delete /tn claude-vita /f & schtasks /delete /tn claude-clk /f" > /dev/null 2>&1
+sleep 90
+w "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors | Format-List | Out-String).Trim()\"" | tee "$O/topologia.txt"
+for f in gapmon.c cgmon.c gapcg.sh hvperf.ps1 yesprova.sh; do cpw "$C/$f" marietto@win11:"C:/claude/faseA/$f"; done
+w "del C:\\claude\\faseA\\yes.log 2>nul & del C:\\claude\\faseA\\hvperf-insiemi.txt 2>nul" > /dev/null
+task claude-hvel "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\hvperf.ps1 -SoloElenco" > /dev/null
+echo "######## calibrazione $(date +%T)"
+wslrun "--shutdown"; sleep 20
+fase C0-windows-inattivo; calib C0-inizio; sleep 60; calib C0-fine
+fase C1-wsl-yes
+wslrun "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/yesprova.sh > /root/yesprova.sh; bash /root/yesprova.sh'"
+# Claude 24/10/2026: si aspetta l'INIZIO e la FINE dei yes (WSL puo' metterci ~40 s ad
+# avviarsi): prima la calibrazione partiva prima dei yes e la compilazione trovava
+# claude-wsl ancora in esecuzione (attivita' rifiutata, corsa ferma 20 minuti).
+k=0; until cpw marietto@win11:'C:/claude/faseA/yes.log' "$O/yes.log" 2>/dev/null && /usr/bin/grep -q INIZIO "$O/yes.log"; do sleep 3; k=$((k+1)); [ $k -gt 60 ] && break; done
+sleep 5; calib C1-inizio; sleep 40; calib C1-fine
+k=0; until cpw marietto@win11:'C:/claude/faseA/yes.log' "$O/yes.log" 2>/dev/null && /usr/bin/grep -q FINE "$O/yes.log"; do sleep 5; k=$((k+1)); [ $k -gt 60 ] && break; done
+k=0; while w "schtasks /query /tn claude-wsl /fo csv /nh" | /usr/bin/grep -qiE "esecuzione|running"; do sleep 5; k=$((k+1)); [ $k -gt 60 ] && break; done
+fase C2-compilazione; calib C2-inizio
+sh "$C/kb-ab.sh" GAP2PRE kbuild4.sh 2>&1 | /usr/bin/grep -E "^real|kernel rc|bhyve CPU"
+calib C2-fine
+fase C3-fine-calibrazione
+sleep 30
+# contesti della radice: gli EPTP12 con campioni guest durante C0 (Windows senza WSL)
+R=$(python3 - "$O" <<'EOF'
+import re, sys
+d = sys.argv[1]
+f = {l.split()[1]: float(l.split()[2]) for l in open(f"{d}/fasi.txt")}
+a, b = f["C0-windows-inattivo"], f["C1-wsl-yes"]
+g = {}; t = None
+for l in open(f"{d}/samp.txt", errors="replace"):
+    if l.startswith("T "): t = int(l.split()[1]) / 1e9; continue
+    m = re.match(r"\s+v\d+ (0x[0-9a-f]+) guest (\d+)", l)
+    if m and t and a <= t <= b: g[m.group(1)] = g.get(m.group(1), 0) + int(m.group(2))
+r = sorted(g, key=lambda c: -g[c])[:2] + ["0x1", "0x1"]
+print(r[0], r[1])
+EOF
+)
+set -- $R
+echo "contesti della radice: $1 $2" | tee "$O/radice.txt"
+sudo -n dtrace -C -D ROOTA=$1 -D ROOTB=$2 -s "$T/wslrefl.d" -o "$O/refl.txt" 2>"$O/refl.err" &
+sleep 3
+echo "######## prova ext4 $(date +%T)"
+task claude-hvperf "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\hvperf.ps1 -Sec $((3 * (D + 40) + 120))" > /dev/null
+fase P1-prova
+printf '%s' "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/gapcg.sh > /root/gapcg.sh; bash /root/gapcg.sh $D $H'" > "$O/args.txt"
+cpw "$O/args.txt" marietto@win11:'C:/claude/wsl-args.txt'
+w "del C:\\claude\\faseA\\gapcg.log 2>nul & del C:\\claude\\wsl-log.txt 2>nul" > /dev/null
+task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+k=0
+until cpw marietto@win11:"C:/claude/faseA/gapcg.log" "$O/gapcg.log" 2>/dev/null && /usr/bin/grep -q GAP-FINE "$O/gapcg.log"; do
+	pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+	sleep 30; k=$((k+1)); [ $k -gt $(( (3 * (D + 40)) / 30 + 40 )) ] && { echo "prova non finita"; break; }
+done
+fase P2-fine-prova
+for F in A1 B A2; do
+	cpw marietto@win11:"C:/claude/faseA/gapcg-gapmon-$F.txt" "$O/gapmon-$F.txt" 2>/dev/null
+	cpw marietto@win11:"C:/claude/faseA/gapcg-cgmon-$F.txt" "$O/cgmon-$F.txt" 2>/dev/null
+	echo "fase $F: buchi $(/usr/bin/grep -c '^BUCO' "$O/gapmon-$F.txt" 2>/dev/null)"
+done
+sleep 60
+cpw marietto@win11:'C:/claude/faseA/hvperf.csv' "$O/hvperf.csv" 2>/dev/null
+cpw marietto@win11:'C:/claude/faseA/hvperf-insiemi.txt' "$O/hvperf-insiemi.txt" 2>/dev/null
+w "schtasks /delete /tn claude-wsl /f & schtasks /delete /tn claude-hvperf /f & schtasks /delete /tn claude-hvel /f" > /dev/null 2>&1
+w "shutdown /s /t 0" >/dev/null 2>&1
+i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+sleep 3
+sudo -n pkill -TERM -f "partsamp.d|wslrefl.d"; kill $TS $VS $SW
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sysctl hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 >/dev/null
+echo "== host dopo: $(swapinfo -h | tail -1)"
+echo "OUTPUT $O"

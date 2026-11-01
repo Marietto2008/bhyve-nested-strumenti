@@ -1,0 +1,195 @@
+# mc-finto.sh -- Claude 29/10/2026 (rev. generica). Sistema SIMULATO per collaudare mc-logica.sh senza toccare l'host.
+# Stato in file sotto $FS (le funzioni girano anche dentro $(...), quindi niente variabili di shell condivise).
+# Nessuna cancellazione: i flag sono file che contengono 1 o 0.
+#
+# HARDWARE: $FS/hw, una riga per dispositivo: "sel vendor device driver_nativo candidato_devmatch|-".
+#   Il kenv pptdevs (di default) elenca tutti i dispositivi di hw.
+# MODELLO (da subr_bus.c / pci.c / ppt.c / rc.d/devmatch):
+#   - kldunload stacca SOLO i dispositivi di ppt; senza freeze: nomatch -> devmatch -> asta SENZA ppt;
+#   - asta senza ppt: ogni dispositivo LIBERO va al candidato devmatch (se non bloccato: e il modulo risulta
+#     caricato) altrimenti al driver nativo; "none" resta libero;
+#   - kldload sotto freeze: ppt aggancia solo al thaw; senza freeze aggancia subito; in ogni caso SOLO i liberi.
+# Iniezioni (file in $FS): fail_unload, partial_unload, fail_load_orig, fail_load_new, cattura_al_thaw,
+#   freeze_ebusy, devmatch_estraneo, thaw_manuale, new_e_r109, kenv_set_fail, kenv_rilettura_diversa,
+#   kenv_unset_fail; valori: inflight_s=N, segnale_dopo_unload=1, iommu=1, carico_<modulo>=1.
+FS=${FS:?}
+MC_ORIG_T=/boot/kernel/vmm-restore.ko
+MC_NEW_T=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+MC_H2_T=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+f_get()     { cat "$FS/$1" 2>/dev/null; }
+f_set()     { printf '%s\n' "$2" >| "$FS/$1"; }
+f_has()     { [ -e "$FS/$1" ]; }
+f_on()      { [ "$(cat "$FS/$1" 2>/dev/null)" = 1 ]; }
+f_alza()    { printf '1\n' >| "$FS/$1"; }
+f_abbassa() { printf '0\n' >| "$FS/$1"; }
+f_log()     { echo "$*" >> "$FS/eventi"; }
+f_riscrivi_pci() { cat "$FS/pci.n" >| "$FS/pci"; }
+
+# --- hardware di default: questa macchina (checkpoint #115 §2.1)
+f_hw_questa() {
+	printf '%s\n' \
+	 'pci0:3:0:0 0x1002 0x73ff vgapci amdgpu' 'pci0:3:0:1 0x1002 0xab28 hdac -' \
+	 'pci0:4:0:0 0x10de 0x1e04 vgapci -' 'pci0:4:0:1 0x10de 0x10f7 hdac -' \
+	 'pci0:4:0:2 0x10de 0x1ad6 xhci -' 'pci0:4:0:3 0x10de 0x1ad7 none -' >| "$FS/hw"
+	f_pptdevs_da_hw
+}
+f_hw_solo_amd()    { printf '%s\n' 'pci0:3:0:0 0x1002 0x73ff vgapci amdgpu' 'pci0:3:0:1 0x1002 0xab28 hdac -' >| "$FS/hw"; f_pptdevs_da_hw; }
+f_hw_solo_nvidia() { printf '%s\n' 'pci0:4:0:0 0x10de 0x1e04 vgapci nvidia' 'pci0:4:0:1 0x10de 0x10f7 hdac -' 'pci0:4:0:2 0x10de 0x1ad6 xhci -' 'pci0:4:0:3 0x10de 0x1ad7 none -' >| "$FS/hw"; f_pptdevs_da_hw; }
+f_hw_due_candidati() { f_hw_questa; sed -i '' 's/^pci0:4:0:0 0x10de 0x1e04 vgapci -$/pci0:4:0:0 0x10de 0x1e04 vgapci nvidia/' "$FS/hw"; }
+f_pptdevs_da_hw() {
+	v=$(awk '{ s = $1; sub(/^pci[0-9]+:/, "", s); gsub(/:/, "/", s); printf "%s%s", (NR > 1 ? " " : ""), s }' "$FS/hw")
+	printf '%s\n' "$v" >| "$FS/kenv_pptdevs"; printf '1\n' >| "$FS/kenv_pptdevs.e"
+	for k in pptdevs2 pptdevs3; do : >| "$FS/kenv_$k"; printf '0\n' >| "$FS/kenv_$k.e"; done
+}
+f_pci_tutti() {	# $1 = ppt | none
+	case "$1" in
+	ppt)  awk '{print $1, "ppt", NR - 1, $2, $3}' "$FS/hw";;
+	none) awk '{print $1, "none", 10 + NR, $2, $3}' "$FS/hw";;
+	esac >| "$FS/pci"
+}
+f_stacca_ppt() { awk '{ if ($2 == "ppt") { $2 = "none"; $3 = 10 + NR } print }' "$FS/pci" >| "$FS/pci.n" && f_riscrivi_pci; }
+f_ppt_prende_libere() { awk '{ if ($2 == "none") { $2 = "ppt"; $3 = NR - 1 } print }' "$FS/pci" >| "$FS/pci.n" && f_riscrivi_pci; }
+f_asta_senza_ppt() {
+	bl=" $(s_kenv_get devmatch_blocklist) "
+	: >| "$FS/caricati.n"
+	awk -v bl="$bl" -v out="$FS/caricati.n" 'NR == FNR { h[$1] = $0; next }
+	{ if ($2 == "none" && ($1 in h)) { split(h[$1], a, " ")
+	      if (a[5] != "-" && index(bl, " " a[5] " ") == 0) { $2 = a[5]; print a[5] >> out } else $2 = a[4]
+	      $3 = 20 + FNR }
+	  print }' "$FS/hw" "$FS/pci" >| "$FS/pci.n" && f_riscrivi_pci
+	for m in $(sort -u "$FS/caricati.n"); do f_alza "carico_$m"; f_log "devmatch: kldload $m"; done
+	f_log "ASTA SENZA PPT: driver nativi agganciati"
+}
+f_init() {	# $1 = modulo caricato all'inizio (path)
+	mkdir -p "$FS"; : >| "$FS/eventi"
+	f_hw_questa
+	f_set kld "completo $1"; f_set frozen 0; f_set iommu 0; f_pci_tutti ppt
+	f_abbassa carico_amdgpu; f_abbassa carico_nvidia; f_abbassa ppt_in_attesa; f_abbassa segnale_dopo_unload
+	for k in boot_safe devmatch_blocklist; do : >| "$FS/kenv_$k"; printf '0\n' >| "$FS/kenv_$k.e"; done
+	: >| "$FS/vmm_nodes"; : >| "$FS/vm_procs"
+}
+
+s_kld_path()    { k=$(f_get kld); [ "$k" = nessuno ] && return 0; echo "${k#* }"; }
+s_kld_modules() { case "$(f_get kld)" in completo*) printf 'acpi/ivhd\npci/amdviiommu\npci/ppt\nvmm\n';; parziale*) printf 'acpi/ivhd\npci/amdviiommu\npci/ppt\n';; esac; }
+s_kld_loaded()  { f_on "carico_${1%.ko}"; }
+s_sha() {
+	case "$1" in
+	"$MC_ORIG_T") echo 149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9;;
+	"$MC_NEW_T")  if f_has new_e_r109; then echo 4626c65e824dce3f86fbfac3a6e35228187c4dedf18b5fefd167b1f9600f0dec
+	              else echo d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873; fi;;
+	"$MC_H2_T")   if f_has h2_e_p3; then echo 07013a445b19db76093c6719203be4f93db601f9e1dd5d7ed20bd6cbd9253934
+	              else echo 335fe2b82a2da2cc482a32983d8d8db99b36247a6c216e2d077afdc8cb7b8d8f; fi;;
+	esac
+}
+s_bid() {
+	case "$1" in
+	"$MC_ORIG_T") echo d30f6a7f6ea6c9259b5f39604c9399564aba5f49;;
+	"$MC_NEW_T")  echo 1ba0803c8165661c9e6b0a2c0c73c32182998341;;
+	"$MC_H2_T")   echo dcfb2ea8b50752a428f3152eb54b84050a95369b;;
+	esac
+}
+s_sysctl_present() {
+	case "$1" in
+	hw.vmm.vmx.nested_ept12_viol_emul_reflected)	# r110 e h2 (h2 contiene r110)
+		[ "$(f_get kld)" = "completo $MC_NEW_T" ] || [ "$(f_get kld)" = "completo $MC_H2_T" ] ||
+		    f_has oid_r110_finto;;
+	hw.vmm.vmx.vept_h2_viol_final) [ "$(f_get kld)" = "completo $MC_H2_T" ] || f_has oid_h2_finto;;
+	hw.vmm.gla2gpa_restart_capped)	# solo la variante RITIRATA con P3: sempre, o solo una volta caricata come "h2"
+		f_has oid_p3_finto || { f_has oid_p3_dopo && [ "$(f_get kld)" = "completo $MC_H2_T" ]; };;
+	*) return 0;;
+	esac
+}
+s_sysctl_val()  { [ "$1" = hw.vmm.iommu.initialized ] && f_get iommu; }
+s_pci()         { cat "$FS/pci"; }
+s_devmatch_candidati() {	# $1 = unita' ppt -> candidato del dispositivo dalla tabella hw
+	sel=$(awk -v u="$1" '$2 == "ppt" && $3 == u {print $1}' "$FS/pci")
+	[ -n "$sel" ] && awk -v s="$sel" '$1 == s && $5 != "-" {print $5}' "$FS/hw"
+	return 0
+}
+s_vm_procs()    { f_get vm_procs; }
+s_vmm_nodes()   { f_get vmm_nodes; }
+s_vmm_open()    { f_has vm2_aperto; }
+s_freeze() {
+	if f_has freeze_ebusy || [ "$(f_get frozen)" = 1 ]; then f_log "freeze EBUSY"; return 1; fi
+	f_set frozen 1; f_log freeze
+}
+s_thaw() {
+	[ "$(f_get frozen)" = 1 ] || { f_log "thaw EBUSY"; return 1; }
+	f_set frozen 0; f_log thaw
+	case "$(f_get kld)" in
+	completo*) if f_on ppt_in_attesa; then f_abbassa ppt_in_attesa; f_ppt_prende_libere
+	           if f_has cattura_al_thaw; then sed -i '' 's/^pci0:4:0:2 ppt [0-9]*/pci0:4:0:2 xhci 2/' "$FS/pci"; f_log "CATTURA xhci su 4:0:2"; fi; fi;;
+	*) f_asta_senza_ppt;;
+	esac
+}
+s_vm_destroy()  { : >| "$FS/vmm_nodes"; f_log "destroy $1"; }
+s_kldunload() {
+	f_log "kldunload frozen=$(f_get frozen)"
+	[ "$(f_get frozen)" = 1 ] || f_log "VIOLAZIONE: kldunload SENZA freeze"
+	f_has fail_unload && return 1
+	if f_has partial_unload; then f_set kld "parziale $(s_kld_path)"; f_stacca_ppt; return 1; fi
+	f_set kld nessuno; f_stacca_ppt
+	f_has devmatch_estraneo && f_devmatch_estraneo
+	f_devmatch_inflight
+	if f_has thaw_manuale; then f_set frozen 0; f_log "THAW A MANO estraneo"; fi
+	[ "$(f_get frozen)" = 1 ] || f_asta_senza_ppt
+	if f_on segnale_dopo_unload; then f_abbassa segnale_dopo_unload; kill -INT $$; fi
+	return 0
+}
+s_kldload() {
+	f_log "kldload $1 frozen=$(f_get frozen)"
+	[ "$(f_get kld)" = nessuno ] || { f_log "kldload EEXIST"; return 1; }
+	case "$1" in
+	"$MC_ORIG_T") f_has fail_load_orig && return 1;;
+	"$MC_NEW_T")  f_has fail_load_new && return 1;;
+	"$MC_H2_T")   f_has fail_load_h2 && return 1;;
+	*) return 1;;
+	esac
+	f_set kld "completo $1"
+	if [ "$(f_get frozen)" = 1 ]; then f_alza ppt_in_attesa
+	else f_ppt_prende_libere; fi
+	return 0
+}
+s_sudo_ok()     { return 0; }
+s_loader_sha()  { echo 4f3d0c57da4372da8cb501096aa45c359edebf7c11e061c8996e314898022230; }
+s_kernel_bid()  { echo 34ce6caea8356679eba32bdb7839cc4b5acce595; }
+s_ora()         { echo "2026-10-29 00:00:00"; }
+
+# --- kenv simulato: valore in kenv_<nome>, esistenza in kenv_<nome>.e (1/0)
+k_esiste()      { [ "$(cat "$FS/kenv_$1.e" 2>/dev/null)" = 1 ]; }
+s_kenv_esiste() { k_esiste "$1"; }
+s_kenv_get()    { k_esiste "$1" && cat "$FS/kenv_$1"; }
+s_kenv_set() {
+	f_log "kenv $1=$2"
+	f_has kenv_set_fail && return 1
+	f_kv=$2; f_has kenv_rilettura_diversa && f_kv="${2}X"
+	printf '%s\n' "$f_kv" >| "$FS/kenv_$1"; printf '1\n' >| "$FS/kenv_$1.e"
+}
+s_kenv_unset() {
+	f_log "kenv -u $1"
+	f_has kenv_unset_fail && return 1
+	: >| "$FS/kenv_$1"; printf '0\n' >| "$FS/kenv_$1.e"
+}
+# devmatch lanciato da devd per un nomatch estraneo (es. chiavetta USB): rc.d/devmatch rr.46-82
+f_devmatch_estraneo() {
+	if [ "$(s_kenv_get boot_safe)" = YES ]; then f_log "devmatch estraneo: boot_safe=YES, esce subito"; return; fi
+	if [ "$(f_get frozen)" = 1 ]; then f_log "devmatch estraneo: freeze EBUSY (ignorato)"; else f_set frozen 1; fi
+	f_set frozen 0; f_log "devmatch estraneo: THAW"
+	[ "$(f_get kld)" = nessuno ] && f_asta_senza_ppt
+}
+# devmatch "in volo" (#118 T25): ha letto boot_safe=NO PRIMA della nostra protezione. Resta attivo per
+# inflight_s secondi (ogni s_sleep ne consuma); se e' ancora vivo allo scarico, fa freeze (EBUSY) + THAW.
+s_devmatch_attivi() { n=$(f_get inflight_s); [ -n "$n" ] && [ "$n" -gt 0 ] && echo "4711 /bin/sh /etc/rc.d/devmatch quietstart ? at slot=0 on uhub0"; return 0; }
+s_sleep() {
+	n=$(f_get inflight_s); [ -n "$n" ] || return 0; [ "$n" -gt 0 ] || return 0
+	n=$((n - $1)); [ $n -lt 0 ] && n=0
+	f_set inflight_s $n; [ $n = 0 ] && f_log "devmatch in volo terminato"
+	return 0
+}
+f_devmatch_inflight() {
+	n=$(f_get inflight_s); [ -n "$n" ] && [ "$n" -gt 0 ] || return 0
+	f_log "devmatch IN VOLO (boot_safe letto prima = NO): freeze EBUSY, poi THAW"
+	f_set frozen 0
+	[ "$(f_get kld)" = nessuno ] && f_asta_senza_ppt
+	f_set inflight_s 0
+}

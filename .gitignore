@@ -1,0 +1,19 @@
+# repository propri (cloni indipendenti, ciascuno col suo ramo wsl2-*)
+/freebsd-nested/
+/qemu-nested/
+/kvm-unit-tests/
+/kut-src-claude/
+/kut-src-opnd/
+/kut-src-p3/
+/wsl/
+/ref/
+# uscite e prodotti: ogni ramo ha i suoi, non versionati
+/logs/
+/stage/
+/obj-*/
+/build-*/
+/collaudi/*/
+/caldo/*/
+/evidenze-*/
+__pycache__/
+*.log

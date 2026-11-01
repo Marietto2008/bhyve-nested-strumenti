@@ -1,0 +1,11 @@
+trappole dell'ombra (opnd-manifest.sh, segnali veri)
+  ok     term                               uscita 143 (attesa 143), nested_shadow_vmcs 0 (atteso 0)
+  ok     hup                                uscita 129 (attesa 129), nested_shadow_vmcs 0 (atteso 0)
+  ok     int                                uscita 130 (attesa 130), nested_shadow_vmcs 0 (atteso 0)
+  ok     uscita_normale                     uscita 0 (attesa 0), nested_shadow_vmcs 0 (atteso 0)
+  ok     uscita_con_errore                  uscita 7 (attesa 7), nested_shadow_vmcs 0 (atteso 0)
+  ok     spegnimento_esplicito_poi_uscita   uscita 0 (attesa 0), nested_shadow_vmcs 0 (atteso 0)
+  ok     accensione_non_riuscita            uscita 4 (attesa 4), nested_shadow_vmcs 0 (atteso 0)
+  ok     term_durante_comando_in_primo_piano uscita 143 (attesa 143), nested_shadow_vmcs 0 (atteso 0)
+  ok     term_durante_comando_in_primo_piano: trappola eseguita a comando concluso (2.1 s)
+SUMMARY: 9 ok, 0 errati

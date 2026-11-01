@@ -1,0 +1,116 @@
+#!/bin/sh
+# run-opnd-kut.sh -- Claude 31/10/2026, parere #166 (sezione B del dossier): collaudo d'integrazione dello stadio 9.
+# Il modulo dello stadio 9 deve essere GIA' caricato (scambio a caldo, passo separato col suo consenso) dal percorso
+# di staging; QEMU protetta (porta); nested=on; una VM (vm2), 1 vCPU su CPU 6.
+#
+#   run-opnd-kut.sh --prova    F1,F2,F3|F4 <out>   controlli in sola lettura + comando: NESSUNA VM
+#   run-opnd-kut.sh --esegui   F1,F2,F3    <out>   F1-F3 (sottoinsiemi ammessi), nessun caso terminale
+#   run-opnd-kut.sh --esegui-d F4          <out>   F4 da sola, TERMINALE (latch, VM_RUN 95): consenso separato
+#
+# Nessun rilancio, mai; dopo F4 nessun rientro: la QEMU protetta si ferma da se'. Nessuna distruzione di vm2.
+# USCITA: 0 sessione fatta (VERDETTO); 4 STOP ai controlli; 5 sessione non conclusa; 6 modulo non caricato (--prova).
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+MOD=$B/stage-stadio9/vmm-restore.ko
+MOD_SHA=f158dec46712e6ad03c7f1b66333b3270185c6be4dd7f64cc50052762439022d
+MOD_BUILDID=1d369697acaae9cfd5354a716570f6b1f66d24ad
+OIDS="hw.vmm.vmx.nested_ept12_viol_emul_reflected hw.vmm.vmx.vept_h2_viol_final hw.vmm.gla2gpa_restart_capped hw.vmm.fatal_latches hw.vmm.vmx.nested_operand_fatal"
+OID_ATTESO=11011			# r5 (1101) + nested_operand_fatal
+FLAT=$B/logs/kut-opnd-build-166/vmx-opnd.flat
+FLAT_SHA=54274b74e7ae19bcd6cd12c93c95c20964b6b3089f73c50c63aed42592bd6d3b
+DRV=$B/kut-drive.py
+DRV_SHA=ecffbbcaa1ddf7cb6780c783857de938b47f47f9478e5291fda4c967a4969aff
+QEMU=$B/build-qemu-gate-nested-sr/qemu-system-x86_64
+QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+LIBV_ATTESA=/usr/lib/libvmmapi.so.7
+LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
+LOADER_SHA=4f3d0c57da4372da8cb501096aa45c359edebf7c11e061c8996e314898022230
+PCBIOS=$B/qemu-nested/pc-bios
+MACCHINA=pc-i440fx-10.2
+PY=/usr/local/bin/python3
+LIMITE_BLOCCHI=2097152
+SONDE='vmm:vmx:nested:opndfatal { printf("OPNDFATAL vcpu=%d stadio=%d err=%d rip=%#lx gla=%#lx\n", arg0, arg1, arg2, arg3, arg4); }
+vmm:::fatal-latch { printf("FATAL_LATCH vcpu=%d errno=%d stadio=%d rip=%#lx gpa=%#lx gla=%#lx\n", arg0, arg1, arg2, arg3, arg4, arg5); }
+vmm:::fatal-ritorno { printf("FATAL_RITORNO vcpu=%d nextrip=%#lx rip=%#lx len=%d fatal_rip=%#lx\n", arg0, arg1, arg2, arg3, arg4); }'
+
+[ $# -eq 3 ] || { echo "uso: $0 --prova|--esegui|--esegui-d <piano> <out>"; exit 4; }
+MODO=$1; PIANO=$2; OUT=$3
+ferma() { echo "STOP: $*"; exit 4; }
+case "$MODO" in --prova|--esegui|--esegui-d) ;; *) ferma "modo $MODO";; esac
+case "$PIANO" in
+F4) [ "$MODO" = --esegui ] && ferma "F4 e' terminale: serve --esegui-d (consenso separato)"; TMO=90;;
+F1|F2|F3|F1,F2|F1,F3|F2,F3|F1,F2,F3) [ "$MODO" = --esegui-d ] && ferma "--esegui-d solo per F4"; TMO=300;;
+*) ferma "piano '$PIANO': F1,F2,F3 (o un sottoinsieme in quest'ordine) oppure F4 da sola";;
+esac
+case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
+case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+[ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
+[ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
+ulimit -f $LIMITE_BLOCCHI
+
+echo "=== preflight (sola lettura) ==="
+[ "$(sha256 -q "$MOD")" = "$MOD_SHA" ] || ferma "modulo di staging diverso dallo stadio 9 congelato"
+readelf -n "$MOD" 2>/dev/null | grep -q "Build ID: $MOD_BUILDID" || ferma "build-id dello staging diverso"
+for x in sdt_vmm_vmx_nested_opndfatal sdt_vmm___fatal__latch sdt_vmm___fatal__ritorno; do
+	nm "$MOD" | grep -q " $x\$" || ferma "sonda $x assente dal modulo"
+done
+CAR=$(/sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | head -1)
+sig=""; for o in $OIDS; do sig=$sig$(/sbin/sysctl -n $o >/dev/null 2>&1 && echo 1 || echo 0); done
+NONCAR=""
+if [ "$CAR" != "$MOD" ] || [ "$sig" != "$OID_ATTESO" ]; then
+	[ "$MODO" = --prova ] || { echo "STOP: caricato '$CAR' (oid $sig), non lo stadio 9 (oid $OID_ATTESO)"; exit 6; }
+	NONCAR="caricato '$CAR' (oid $sig): lo stadio 9 NON e' caricato (lo scambio e' un passo separato)"
+fi
+[ "$(sha256 -q /boot/loader.conf)" = "$LOADER_SHA" ] || ferma "loader.conf cambiato"
+[ "$(sha256 -q "$FLAT")" = "$FLAT_SHA" ] || ferma "vmx-opnd.flat diversa da quella congelata"
+for x in 'OPND PIANO?' 'OPND CASO' 'OPND F4 INIZIO' 'OPND F4 RITORNATO' 'OPND FINE'; do strings "$FLAT" | grep -q "$x" || ferma "la .flat non stampa '$x'"; done
+[ "$(sha256 -q "$DRV")" = "$DRV_SHA" ] || ferma "kut-drive.py diverso da quello congelato"
+[ "$(sha256 -q "$QEMU")" = "$QEMU_SHA" ] || ferma "QEMU diversa da quella protetta"
+strings "$QEMU" | grep -q 'porta della VM chiusa dal vCPU' || ferma "QEMU senza la porta della VM"
+LIBV=$(sudo -n /usr/bin/ldd "$QEMU" | awk '/libvmmapi/{print $3}')
+[ "$LIBV" = "$LIBV_ATTESA" ] && [ "$(sha256 -q "$LIBV")" = "$LIBV_SHA" ] || ferma "libvmmapi $LIBV diversa da quella attesa"
+v=$(/bin/ps -ax -o pid= -o comm= | /usr/bin/awk '$2 ~ /^(bhyve|qemu-system)/'); [ -n "$v" ] && { echo "$v"; ferma "una VM e' gia' viva"; }
+[ -z "$(ls /dev/vmm 2>/dev/null)" ] || ferma "/dev/vmm non vuoto ($(ls /dev/vmm | tr '\n' ' ')): nessuna distruzione implicita"
+[ "$(pciconf -l 2>/dev/null | grep -c '^ppt')" = 6 ] || ferma "i ppt legati non sono 6"
+kldstat -q -n amdgpu.ko && ferma "amdgpu caricato"
+
+VMCMD="/usr/bin/cpuset -l 6 /usr/bin/timeout -k 1s $((TMO + 30))s $QEMU -L $PCBIOS --no-reboot -nodefaults \
+-machine $MACCHINA -accel bhyve,nested=on -device isa-debug-exit,iobase=0xf4,iosize=0x4 -display none -monitor none \
+-chardev stdio,id=opnd,mux=off,signal=off -serial chardev:opnd -smp 1 -m 256 -cpu max -kernel $FLAT \
+-append vmx_opnd_test"
+case "$VMCMD" in *mon:stdio*|*-daemonize*|*vm0*) ferma "riga QEMU non ammessa";; esac
+FOTO="/sbin/sysctl hw.vmm.fatal_latches hw.vmm.vmx.nested_operand_fatal"
+DRVCMD="$PY $DRV --out $OUT/drv --timeout $TMO --regola 'OPND INIZIO|foto|' --regola 'OPND PIANO?||$PIANO' \
+--regola 'OPND FINE|foto|' --foto-cmd '$FOTO' -- $VMCMD"
+echo "preflight OK: staging $MOD_SHA ($MOD_BUILDID), flat $FLAT_SHA, QEMU $QEMU_SHA, libvmmapi $LIBV_SHA"
+[ -n "$NONCAR" ] && echo "PROVA: $NONCAR"
+echo "comando: sudo -n $DRVCMD"
+[ "$MODO" = --prova ] && { echo "PROVA: nessuna VM avviata"; [ -n "$NONCAR" ] && exit 6; exit 0; }
+
+mkdir -p "$OUT" || ferma "mkdir $OUT"
+L0=$(/sbin/sysctl -n hw.vmm.fatal_latches); O0=$(/sbin/sysctl -n hw.vmm.vmx.nested_operand_fatal)
+sudo -n /usr/sbin/dtrace -q -n "$SONDE" -o "$OUT/sonde.txt" & DT=$!
+sleep 3
+eval sudo -n $DRVCMD | tee "$OUT/driver.out"
+sleep 1; sudo -n kill -INT $DT 2>/dev/null; wait $DT 2>/dev/null
+L1=$(/sbin/sysctl -n hw.vmm.fatal_latches); O1=$(/sbin/sysctl -n hw.vmm.vmx.nested_operand_fatal)
+S=$OUT/drv/seriale.txt
+[ -f "$S" ] || { echo "nessuna seriale"; exit 5; }
+{
+	echo "sessione $PIANO: $(cat $OUT/drv/esito.txt)"
+	echo "fatal_latches $L0 -> $L1, nested_operand_fatal $O0 -> $O1"
+	if [ "$PIANO" = F4 ]; then
+		grep -q 'OPND F4 RITORNATO' "$S" && echo "F4 ERRATO: l'istruzione e' tornata nel guest"
+		grep -q 'OPND F4 INIZIO' "$S" || echo "F4 NON RAGGIUNTA (manca OPND F4 INIZIO)"
+		echo "atteso: +1 e +1; sonde OPNDFATAL stadio=4 e FATAL_LATCH errno=14, FATAL_RITORNO nextrip==rip len=0"
+		grep -c 'OPNDFATAL' "$OUT/sonde.txt" | sed 's/^/righe OPNDFATAL: /'
+		grep 'Error running vm\|errno' "$OUT/drv/qemu-stderr.txt" | head -3
+	else
+		grep 'OPND FINE' "$S" | sed 's/^[0-9.]* //'
+		echo "atteso: fatal_latches e nested_operand_fatal FERMI; ogni riga OPND CASO con -> OK"
+		grep -c 'OPND CASO.*-> ERRATO' "$S" | sed 's/^/casi ERRATI: /'
+	fi
+} > "$OUT/VERDETTO"
+cat "$OUT/VERDETTO"
+echo "/dev/vmm dopo: $(ls /dev/vmm 2>/dev/null | tr '\n' ' ')(nessuna distruzione da questo runner)"
+exit 0

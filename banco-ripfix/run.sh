@@ -1,0 +1,86 @@
+#!/bin/sh
+# run.sh -- Claude 30/10/2026, parere #135 §8. Estrae le funzioni VERE dal vmm.c di ciascun clone, compila il banco
+# e lo esegue; poi applica i mutanti al testo estratto e verifica che ciascuno faccia fallire almeno un controllo.
+# Uso: run.sh <cartella di lavoro>
+W=/mnt/linuxulator2/vm/nested-work
+B=$W/banco-ripfix
+E=$W/logs/h2mmio-ptphold-read-20261030/estrai-fn.sh
+O=${1:?cartella}
+mkdir -p "$O" || exit 1
+FN="vcpu_init vm_fatal_latch vm_handle_inst_emul vm_restart_instruction vm_run"
+CC="cc -std=gnu11 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -I$B"
+nf=0
+
+prova() {	# prova <nome> <albero> <tipo> <file funzioni>
+	cp "$4" "$O/funzioni.inc"
+	$CC -I"$O" -o "$O/banco-$1" "$B/banco.c" > "$O/cc-$1.txt" 2>&1 || { echo "COMPILAZIONE FALLITA $1"; cat "$O/cc-$1.txt" | head -20; return 2; }
+	"$O/banco-$1" "$2" "$3" > "$O/esito-$1.txt" 2>&1
+}
+
+for t in base nested; do
+	src=$W/freebsd-ripfix-$t/sys/amd64/vmm/vmm.c
+	sh $E "$src" $FN > "$O/fn-$t.inc"
+	grep -q '#error' "$O/fn-$t.inc" && { echo "estrazione fallita: $t"; nf=$((nf+1)); continue; }
+	prova "$t" "$t" "$t" "$O/fn-$t.inc"; r=$?
+	tail -1 "$O/esito-$t.txt"; grep ERRATO "$O/esito-$t.txt"
+	[ $r = 0 ] || nf=$((nf+1))
+done
+
+# mutanti: ognuno DEVE far fallire il banco (sul clone col nesting, che contiene anche la Fase C)
+mut() {	# mut <nome> <vecchio> <nuovo>
+	python3 - "$O/fn-nested.inc" "$O/mut-$1.inc" "$2" "$3" <<'FINE_PY_MUT'
+import sys
+s = open(sys.argv[1]).read()
+assert s.count(sys.argv[3]) >= 1, ('testo del mutante assente', sys.argv[3])
+open(sys.argv[2], 'w').write(s.replace(sys.argv[3], sys.argv[4], 1))
+FINE_PY_MUT
+	# il mutante DEVE essere stato generato: altrimenti si ricompilerebbe il funzioni.inc precedente (un
+	# altro mutante) e il "preso" sarebbe falso (successo il 30/10 con fetch_senza_latch)
+	if [ ! -s "$O/mut-$1.inc" ]; then echo "  ERRATO  mutante $1: non generato (testo assente nel sorgente)"; nf=$((nf+1)); return; fi
+	prova "mut-$1" "mutante $1" nested "$O/mut-$1.inc"; r=$?
+	# una compilazione fallita NON e' un mutante preso: deve fallire un CONTROLLO del banco
+	if [ $r = 2 ]; then echo "  ERRATO  mutante $1: compilazione fallita"; nf=$((nf+1))
+	elif [ $r = 0 ]; then echo "  ERRATO  mutante $1 NON preso"; nf=$((nf+1))
+	elif grep -q '  ERRATO' "$O/esito-mut-$1.txt"; then echo "  ok      mutante $1 preso: $(grep -m1 '  ERRATO' $O/esito-mut-$1.txt | cut -c11-90)"
+	else echo "  ERRATO  mutante $1: uscita $r senza controlli falliti"; nf=$((nf+1)); fi
+}
+mut senza_rollback '		vcpu->nextrip = vme->rip;
+		vme->inst_length = 0;' '		vme->inst_length = 0;'
+mut senza_latch_in_vm_run '	if (vcpu->fatal.errno_orig != 0)
+		return (ENOTRECOVERABLE);' ''
+mut latch_anche_sul_successo '	if (error != 0) {
+		/*
+		 * #135 K1/K2' '	if (1) {
+		/*
+		 * #135 K1/K2'
+mut latch_mai_azzerato '	memset(&vcpu->fatal, 0, sizeof(vcpu->fatal));' ''
+mut latch_sovrascritto '	if (f->errno_orig != 0)
+		return (ENOTRECOVERABLE);
+	f->errno_orig' '	f->errno_orig'
+mut fetch_senza_latch '			error = vm_fatal_latch(vcpu, error, VM_FATAL_FETCH, vme->rip,
+			    gpa, gla, NULL, 0, VM_FATAL_V_GPA |
+			    (gla != VIE_INVALID_GLA ? VM_FATAL_V_GLA : 0));' ''
+mut rollback_sull_handoff '	} else if (vcpu->vm->flags & VM_OP_F_QEMU) {
+		*retu = true;' '	} else if (vcpu->vm->flags & VM_OP_F_QEMU) {
+		vcpu->nextrip = vme->rip;
+		*retu = true;'
+mut campi_non_validi_registrati '	f->gla = (valide & VM_FATAL_V_GLA) ? gla : 0;' '	f->gla = gla; f->valide |= VM_FATAL_V_GLA;'
+# #142 §4.1.5: la sonda del ritorno: tolta, o accesa su ogni errore (anche EINTR, transitorio)
+mut sonda_ritorno_assente '	if (error == ENOTRECOVERABLE && vcpu->fatal.errno_orig != 0)
+		SDT_PROBE5(vmm, , , fatal__ritorno, vcpu->vcpuid, vcpu->nextrip,
+		    vme->rip, vme->inst_length, vcpu->fatal.rip);' ''
+mut sonda_ritorno_su_ogni_errore '	if (error == ENOTRECOVERABLE && vcpu->fatal.errno_orig != 0)
+		SDT_PROBE5(' '	if (error != 0)
+		SDT_PROBE5('
+# exitcode NESTED lasciato: mutante dello stub (il contratto della Fase C)
+# (copia di banco.c accanto allo stub mutato: #include "stub.h" cerca prima nella cartella del sorgente)
+mkdir -p "$O/mutnested"
+cp "$O/fn-nested.inc" "$O/mutnested/funzioni.inc"
+cp "$B/banco.c" "$O/mutnested/banco.c"
+sed 's/if (!sc.nested_bogus) {/if (0) {/' "$B/stub.h" > "$O/mutnested/stub.h"
+grep -q 'if (0) {' "$O/mutnested/stub.h" || { echo "mutante dello stub non applicato"; nf=$((nf+1)); }
+cc -std=gnu11 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -I"$O/mutnested" \
+    -o "$O/banco-mut-nested" "$O/mutnested/banco.c" > "$O/cc-mut-nested.txt" 2>&1 && "$O/banco-mut-nested" mutante nested > "$O/esito-mut-nested.txt" 2>&1
+if grep -q '  ERRATO' "$O/esito-mut-nested.txt" 2>/dev/null; then echo "  ok      mutante exitcode_NESTED_lasciato preso: $(grep -m1 '  ERRATO' $O/esito-mut-nested.txt | cut -c11-90)"; else echo "  ERRATO  mutante exitcode_NESTED_lasciato NON preso (o non compilato)"; nf=$((nf+1)); fi
+echo "banco ripfix: errori $nf"
+[ $nf = 0 ]

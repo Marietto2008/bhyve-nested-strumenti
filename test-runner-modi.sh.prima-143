@@ -1,0 +1,105 @@
+#!/bin/sh
+# test-runner-modi.sh -- Claude 30/10/2026, parere #139 §4. Collaudo della tabella dei modi (runner-modi.sh) e
+# matrice modo x {identita', piano, prova a secco COMPLETA, messaggio finale}. Controlla i TESTI, non solo i codici
+# d'uscita: in particolare l'assenza del consiglio di hot-swap dove nessun modulo cambia, e che la prova a secco di
+# originale-porta superi la firma degli oid anche con vm2 presente (prima si fermava prima e la nascondeva).
+# Nessuna VM, nessuna distruzione di /dev/vmm/vm2. Uso: test-runner-modi.sh <cartella su ZFS>
+B=/mnt/linuxulator2/vm/nested-work
+O=${1:?cartella}
+mkdir -p "$O" || exit 1
+nf=0
+ok() { echo "  ok      $*"; }
+no() { echo "  ERRATO  $*"; nf=$((nf+1)); }
+. "$B/runner-modi.sh"
+
+echo "T1: tabella"
+riga() {	# riga <modo> <oid> <frontend> <hotswap> <sha modulo (8)>
+	modo_carica "$1" || { no "$1: modo sconosciuto"; return; }
+	[ "$OID_ATTESO $FRONTEND $HOTSWAP $(echo $MOD_SHA | cut -c1-8)" = "$2 $3 $4 $5" ] && ok "$1: oid $2, frontend $3, hot-swap $4, modulo $5" || \
+	    no "$1: $OID_ATTESO $FRONTEND $HOTSWAP $(echo $MOD_SHA | cut -c1-8), attesi $2 $3 $4 $5"
+}
+riga originale 0000 riferimento no 149fa57e
+riga originale-porta 0000 porta no 149fa57e
+riga h2ad2 1100 riferimento si 4882d73d
+riga ripfix-nested-porta 1101 porta si 7bdd6781
+# #142: il modulo RIPFIX della tabella e' il FILE (sha e build-id ricalcolati), con le sonde dello script del modo
+modo_carica ripfix-nested-porta
+[ "$MOD_SHA" = "$(sha256 -q "$MOD")" ] && readelf -n "$MOD" | grep -q "Build ID: $MOD_BUILDID" && ok "ripfix-nested-porta: sha e build-id della tabella = file" || no "ripfix-nested-porta: identita' del file diversa"
+for x in $MOD_SDT; do nm "$MOD" | grep -q " $x\$" && ok "sonda $x nel modulo" || no "sonda $x assente"; done
+[ "$(basename $MOD_FBT)" = ptpad-fbt-ripfix-nested.d ] && ok "ripfix-nested-porta: traccia ptpad-fbt-ripfix-nested.d" || no "traccia $MOD_FBT"
+q1=$QEMU; l1=$LIBV_ATTESA; modo_carica originale-porta
+[ "$q1" = "$QEMU" ] && [ "$l1" = "$LIBV_ATTESA" ] && ok "ripfix-nested-porta: STESSA QEMU protetta e libvmmapi di originale-porta" || no "QEMU/libvmmapi diverse"
+for m in originale originale-porta h2ad2; do modo_carica $m; [ "$(basename $MOD_FBT)" = ptpad-fbt.d ] && ok "$m: traccia ptpad-fbt.d" || no "$m: traccia $MOD_FBT"; done
+# l'identita' del hot-swap (CALDO_ID) e' la stessa del runner: stesso file, sha, build-id
+for m in h2ad2 ripfix-nested-porta; do
+	modo_carica $m
+	c=$(sh -c '. "$1/caldo/mc-logica.sh"; mc_identita "$2"' x "$B" "$CALDO_ID")
+	[ "$c" = "$MOD $MOD_SHA $MOD_BUILDID" ] && ok "$m: modulo-caldo '$CALDO_ID' = modulo del runner" || no "$m: modulo-caldo '$CALDO_ID' -> '$c', runner '$MOD $MOD_SHA $MOD_BUILDID'"
+done
+modo_carica originale && m1=$MOD; modo_carica originale-porta && m2=$MOD
+[ "$m1" = "$m2" ] && ok "originale-porta usa lo STESSO file di modulo di originale" || no "moduli diversi: $m1 / $m2"
+modo_carica originale-porta; [ "$QEMU_ATTESO_SHA" = "$(sha256 -q "$QEMU")" ] && ok "QEMU della porta: hash della tabella = file" || no "hash della QEMU della porta diverso dal file"
+[ "$LIBV_ATTESA_SHA" = "$(sha256 -q "$LIBV_ATTESA")" ] && ok "libvmmapi della tabella = file" || no "libvmmapi diversa"
+strings "$QEMU" | grep -q 'porta della VM chiusa dal vCPU' && ok "QEMU della porta contiene la porta della VM" || no "QEMU senza la porta della VM"
+modo_carica sconosciuto && no "modo sconosciuto accettato" || ok "modo sconosciuto rifiutato"
+
+echo "T2: piani"
+pa() {	# pa <modo> <piano> <atteso 0|1>
+	piano_ammesso "$1" "$2"; r=$?
+	[ $r = $3 ] && ok "$1 $2 -> $r" || no "$1 $2 -> $r, atteso $3"
+}
+pa originale B,HD_PTP,HM_RAM,HM_PTP 0
+pa originale B,HM_RAM,DM_PTP 0
+pa originale B,C,H,A,H_D,A_D 1
+pa originale-porta B,HM_RAM,DM_PTP 0
+pa originale-porta B,HD_PTP,HM_RAM,HM_PTP 1
+pa originale-porta B,H,H_PDE,HD_CONFLICT,HD_CONFLICT_PDE 1
+pa h2ad2 B,C,H,A,H_D,A_D 0
+pa h2ad2 B,HM_RAM,DM_PTP 1
+pa ripfix-nested-porta B,HM_RAM,DM_PTP 0
+pa ripfix-nested-porta B,HD_PTP,HM_RAM,HM_PTP 0
+pa ripfix-nested-porta B,C,H,A,H_D,A_D 1
+pa ripfix-nested-porta B,HD_DATA,D_DATA 1
+pt() {	# pt <modo> <piano> <atteso 0|1>: piano terminale?
+	piano_terminale "$1" "$2"; r=$?
+	[ $r = $3 ] && ok "terminale $1 $2 -> $r" || no "terminale $1 $2 -> $r, atteso $3"
+}
+pt originale B,HM_RAM,DM_PTP 0
+pt originale B,HD_PTP,HM_RAM,HM_PTP 1
+pt h2ad2 B,HD_DATA,D_DATA 0
+pt h2ad2 B,C,H,A,H_D,A_D 1
+pt ripfix-nested-porta B,HM_RAM,DM_PTP 0
+pt ripfix-nested-porta B,HD_PTP,HM_RAM,HM_PTP 0
+
+echo "T3: messaggio finale"
+for m in originale originale-porta; do
+	[ -z "$(messaggio_finale $m)" ] && ok "$m: nessun consiglio di hot-swap" || no "$m: consiglio di hot-swap stampato: $(messaggio_finale $m)"
+done
+messaggio_finale h2ad2 | grep -q 'PROSSIMO PASSO OBBLIGATORIO.*--esegui h2ad2 originale' && ok "h2ad2: ritorno al modulo originale prescritto" || no "h2ad2: manca il ritorno"
+messaggio_finale ripfix-nested-porta | grep -q 'PROSSIMO PASSO OBBLIGATORIO.*--esegui ripfix-nested originale' && ok "ripfix-nested-porta: ritorno con l'identita' ripfix-nested" || no "ripfix-nested-porta: $(messaggio_finale ripfix-nested-porta)"
+messaggio_finale ripfix-nested-porta | grep -q 'ripfix-nested-porta originale' && no "ripfix-nested-porta: nome del MODO passato a modulo-caldo" || ok "ripfix-nested-porta: nessun nome di modo passato a modulo-caldo"
+
+echo "T4: prova a secco COMPLETA per ogni modo (testi controllati)"
+sec() {	# sec <nome> <modo> <piano> <rc atteso> <frammenti presenti, separati da |> <frammenti assenti, separati da |>
+	sh "$B/run-ptpad-kut-h2ad.sh" --prova "$2" "$3" "$B/logs/trm-$(date +%s)-$1" > "$O/$1.txt" 2>&1; r=$?
+	[ $r = $4 ] && ok "$1: rc $r" || no "$1: rc $r, atteso $4 ($(grep -m1 STOP $O/$1.txt))"
+	# (i giri in pipe sono subshell: i risultati vanno in un file .chk e si contano alla fine)
+	echo "$5" | tr '|' '\n' | while read -r f; do [ -z "$f" ] && continue
+		grep -q -- "$f" "$O/$1.txt" && echo "  ok      $1: contiene '$f'" || echo "  ERRATO  $1: manca '$f'"; done | tee "$O/$1.chk"
+	echo "$6" | tr '|' '\n' | while read -r f; do [ -z "$f" ] && continue
+		grep -q -- "$f" "$O/$1.txt" && echo "  ERRATO  $1: contiene '$f'" || echo "  ok      $1: non contiene '$f'"; done | tee -a "$O/$1.chk"
+}
+sec s1 originale B,HD_PTP,HM_RAM,HM_PTP 0 "preflight OK|frontend riferimento, hot-swap no|messaggio finale previsto: nessuno|piano terminale: no|traccia DTrace del modo ptpad-fbt.d" "PROSSIMO PASSO|non il modulo|-qmp unix:|RINVIATI"
+sec s2 originale-porta B,HM_RAM,DM_PTP 6 "preflight OK|frontend porta, hot-swap no|messaggio finale previsto: nessuno|si fermerebbe qui: il piano terminale richiede /dev/vmm VUOTO|libvmmapi risolta /usr/lib/libvmmapi.so.7|-qmp unix:|--qmp | -S -qmp " "PROSSIMO PASSO|non il modulo|NON e' caricato"
+sec s3 h2ad2 B,C,H,A,H_D,A_D 6 "NON e' caricato|hot-swap si|PROSSIMO PASSO OBBLIGATORIO" ""
+sec s6 ripfix-nested-porta B,HM_RAM,DM_PTP 6 "preflight OK|NON e' caricato|oid 1101, frontend porta, hot-swap si|--esegui ripfix-nested originale|traccia DTrace del modo ptpad-fbt-ripfix-nested.d; piano terminale: si|RINVIATI al modulo ripfix-nested-porta caricato|libvmmapi risolta /usr/lib/libvmmapi.so.7| -S -qmp |--qmp |ptpad-fbt-ripfix-nested.d --oracolo" "ripfix-nested-porta originale|--fbt $B/freebsd-nested/tools/nested/ptpad-fbt.d "
+sec s7 ripfix-nested-porta B,HD_PTP,HM_RAM,HM_PTP 6 "preflight OK|piano terminale: si|--esegui ripfix-nested originale| -S -qmp " ""
+sec s8 ripfix-nested-porta B,C,H,A,H_D,A_D 4 "STOP: piano 'B,C,H,A,H_D,A_D' rifiutato per ripfix-nested-porta" "preflight OK"
+sec s4 originale-porta B,HD_PTP,HM_RAM,HM_PTP 4 "STOP: piano 'B,HD_PTP,HM_RAM,HM_PTP' rifiutato per originale-porta" "preflight OK"
+sh "$B/run-ptpad-kut-h2ad.sh" --esegui originale-porta B,HM_RAM,DM_PTP "$B/logs/trm-$(date +%s)-s5" > "$O/s5.txt" 2>&1; r=$?
+[ $r = 4 ] && grep -q 'serve --esegui-d' "$O/s5.txt" && ok "s5: --esegui con DM rifiutato" || no "s5: rc $r"
+sh "$B/run-ptpad-kut-h2ad.sh" --esegui ripfix-nested-porta B,HD_PTP,HM_RAM,HM_PTP "$B/logs/trm-$(date +%s)-s10" > "$O/s10.txt" 2>&1; r=$?
+[ $r = 4 ] && grep -q 'serve --esegui-d' "$O/s10.txt" && ok "s10: --esegui con HM terminale (RIPFIX) rifiutato" || no "s10: rc $r ($(cat $O/s10.txt | head -2))"
+n=$(cat "$O"/*.chk | grep -c '  ERRATO'); nf=$((nf + n))
+echo "controlli errati: $nf"
+[ $nf = 0 ]

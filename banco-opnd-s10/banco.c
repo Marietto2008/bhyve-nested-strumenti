@@ -1,0 +1,853 @@
+/*
+ * banco.c (banco-opnd, rev. #163) -- Claude 31/10/2026, pareri #160-#163. Catena VERA: vm_run -> vmmops_nested_exit
+ * -> vmx_nested_exit (VERA: prefisso, guardia R8, shvmcs_pull VERA, dispatch) -> gestore VMX vero -> accesso
+ * all'operando vero -> vm_copy_setup/copyin/copyout veri -> latch vero -> ritorno di vm_run; poi un secondo VM_RUN.
+ * Oracolo FINALE per ogni caso, con le etichette dei difetti che tocca:
+ *   R6 a cavallo di pagina | R3 errore dell'host | R7 larghezza fuori dal modo 64 bit | M128 descrittore di
+ *   INVEPT/INVVPID | WRAP indirizzi non contigui (avvolgimento) | W4G avvolgimento a 4 GB (indirizzo e CR2) |
+ *   R8 VMX non attiva / CPL > 0 | EPTP validita' dell'EPTP di INVEPT single-context | EA (#163) offset dei byte
+ *   oltre l'address size: l'EA si tronca una volta, i byte no (SDM vol. 3A 5.3) | U64 (informativa) operando che
+ *   passa 2^64 in modo 64 bit: regola SDM non accertata, atteso il modello KVM (indirizzo modulo 2^64).
+ * #163: vie_calculate_gla e' quella VERA; l'oracolo dei segmenti e' scritto qui dall'SDM (5.3 limiti, 5.4-5.5 tipi),
+ * indipendente dall'aritmetica del codice: offset dei byte = EA + i NON troncato; lineare = base + offset, a 32 bit
+ * fuori dal modo 64 bit; in modo 64 bit la base conta solo per FS/GS e la somma non si tronca.
+ * run.sh verifica che a ogni stadio gli errori cadano SOLO su etichette corrette dalle patch successive.
+ * STADIO 10 (banco-opnd-s10): K1 (R9 nel nested: expand-down con limite 0xffffffff = segmento vuoto), K2 (VMREAD/
+ * VMWRITE: campo con bit 63:32 in modo 64 bit -> VMfail 12), K3 (fuori dal modo 64 bit tipo e campo a 32 bit),
+ * K6 (INVEPT/INVVPID non esposte all'L1 -> #UD prima della CPL). Le MSR virtuali del banco ora annunciano INVEPT
+ * (bit 20) e INVVPID (bit 32) ed "enable EPT/VPID" nei controlli secondari, come L0 (vmx_nested_init_msrs).
+ * Uso: banco <etichetta> [-v]
+ */
+#include "stub.h"
+
+static u_long vm_fatal_latches;
+
+#include "funzioni.inc"
+
+#define RFL0	0x8d7		/* CF PF AF ZF SF OF accesi: VMsucceed li spegne, VMfail ne accende uno */
+#define PAGINA	0x7000ULL	/* P0 dei casi ordinari (canonica); P1 = la pagina dell'ultimo byte */
+#define VAL_VMXON	0x2000ULL
+#define VAL_VMCLEAR	0x4000ULL
+#define VAL_VMPTRLD	0x6000ULL
+#define CUR_VMCS12	0x3000ULL
+#define CAMPO_VAL	0x1122334455667788ULL
+#define VMWRITE_VAL	0xdeadbeef05060708ULL
+#define REG_PRIMA	0xa5a5a5a5a5a5a5a5ULL	/* RDX prima di un VMREAD a registro */
+#define REV		0x12
+#define EPTP_VAL	0x0000000000abc01eULL	/* WB, page walk 4, niente A/D: valido */
+#define CAP_INVEPT	(1ULL << 20)
+#define CAP_INVVPID	(1ULL << 32)
+#define CAPS_TUTTE	((1ULL << 6) | (1ULL << 8) | (1ULL << 14) | (1ULL << 25) | (1ULL << 26) | (1ULL << 40) | \
+			(1ULL << 41) | (1ULL << 42) | (1ULL << 43) | CAP_INVEPT | CAP_INVVPID)	/* senza A/D (21) ne' walk a 5 (7), come L0 */
+enum { M64, M32, M16 };		/* modo 64 bit; protetto a 32 bit; protetto con indirizzamento a 16 bit */
+
+static struct vm vm;
+static struct vcpu v;
+static int nf, nok, verboso, ncasi;
+static uint8_t prima[2][PAGE_SIZE];
+static uint64_t cr2_atteso;
+
+struct caso {
+	const char *istr;
+	int motivo, modo;
+	uint64_t gla;		/* displacement = offset */
+	uint64_t base;		/* base del segmento (fuori dal modo 64 bit) */
+	int e0, e1;		/* PG_* delle pagine P0, P1 */
+	int seg;
+	uint32_t limite;
+	int getdesc_err;
+	uint64_t tipo;		/* INVVPID/INVEPT: tipo nel registro */
+	int reg;		/* VMREAD/VMWRITE in forma registro */
+	int campo_errato;	/* VMREAD/VMWRITE: campo non supportato -> VMfail */
+	int cpl, novmxon, vmxon_gia, restart_only;	/* (limite: 0 = quello del modo) */
+	int caps_nessuna;	/* EPT/VPID cap: nessun tipo annunciato */
+	int desc;		/* INVVPID 1 riservati, 2 VPID 0, 3 non canonico; INVEPT 4-10 EPTP (vedi eptp_di) */
+	int sh;			/* shadow VMCS: 0 spento; 1 vivo; 2 vivo + EFAULT; 3 gia' in errore; 4 vmread fallito;
+				   5 vivo + CPL 3; 6 verifica RO fallita */
+	int asz;		/* address size (2/4/8); 0 = quella del modo */
+	uint32_t acc;		/* diritti d'accesso del segmento; 0 = dati RW presenti (B=1 fuori dal 16 bit) */
+	int campo_alto;		/* stadio 10, K2/K3: campo VMREAD/VMWRITE con il bit 32 acceso */
+	int tipo_alto;		/* stadio 10, K3: tipo INVEPT/INVVPID con il bit 32 acceso */
+	int non_esposto;	/* stadio 10, K6: 1 bit di capacita' spento, 2 controllo secondario spento */
+};
+
+static const char *pgnome[] = { "ok", "PF", "EFAULT", "NOBACK", "RO" };
+static const char *modonome[] = { "m64", "m32", "m16" };
+static int operando_in_memoria(int motivo)
+{
+	return (motivo != EXIT_REASON_VMLAUNCH && motivo != EXIT_REASON_VMRESUME && motivo != EXIT_REASON_VMXOFF);
+}
+static int scrive(const struct caso *c)
+{
+	return (!c->reg && (c->motivo == EXIT_REASON_VMPTRST || c->motivo == EXIT_REASON_VMREAD));
+}
+static size_t lunghezza(const struct caso *c)
+{
+	if (c->motivo == EXIT_REASON_INVVPID || c->motivo == EXIT_REASON_INVEPT)
+		return (16);
+	if ((c->motivo == EXIT_REASON_VMREAD || c->motivo == EXIT_REASON_VMWRITE) && c->modo != M64)
+		return (4);
+	return (8);
+}
+static bool canonico(uint64_t a) { return ((int64_t)(a << 16) >> 16) == (int64_t)a; }
+static int asz(const struct caso *c) { return (c->asz ? c->asz : c->modo == M64 ? 8 : c->modo == M32 ? 4 : 2); }
+static uint64_t maschera(const struct caso *c) { return (asz(c) == 8 ? ~0ULL : asz(c) == 4 ? 0xffffffffULL : 0xffff); }
+static uint64_t ea(const struct caso *c) { return (c->gla & maschera(c)); }	/* l'EA, troncato una volta */
+static uint32_t acc(const struct caso *c) { return (c->acc ? c->acc : c->modo == M16 ? 0x0093 : 0xc093); }
+static uint64_t limite(const struct caso *c) { return (c->limite ? c->limite : c->modo == M16 ? 0xffff : 0xffffffffULL); }
+/* l'indirizzo lineare del byte i: EA + i (NON troncato) + base; a 32 bit fuori dal modo 64 bit; in modo 64 bit la
+ * base solo per FS/GS, e la somma a 64 bit */
+static uint64_t lin(const struct caso *c, size_t i)
+{
+	if (c->modo == M64)
+		return ((c->seg == 4 || c->seg == 5 ? c->base : 0) + ea(c) + i);
+	return ((c->base + ea(c) + i) & 0xffffffffULL);
+}
+static uint64_t pagina(uint64_t a) { return (a & ~(uint64_t)PAGE_MASK); }
+static uint64_t eptp_di(int desc)
+{
+	switch (desc) {
+	case 4: return (EPTP_VAL | (1ULL << 62));		/* oltre MAXPHYADDR */
+	case 5: return ((EPTP_VAL & ~7ULL) | 1);		/* tipo di memoria 1 */
+	case 6: return ((EPTP_VAL & ~0x38ULL) | (4 << 3));	/* walk a 5 livelli, non esposto */
+	case 7: return (EPTP_VAL | 0x80);			/* bit 7 riservato */
+	case 8: return (EPTP_VAL | 0x40);			/* A/D senza il bit 21 */
+	case 9: return (EPTP_VAL & ~7ULL);			/* UC: valido (controllo positivo) */
+	case 10: return (EPTP_VAL | (1ULL << 39));		/* bit 39 = MAXPHYADDR */
+	default: return (EPTP_VAL);
+	}
+}
+static bool eptp_invalido(int desc) { return (desc >= 4 && desc <= 10 && desc != 9); }
+
+/* il contenuto dell'operando nella memoria dell'L1 (16 byte al massimo) */
+static void operando(const struct caso *c, uint8_t *b)
+{
+	uint64_t q[2] = { 0, 0 };
+
+	switch (c->motivo) {
+	case EXIT_REASON_VMXON:		q[0] = VAL_VMXON; break;
+	case EXIT_REASON_VMCLEAR:	q[0] = VAL_VMCLEAR; break;
+	case EXIT_REASON_VMPTRLD:	q[0] = VAL_VMPTRLD; break;
+	case EXIT_REASON_VMWRITE:	q[0] = VMWRITE_VAL; break;
+	case EXIT_REASON_INVVPID:
+		q[0] = c->desc == 1 ? (1 | (1ULL << 20)) : c->desc == 2 ? 0 : 1;
+		q[1] = c->desc == 3 ? 0x0000800000000000ULL : 0x1000;
+		break;
+	case EXIT_REASON_INVEPT:	q[0] = eptp_di(c->desc); break;
+	}
+	memcpy(b, q, 16);
+}
+
+static void prepara(const struct caso *c)
+{
+	uint8_t b[16];
+	uint32_t info;
+	size_t i, len = lunghezza(c);
+	uint64_t p1;
+
+	memset(&sc, 0, sizeof(sc)); memset(&op, 0, sizeof(op)); memset(&v, 0, sizeof(v)); memset(&vm, 0, sizeof(vm));
+	memset(&nn, 0, sizeof(nn)); memset(&xv, 0, sizeof(xv)); memset(mem, 0, sizeof(mem));
+	sdt_latch = sdt_ritorno = sdt_opnd = kassert_fallite = 0;
+	nested_shadow_verify = nested_shadow_inject = 0;
+	nested_sh_pull = 0;
+	shv_rw_mask = 0;
+	for (i = 0; i < SHV_N; i++)
+		if (shv_fields[i].fl & SHV_RW)
+			shv_rw_mask |= 1U << i;
+	memset(mem + GPA_P0, 0xa5, PAGE_SIZE);		/* sentinelle */
+	memset(mem + GPA_P1, 0x5a, PAGE_SIZE);
+	mem[VAL_VMXON] = REV; mem[VAL_VMPTRLD] = REV;	/* revisione delle regioni */
+	vm.active_cpus = 1;
+	v.vm = &vm;
+	vcpu_init(&v);					/* cookie = &xv (vmmops_vcpu_init) */
+	v.nextrip = RIP0;
+	v.regs[VM_REG_GUEST_RFLAGS] = RFL0;
+	op.motivo = c->motivo;
+	op.mask32 = c->modo != M64;
+	op.base = c->base;
+	op.gla = lin(c, 0);
+	op.pag[0] = pagina(lin(c, 0));
+	p1 = pagina(lin(c, len - 1));
+	op.pag[1] = p1 != op.pag[0] ? p1 : op.pag[0] + PAGE_SIZE;
+	op.esito[0] = c->e0; op.esito[1] = c->e1;
+	op.getdesc_err = c->getdesc_err;
+	desc_scena.base = c->base;
+	desc_scena.limit = (uint32_t)limite(c);
+	desc_scena.access = acc(c);
+	nn.vmxon = (c->motivo != EXIT_REASON_VMXON || c->vmxon_gia) && !c->novmxon;
+	nn.vmxon_ptr = c->motivo == EXIT_REASON_VMXON ? 0 : 0x8000;
+	nn.current_vmcs12 = CUR_VMCS12;
+	for (i = 0; i < VMX_NESTED_MAX_VMCS12; i++)
+		nn.cache[i].vmcs12_gpa = VMCS12_GPA_NONE;
+	nn.cache[0].vmcs12_gpa = CUR_VMCS12;
+	nn.cache[0].campo = CAMPO_VAL;
+	nn.vmx_msr[0] = REV;
+	nn.vmx_msr[0x487 - 0x480] = ~0ULL;
+	nn.vmx_msr[0x489 - 0x480] = ~0ULL;
+	/* caps_nessuna: istruzione supportata ma nessun tipo annunciato (stadio 10: con K6 cap 0 sarebbe "non esposta") */
+	nn.vmx_msr[0x48c - 0x480] = c->caps_nessuna ? (CAP_INVEPT | CAP_INVVPID) : CAPS_TUTTE;
+	nn.vmx_msr[0x48b - 0x480] = (uint64_t)(PROCBASED2_ENABLE_EPT | PROCBASED2_ENABLE_VPID) << 32;
+	if (c->non_esposto == 1)
+		nn.vmx_msr[0x48c - 0x480] &= ~(c->motivo == EXIT_REASON_INVEPT ? CAP_INVEPT : CAP_INVVPID);
+	if (c->non_esposto == 2)
+		nn.vmx_msr[0x48b - 0x480] &= ~((uint64_t)(c->motivo == EXIT_REASON_INVEPT ? PROCBASED2_ENABLE_EPT :
+		    PROCBASED2_ENABLE_VPID) << 32);
+	nn.feature_control = IA32_FEATURE_CONTROL_LOCK | IA32_FEATURE_CONTROL_VMX_EN;
+	nn.vpid2 = 7;
+	nn.restart_only = c->restart_only;
+	nn.exit_paging.cpu_mode = c->modo == M64 ? CPU_MODE_64BIT : CPU_MODE_PROTECTED;
+	nn.exit_paging.cpl = c->cpl;
+	nn.exit_insn_length = LEN;
+	nn.exit_qual = c->gla;
+	/* lo shadow VMCS */
+	if (c->sh != 0) {
+		nn.sh_on = true;
+		nn.sh_live = true;
+		nn.sh_cache = &nn.cache[0];
+		nn.cache[0].sh_rw_owned = true;
+		for (i = 0; i < 15; i++)
+			op.shadow[i] = 0x1000 + i;		/* i valori che l'L1 ha scritto in hardware */
+		nn.sh_fault = c->sh == 3;
+		op.sosp_dopo = c->sh == 3;
+		op.vmread_err = c->sh == 4;
+		nested_shadow_verify = c->sh == 6;
+	}
+	/* addrsize, segmento, indice e base non validi, reg2 = RCX (tipo o campo), reg1 = RDX, bit 10 = forma registro */
+	info = ((asz(c) == 8 ? 2u : asz(c) == 4 ? 1u : 0u) << 7) | ((uint32_t)c->seg << 15) | (1u << 22) |
+	    (1u << 27) | (1u << 28) | (2u << 3) | (c->reg ? 1u << 10 : 0);
+	nn.exit_insn_info = info;
+	xv.gpr[1] = (c->motivo == EXIT_REASON_VMREAD || c->motivo == EXIT_REASON_VMWRITE) ?
+	    ((c->campo_errato ? 0x1234 : CAMPO_BANCO) | (c->campo_alto ? 1ULL << 32 : 0)) :
+	    (c->tipo | (c->tipo_alto ? 1ULL << 32 : 0));
+	xv.gpr[2] = c->motivo == EXIT_REASON_VMWRITE ? VMWRITE_VAL : REG_PRIMA;
+	operando(c, b);
+	if (!scrive(c) && !c->reg && operando_in_memoria(c->motivo))
+		for (i = 0; i < len; i++) {
+			uint64_t pg = pagina(lin(c, i));
+			if (pg == op.pag[0] || pg == op.pag[1])
+				*l1byte(lin(c, i)) = b[i];
+		}
+	memcpy(prima[0], mem + GPA_P0, PAGE_SIZE);
+	memcpy(prima[1], mem + GPA_P1, PAGE_SIZE);
+}
+
+/* l'accesso all'operando come lo vuole l'SDM (un accesso unico): NULL se riuscito, altrimenti l'esito */
+static const char *accesso(const struct caso *c, char *a, size_t n)
+{
+	size_t len = lunghezza(c), i;
+	int vec = c->seg == 2 ? 12 : 13, es[2] = { c->e0, c->e1 }, k, usata[2] = { 1, 0 };
+
+	if (c->getdesc_err) { snprintf(a, n, "FATALE/5"); return (a); }
+	if (c->modo != M64) {			/* SDM 5.3-5.5: segmento utilizzabile, tipo e permessi, limite */
+		uint32_t t = acc(c) & 0x1f;
+		uint64_t primo = ea(c), ultimo = ea(c) + len - 1;
+		bool fuori;
+
+		if (acc(c) & 0x10000)
+			fuori = true;					/* selettore nullo */
+		else if (!scrive(c) && (t & 0xa) == 0x8)
+			fuori = true;					/* lettura da codice solo esecuzione */
+		else if (scrive(c) && ((t & 0x8) || (t & 0xa) == 0))
+			fuori = true;					/* scrittura su codice o dati sola lettura */
+		else if ((t & 0xc) == 0x4)				/* dati expand-down */
+			fuori = primo <= limite(c) || ultimo > ((acc(c) & 0x4000) ? 0xffffffffULL : 0xffffULL);
+		else if (c->base == 0 && limite(c) == 0xffffffffULL)	/* piatto: SDM implementation-specific; */
+			fuori = false;					/* le CPU con VMX non controllano (KVM) */
+		else
+			fuori = ultimo > limite(c);
+		if (fuori) { snprintf(a, n, "ECCEZIONE#%d", vec); return (a); }
+	} else if (!canonico(lin(c, 0)) || !canonico(lin(c, len - 1))) {
+		snprintf(a, n, "ECCEZIONE#%d", vec); return (a);
+	}
+	for (i = 0; i < len; i++)
+		if (pagina(lin(c, i)) != op.pag[0])
+			usata[1] = 1;
+	for (k = 0; k < 2; k++) {		/* traduzioni in ordine di accesso... */
+		if (!usata[k])
+			continue;
+		if (es[k] == PG_PF || (es[k] == PG_RO && scrive(c))) {
+			for (i = 0; i < len; i++)	/* CR2 = il primo byte dell'operando in quella pagina */
+				if (pagina(lin(c, i)) == op.pag[k]) { cr2_atteso = lin(c, i); break; }
+			snprintf(a, n, "ECCEZIONE#14"); return (a);
+		}
+		if (es[k] == PG_EFAULT) { snprintf(a, n, "FATALE/4"); return (a); }
+	}
+	for (k = 0; k < 2; k++)			/* ...poi gli hold */
+		if (usata[k] && es[k] == PG_NOBACK) { snprintf(a, n, "FATALE/4"); return (a); }
+	return (NULL);
+}
+
+/* l'esito atteso (SDM, nell'ordine dello pseudocodice di ogni istruzione) e le etichette */
+static void atteso(const struct caso *c, char *a, size_t n, char *tag, size_t tn)
+{
+	size_t len = lunghezza(c), i;
+	bool due = false, wrap = false, w4g = false, m128 = c->motivo == EXIT_REASON_INVVPID ||
+	    c->motivo == EXIT_REASON_INVEPT, mem_op = !c->reg && operando_in_memoria(c->motivo);
+	bool shv = c->motivo == EXIT_REASON_VMCLEAR || c->motivo == EXIT_REASON_VMPTRLD;
+
+	cr2_atteso = ~0ULL;
+	for (i = 0; i < len; i++)
+		if (pagina(lin(c, i)) != pagina(lin(c, 0)))
+			due = true;
+	for (i = 1; i < len; i++)
+		if (lin(c, i) != lin(c, 0) + i)
+			wrap = true;
+	for (i = 1; c->modo != M64 && i < len; i++)	/* due byte consecutivi a cavallo di 0xffffffff -> 0 */
+		if (lin(c, i - 1) == 0xffffffffULL && lin(c, i) == 0)
+			w4g = true;
+	tag[0] = 0;
+	if (mem_op && (due || ((lin(c, 0) & PAGE_MASK) + 8 - 1) >= PAGE_SIZE))
+		strlcat(tag, " R6", tn);
+	if (mem_op && (c->getdesc_err || c->e0 == PG_EFAULT || c->e0 == PG_NOBACK || c->e1 == PG_EFAULT ||
+	    c->e1 == PG_NOBACK || c->sh == 2))
+		strlcat(tag, " R3", tn);
+	if (c->modo != M64 && (c->motivo == EXIT_REASON_VMREAD || c->motivo == EXIT_REASON_VMWRITE))
+		strlcat(tag, " R7", tn);
+	if (m128 && (c->e0 != PG_OK || c->e1 != PG_OK || c->limite || c->getdesc_err || c->desc || c->caps_nessuna ||
+	    c->tipo != 1 || c->novmxon || (c->modo == M64 && !canonico(lin(c, len - 1)))))
+		strlcat(tag, " M128", tn);
+	if (mem_op && wrap)
+		strlcat(tag, " WRAP", tn);
+	if (mem_op && w4g)
+		strlcat(tag, " W4G", tn);
+	if ((c->cpl != 0 && c->motivo != EXIT_REASON_VMXON) || (c->novmxon && (shv || !operando_in_memoria(c->motivo))))
+		strlcat(tag, " R8", tn);
+	if (c->motivo == EXIT_REASON_INVEPT && c->tipo == 1 && eptp_invalido(c->desc))
+		strlcat(tag, " EPTP", tn);
+	if (mem_op && ea(c) + len - 1 > maschera(c))
+		strlcat(tag, " EA", tn);
+	if (mem_op && c->modo != M64 && limite(c) == 0xffffffffULL && ea(c) + len - 1 > 0xffffffffULL)
+		strlcat(tag, " IMPL", tn);	/* SDM 5.3: limite FFFFFFFFH, comportamento implementation-specific */
+	if (mem_op && c->modo == M64 && lin(c, len - 1) < lin(c, 0))
+		strlcat(tag, " U64", tn);
+	if (mem_op && c->modo != M64 && ((acc(c) & 0x1f) & 0xc) == 0x4 && limite(c) == 0xffffffffULL)
+		strlcat(tag, " K1", tn);		/* expand-down con limite 0xffffffff: segmento vuoto */
+	if (c->campo_alto && c->modo == M64 && (c->motivo == EXIT_REASON_VMREAD || c->motivo == EXIT_REASON_VMWRITE))
+		strlcat(tag, " K2", tn);
+	if (c->tipo_alto && c->modo != M64 && m128)
+		strlcat(tag, " K3", tn);
+	if (c->non_esposto && m128)
+		strlcat(tag, " K6", tn);
+
+	if (c->restart_only) { snprintf(a, n, "RIPARTENZA_L2"); return; }	/* uscita di L2 gia' riflessa */
+	if (m128 && c->non_esposto) { snprintf(a, n, "ECCEZIONE#6"); return; }	/* K6: #UD prima della CPL */
+	if (c->novmxon && c->motivo != EXIT_REASON_VMXON) { snprintf(a, n, "ECCEZIONE#6"); return; }
+	if (c->cpl != 0) { snprintf(a, n, "ECCEZIONE#13"); return; }	/* SDM: CPL > 0 -> #GP(0) dopo la VM exit */
+	if (c->sh == 3 || c->sh == 4 || c->sh == 6) { snprintf(a, n, "SOSPESA"); return; }	/* shvmcs_pull fallita */
+	switch (c->motivo) {
+	case EXIT_REASON_VMREAD:			/* il campo prima, poi la destinazione */
+		if (c->campo_errato || (c->campo_alto && c->modo == M64)) { snprintf(a, n, "ESEGUITA_VMFAIL"); return; }
+		if (!c->reg && accesso(c, a, n) != NULL) return;
+		snprintf(a, n, "ESEGUITA"); return;
+	case EXIT_REASON_VMWRITE:			/* la sorgente prima, poi il campo */
+		if (!c->reg && accesso(c, a, n) != NULL) return;
+		snprintf(a, n, c->campo_errato || (c->campo_alto && c->modo == M64) ? "ESEGUITA_VMFAIL" : "ESEGUITA"); return;
+	case EXIT_REASON_INVVPID:			/* tipo, descrittore, contenuto */
+		if (c->tipo > 3 || c->caps_nessuna || (c->tipo_alto && c->modo == M64)) { snprintf(a, n, "ESEGUITA_VMFAIL"); return; }
+		if (accesso(c, a, n) != NULL) return;
+		snprintf(a, n, c->desc == 1 || (c->desc == 2 && c->tipo != 2) || (c->desc == 3 && c->tipo == 0) ?
+		    "ESEGUITA_VMFAIL" : "ESEGUITA");
+		return;
+	case EXIT_REASON_INVEPT:			/* tipo, descrittore, EPTP (single-context) */
+		if ((c->tipo != 1 && c->tipo != 2) || c->caps_nessuna || (c->tipo_alto && c->modo == M64)) {
+			snprintf(a, n, "ESEGUITA_VMFAIL"); return; }
+		if (accesso(c, a, n) != NULL) return;
+		snprintf(a, n, c->tipo == 1 && eptp_invalido(c->desc) ? "ESEGUITA_VMFAIL" : "ESEGUITA");
+		return;
+	default:
+		if (accesso(c, a, n) != NULL) return;
+		snprintf(a, n, "ESEGUITA");
+	}
+}
+
+/* gli effetti; e nessun byte delle due pagine toccato fuori dall'operando scritto */
+static const char *effetti(const struct caso *c, int esito)	/* esito: 0 non eseguita, 1 eseguita, 2 VMfail */
+{
+	size_t len = lunghezza(c), i, j;
+	uint64_t atteso_mem = 0;
+	int k;
+
+	for (k = 0; k < 2; k++)
+		for (i = 0; i < PAGE_SIZE; i++) {
+			uint64_t gla = op.pag[k] + i;
+			bool dentro = false;
+			for (j = 0; esito == 1 && scrive(c) && j < len; j++)
+				if (lin(c, j) == gla)
+					dentro = true;
+			if (!dentro && mem[(k ? GPA_P1 : GPA_P0) + i] != prima[k][i])
+				return (esito == 1 ? "EFFETTO_ERRATO(byte fuori dall'operando)" :
+				    "EFFETTO_PARZIALE(memoria)");
+		}
+	if (esito != 1) {			/* niente effetti dell'istruzione */
+		if (xv.gpr[2] != (c->motivo == EXIT_REASON_VMWRITE ? VMWRITE_VAL : REG_PRIMA) ||
+		    nn.cache[0].campo != CAMPO_VAL || op.invvpid_hw || op.invept_chiamate ||
+		    nn.current_vmcs12 != CUR_VMCS12 || nn.vmxon != ((c->motivo != EXIT_REASON_VMXON ||
+		    c->vmxon_gia) && !c->novmxon))
+			return ("EFFETTO_PARZIALE(stato)");
+		return (NULL);
+	}
+	switch (c->motivo) {
+	case EXIT_REASON_VMXON:
+		return (nn.vmxon && nn.vmxon_ptr == VAL_VMXON ? NULL : "EFFETTO_ERRATO(VMXON)");
+	case EXIT_REASON_VMCLEAR:
+		return (op.risultati == 1 ? NULL : "EFFETTO_ERRATO(VMCLEAR)");
+	case EXIT_REASON_VMPTRLD:
+		return (nn.current_vmcs12 == VAL_VMPTRLD ? NULL : "EFFETTO_ERRATO(VMPTRLD)");
+	case EXIT_REASON_VMPTRST:
+		atteso_mem = CUR_VMCS12;
+		break;
+	case EXIT_REASON_VMREAD:
+		atteso_mem = len == 4 ? (CAMPO_VAL & 0xffffffffULL) : CAMPO_VAL;
+		if (c->reg)
+			return (xv.gpr[2] == atteso_mem ? NULL : "EFFETTO_ERRATO(VMREAD registro)");
+		break;
+	case EXIT_REASON_VMWRITE:
+		return (nn.cache[0].campo == (len == 4 ? (VMWRITE_VAL & 0xffffffffULL) : VMWRITE_VAL) ? NULL :
+		    c->reg ? "EFFETTO_ERRATO(VMWRITE registro)" : "EFFETTO_ERRATO(VMWRITE)");
+	case EXIT_REASON_INVVPID:
+		return (op.invvpid_hw == 1 ? NULL : "EFFETTO_ERRATO(INVVPID)");
+	case EXIT_REASON_INVEPT:
+		return (op.invept_chiamate == 1 && op.invept_eptp == (c->tipo == 1 ? eptp_di(c->desc) : 0) ? NULL :
+		    "EFFETTO_ERRATO(INVEPT)");
+	}
+	for (i = 0; i < len; i++)
+		if (*l1byte(lin(c, i)) != ((atteso_mem >> (8 * i)) & 0xff))
+			return ("EFFETTO_ERRATO(operando scritto)");
+	return (NULL);
+}
+
+/* lo shadow: copiato (campi RW nel VMCS12, RO intatti, proprieta' resa) solo se shvmcs_pull doveva girare */
+static const char *shadow(const struct caso *c, bool pull_atteso)
+{
+	int i;
+
+	if (c->sh == 0 || c->sh == 3 || c->sh == 4 || c->sh == 6)
+		return (NULL);
+	for (i = 0; i < (int)SHV_N; i++) {
+		uint64_t atteso = pull_atteso && (shv_fields[i].fl & SHV_RW) ? op.shadow[i] : 0;
+		if (nn.cache[0].shf[i] != atteso)
+			return (pull_atteso ? "SHADOW(campo non copiato o RO toccato)" : "SHADOW(copiato senza motivo)");
+	}
+	if (nn.cache[0].sh_rw_owned == pull_atteso || nested_sh_pull != (pull_atteso ? 1 : 0))
+		return ("SHADOW(proprieta' o conteggio)");
+	return (NULL);
+}
+
+static void caso(const struct caso *c)
+{
+	char a[64], tag[64], o[260];
+	const char *ef = NULL;
+	int r, e1 = -1, e2 = -1, ent1 = 0, lat1 = 0, opnd1 = 0, rit1 = 0, exit1 = 0, len1 = 0, shv;
+	uint64_t rfl, nextrip1 = 0, sdt_r1 = 0, sdt_r3 = 0, fg;
+
+	ncasi++;
+	prepara(c);
+	atteso(c, a, sizeof(a), tag, sizeof(tag));
+	if ((r = setjmp(op.salto)) == 0) {
+		e1 = vm_run(&v);
+		/* lo stato del PRIMO ritorno, prima che un secondo VM_RUN lo tocchi */
+		ent1 = sc.entrate; lat1 = sdt_latch; opnd1 = sdt_opnd; rit1 = sdt_ritorno;
+		nextrip1 = v.nextrip; exit1 = v.exitinfo.exitcode; len1 = v.exitinfo.inst_length;
+		sdt_r1 = sdt_r[1]; sdt_r3 = sdt_r[3];
+		if (e1 == ENOTRECOVERABLE)
+			e2 = vm_run(&v);		/* K3: nessun ingresso, nessun nuovo latch */
+	}
+	rfl = v.regs[VM_REG_GUEST_RFLAGS];
+	fg = pagina(c->modo == M64 ? v.fatal.gla : (v.fatal.gla & 0xffffffffULL));
+	if (r == 1)
+		snprintf(o, sizeof(o), "PANIC_HOST");
+	else if (r == 2)
+		snprintf(o, sizeof(o), "GIRO_ILLIMITATO");
+	else if (c->restart_only) {
+		snprintf(o, sizeof(o), op.eccezioni == 0 && op.risultati == 0 && op.shvmcs == 0 && op.tradotte[0] == 0 &&
+		    op.tradotte[1] == 0 && v.fatal.errno_orig == 0 && op.altri_gestori == 0 && rfl == RFL0 ?
+		    "RIPARTENZA_L2" : "ALTRO(uscita di L2 riflessa trattata come istruzione dell'L1)");
+	} else if (e1 == ENOTRECOVERABLE) {
+		if (v.fatal.errno_orig == 0)
+			snprintf(o, sizeof(o), "95_SENZA_LATCH");
+		else if (nextrip1 != RIP0 || rit1 != 1 || sdt_r1 != RIP0 || sdt_r3 != 0)
+			snprintf(o, sizeof(o), "FATALE_SENZA_ROLLBACK(nextrip %#lx)", (u_long)nextrip1);
+		else if (exit1 != VM_EXITCODE_BOGUS || len1 != 0)
+			snprintf(o, sizeof(o), "FATALE_USCITA(exitcode %d len %d)", exit1, len1);
+		else if (op.eccezioni != 0)
+			snprintf(o, sizeof(o), "FALSO_HOST_FATALE(latch con %d eccezioni iniettate)", op.eccezioni);
+		else if (op.risultati != 0 || rfl != RFL0)
+			snprintf(o, sizeof(o), "EFFETTO_PARZIALE(eccezioni %d esiti %d RFLAGS %#lx)", op.eccezioni,
+			    op.risultati, (u_long)rfl);
+		else if (e2 != ENOTRECOVERABLE || sc.entrate != ent1 || sdt_latch != lat1)
+			snprintf(o, sizeof(o), "K3_BYPASS(secondo VM_RUN %d, ingressi %d->%d)", e2, ent1, sc.entrate);
+		else if (lat1 != 1 || opnd1 != 1 || sdt_opnd != 1 || sdt_o[1] != (uint64_t)v.fatal.stadio)
+			snprintf(o, sizeof(o), "FATALE_SONDE(latch %d opndfatal %d)", lat1, sdt_opnd);
+		else if (v.fatal.stadio == VM_FATAL_NESTED_OPERAND ? (v.fatal.valide != VM_FATAL_V_GLA ||
+		    (fg != op.pag[0] && fg != op.pag[1]) || v.fatal.gpa != 0) :
+		    (v.fatal.valide != 0 || v.fatal.gla != 0 || v.fatal.gpa != 0))
+			snprintf(o, sizeof(o), "FATALE_DIAGNOSI(stadio %d valide %#x gla %#lx gpa %#lx)", v.fatal.stadio,
+			    v.fatal.valide, (u_long)v.fatal.gla, (u_long)v.fatal.gpa);
+		else {
+			snprintf(o, sizeof(o), "FATALE/%d", v.fatal.stadio);
+			ef = effetti(c, 0);
+		}
+	} else if (e1 == 0 && v.fatal.errno_orig != 0)
+		snprintf(o, sizeof(o), "FALSO_FAIL_STOP(latch chiuso, VM_RUN %d)", e1);
+	else if (e1 == 0 && v.exitinfo.exitcode == VM_EXITCODE_SUSPENDED) {
+		snprintf(o, sizeof(o), op.eccezioni == 0 && op.risultati == 0 && rfl == RFL0 ? "SOSPESA" :
+		    "SOSPESA_CON_EFFETTI");
+		ef = effetti(c, 0);
+	} else if (e1 == 0 && sc.entrate == 2 && sc.rip_entrata[1] == RIP0 + LEN && op.eccezioni == 0 &&
+	    (rfl != RFL0 || op.risultati != 0)) {
+		snprintf(o, sizeof(o), op.vmfail ? "ESEGUITA_VMFAIL" : "ESEGUITA");
+		ef = effetti(c, op.vmfail ? 2 : 1);
+	} else if (e1 == 0 && sc.entrate == 2 && sc.rip_entrata[1] == RIP0 + LEN && op.eccezioni == 0)
+		snprintf(o, sizeof(o), "SALTO_SILENZIOSO");
+	else if (e1 == 0 && sc.entrate == 2 && sc.rip_entrata[1] == RIP0 && op.eccezioni == 1 && op.risultati == 0 &&
+	    rfl == RFL0) {
+		snprintf(o, sizeof(o), "ECCEZIONE#%d", op.vettore);
+		ef = effetti(c, 0);
+		if (op.vettore == 14 && op.cr2 != cr2_atteso)
+			snprintf(o + strlen(o), sizeof(o) - strlen(o), " CR2(%#lx, atteso %#lx)", (u_long)op.cr2,
+			    (u_long)cr2_atteso);
+	} else if (e1 == 0 && sc.entrate == 2 && sc.rip_entrata[1] == RIP0 && op.eccezioni == 0)
+		snprintf(o, sizeof(o), "RIPARTITA");
+	else
+		snprintf(o, sizeof(o), "ALTRO(VM_RUN %d ingressi %d eccezioni %d esiti %d RFLAGS %#lx exit %d)", e1,
+		    sc.entrate, op.eccezioni, op.risultati, (u_long)rfl, v.exitinfo.exitcode);
+	if (ef != NULL)
+		strlcat(o, " ", sizeof(o)), strlcat(o, ef, sizeof(o));
+	if (op.holds != 0)
+		snprintf(o + strlen(o), sizeof(o) - strlen(o), " RISORSE(%d hold aperti)", op.holds);
+	if (kassert_fallite)
+		snprintf(o + strlen(o), sizeof(o) - strlen(o), " KASSERT(%d)", kassert_fallite);
+	if (op.oltre4g)
+		snprintf(o + strlen(o), sizeof(o) - strlen(o), " OLTRE_4G(%d)", op.oltre4g);
+	if ((c->cpl || c->novmxon) && (op.tradotte[0] || op.tradotte[1]))
+		strlcat(o, " ACCESSO_PRIMA_DEL_GP", sizeof(o));
+	/* il prefisso di vmx_nested_exit: statistiche una volta; shvmcs_pull solo per i motivi che la vogliono e solo
+	 * se l'istruzione supera VMX attiva e CPL 0; nient'altro */
+	shv = (c->motivo == EXIT_REASON_VMCLEAR || c->motivo == EXIT_REASON_VMPTRLD || c->motivo == EXIT_REASON_VMXOFF ||
+	    c->motivo == EXIT_REASON_VMLAUNCH || c->motivo == EXIT_REASON_VMRESUME) && !c->cpl && !c->novmxon &&
+	    !c->restart_only;
+	if (r == 0 && (op.flush != 1 || op.shvmcs != shv || op.prefisso_altro || op.altri_gestori))
+		snprintf(o + strlen(o), sizeof(o) - strlen(o), " PREFISSO(flush %d shvmcs %d altro %d gestori %d)",
+		    op.flush, op.shvmcs, op.prefisso_altro, op.altri_gestori);
+	if (r == 0 && (ef = shadow(c, shv != 0)) != NULL)
+		strlcat(o, " ", sizeof(o)), strlcat(o, ef, sizeof(o));
+	if (strcmp(o, a) == 0)
+		nok++;
+	else
+		nf++;
+	if (strcmp(o, a) != 0 || verboso)
+		printf("  %s [%s] %-8s %s%s gla %#lx%s P0 %s P1 %s%s%s%s%s%s tipo %lu%s: atteso %s, osservato %s\n",
+		    strcmp(o, a) == 0 ? "ok     " : "ERRATO ", tag[0] ? tag + 1 : "-", c->istr, modonome[c->modo],
+		    c->reg ? " reg" : "", (u_long)c->gla, c->base ? " base" : "", pgnome[c->e0], pgnome[c->e1],
+		    c->seg == 2 ? " SS" : "", c->limite ? " limite" : "", c->getdesc_err ? " getdesc_err" : "",
+		    c->campo_errato ? " campo_errato" : "", c->cpl ? " cpl3" : "", (u_long)c->tipo,
+		    c->caps_nessuna ? " caps0" : c->novmxon ? " novmxon" : c->restart_only ? " restart_only" :
+		    c->sh ? (c->sh == 1 ? " sh1" : c->sh == 2 ? " sh2" : c->sh == 3 ? " sh3" : c->sh == 4 ? " sh4" :
+		    c->sh == 5 ? " sh5" : " sh6") : c->desc ? (c->desc == 1 ? " desc1" : c->desc == 2 ? " desc2" :
+		    c->desc == 3 ? " desc3" : c->desc == 4 ? " desc4" : c->desc == 5 ? " desc5" : c->desc == 6 ?
+		    " desc6" : c->desc == 7 ? " desc7" : c->desc == 8 ? " desc8" : c->desc == 9 ? " desc9" :
+		    " desc10") : c->vmxon_gia ? " vmxon_gia" : c->campo_alto ? " campo_alto" : c->tipo_alto ? " tipo_alto" :
+		    c->non_esposto == 1 ? " non_esposto_cap" : c->non_esposto == 2 ? " non_esposto_ctl" : "", a, o);
+}
+
+static struct caso base(const char *istr, int motivo, int modo, uint64_t tipo)
+{
+	struct caso c;
+
+	memset(&c, 0, sizeof(c));
+	c.istr = istr; c.motivo = motivo; c.modo = modo; c.tipo = tipo; c.seg = 3;
+	return (c);
+}
+
+int main(int argc, char **argv)
+{
+	static const struct { const char *nome; int motivo, modo; uint64_t tipo; } istr[] = {
+		{ "VMXON", EXIT_REASON_VMXON, M64, 0 }, { "VMCLEAR", EXIT_REASON_VMCLEAR, M64, 0 },
+		{ "VMPTRLD", EXIT_REASON_VMPTRLD, M64, 0 }, { "VMPTRST", EXIT_REASON_VMPTRST, M64, 0 },
+		{ "VMREAD", EXIT_REASON_VMREAD, M64, 0 }, { "VMREAD", EXIT_REASON_VMREAD, M32, 0 },
+		{ "VMWRITE", EXIT_REASON_VMWRITE, M64, 0 }, { "VMWRITE", EXIT_REASON_VMWRITE, M32, 0 },
+		{ "INVVPID", EXIT_REASON_INVVPID, M64, 1 }, { "INVEPT", EXIT_REASON_INVEPT, M64, 1 },
+	};
+	static const uint64_t off[] = { 0x000, 0xff0, 0xff1, 0xff8, 0xff9, 0xffc, 0xffd, 0xfff };
+	static const int sc2[][2] = {
+		{ PG_OK, PG_OK }, { PG_PF, PG_OK }, { PG_OK, PG_PF }, { PG_EFAULT, PG_OK }, { PG_OK, PG_EFAULT },
+		{ PG_NOBACK, PG_OK }, { PG_OK, PG_NOBACK }, { PG_RO, PG_RO }, { PG_NOBACK, PG_PF },
+	};
+	static const int scw[][2] = {
+		{ PG_OK, PG_OK }, { PG_OK, PG_PF }, { PG_OK, PG_EFAULT }, { PG_NOBACK, PG_PF }, { PG_OK, PG_NOBACK },
+		{ PG_RO, PG_RO },
+	};
+	static const struct { const char *nome; int motivo; uint64_t tipo; } w[] = {
+		{ "INVVPID", EXIT_REASON_INVVPID, 1 }, { "INVEPT", EXIT_REASON_INVEPT, 1 },
+		{ "VMPTRST", EXIT_REASON_VMPTRST, 0 }, { "VMPTRLD", EXIT_REASON_VMPTRLD, 0 },
+		{ "VMREAD", EXIT_REASON_VMREAD, 0 },
+	};
+	static const uint64_t wo[] = { 0xfffffff4ULL, 0xfffffff8ULL, 0xfffffffcULL, 0xfffffffeULL, 0xffffffffULL };
+	static const struct { const char *nome; int motivo; } senzaop[] = {
+		{ "VMLAUNCH", EXIT_REASON_VMLAUNCH }, { "VMRESUME", EXIT_REASON_VMRESUME }, { "VMXOFF", EXIT_REASON_VMXOFF },
+	};
+	struct caso c;
+	size_t i, j, k;
+	uint64_t t;
+	int d;
+
+	verboso = argc > 2 && strcmp(argv[2], "-v") == 0;
+	printf("banco-opnd rev. 162 (%s)\n", argc > 1 ? argv[1] : "?");
+	/* A. la griglia: 10 varianti x 8 offset x 9 scenari di pagina */
+	for (i = 0; i < nitems(istr); i++)
+		for (j = 0; j < nitems(off); j++)
+			for (k = 0; k < nitems(sc2); k++) {
+				c = base(istr[i].nome, istr[i].motivo, istr[i].modo, istr[i].tipo);
+				c.gla = PAGINA + off[j];
+				c.e0 = sc2[k][0]; c.e1 = sc2[k][1];
+				caso(&c);
+			}
+	/* B. per istruzione: vmx_getdesc fallito, limite superato a meta' (DS, SS), ultimo byte non canonico */
+	for (i = 0; i < nitems(istr); i++) {
+		c = base(istr[i].nome, istr[i].motivo, istr[i].modo, istr[i].tipo);
+		c.gla = PAGINA + 0xffc;
+		c.getdesc_err = EINVAL; caso(&c); c.getdesc_err = 0;
+		c.limite = (uint32_t)(PAGINA + 0xfff); caso(&c);
+		c.seg = 2; caso(&c); c.seg = 3; c.limite = 0;
+		if (c.modo == M64) {
+			c.gla = 0x00007ffffffffffcULL; caso(&c);
+			c.seg = 2; caso(&c); c.seg = 3;
+		}
+	}
+	/* C. R7: VMREAD/VMWRITE in forma registro, campo valido o no, 64 e 32 bit; e forma memoria (ok e #PF) */
+	for (i = 0; i < 2; i++)
+		for (j = 0; j < 2; j++)
+			for (k = 0; k < 2; k++) {
+				c = base(i ? "VMWRITE" : "VMREAD", i ? EXIT_REASON_VMWRITE : EXIT_REASON_VMREAD,
+				    j ? M32 : M64, 0);
+				c.gla = PAGINA + 0x100; c.reg = 1; c.campo_errato = (int)k;
+				caso(&c);
+				c.reg = 0; caso(&c);
+				c.e0 = PG_PF; caso(&c);
+			}
+	/* D. avvolgimento a 4 GB (modo protetto a 32 bit, base 0): operandi da 4, 8, 16 byte su 0xffffffff -> 0 */
+	for (i = 0; i < nitems(w); i++)
+		for (j = 0; j < nitems(wo); j++)
+			for (k = 0; k < nitems(scw); k++) {
+				c = base(w[i].nome, w[i].motivo, M32, w[i].tipo);
+				c.gla = wo[j]; c.e0 = scw[k][0]; c.e1 = scw[k][1];
+				caso(&c);
+			}
+	/* D'. lo stesso con base del segmento non nulla (#162 §5.1): base 0x10000000 + offset 0xeffffff8/c */
+	for (i = 0; i < 3; i += 2)		/* INVVPID e VMPTRST */
+		for (j = 0; j < 2; j++)
+			for (k = 0; k < 5; k++) {
+				c = base(w[i].nome, w[i].motivo, M32, w[i].tipo);
+				c.base = 0x10000000; c.gla = j ? 0xeffffffcULL : 0xeffffff8ULL;
+				c.e0 = scw[k][0]; c.e1 = scw[k][1];
+				caso(&c);
+			}
+	c = base("VMPTRST", EXIT_REASON_VMPTRST, M32, 0);		/* limite sugli offset, base non nulla */
+	c.base = 0x10000000; c.gla = 0xeffffff8ULL; c.limite = 0xeffffffbU; caso(&c);
+	/* E. avvolgimento a 64 KB (indirizzamento a 16 bit): il descrittore a 0xfff8 ha le meta' a 0xfff8 e a 0 */
+	for (i = 0; i < 2; i++)
+		for (k = 0; k < nitems(scw); k++) {
+			c = base(i ? "INVEPT" : "INVVPID", i ? EXIT_REASON_INVEPT : EXIT_REASON_INVVPID, M16, 1);
+			c.gla = 0xfff8; c.e0 = scw[k][0]; c.e1 = scw[k][1];
+			caso(&c);			/* limite 0xffff: EA + 15 oltre -> #GP (SDM 5.3) */
+			c.limite = 0xfffff; caso(&c);	/* limite grande: i byte proseguono oltre 0xffff, contigui */
+		}
+	for (k = 0; k < 4; k++) {			/* con base: le meta' a 0x22338 e 0x12340, pagine non in ordine */
+		c = base("INVVPID", EXIT_REASON_INVVPID, M16, 1);
+		c.base = 0x12340; c.gla = 0xfff8; c.e0 = scw[k][0]; c.e1 = scw[k][1];
+		caso(&c);
+		c.limite = 0xfffff; caso(&c);
+	}
+	c = base("VMPTRLD", EXIT_REASON_VMPTRLD, M16, 0); c.gla = 0xfff0; caso(&c);	/* controllo, nessun avvolgimento */
+	/* F. INVVPID/INVEPT: tipi x capacita' annunciate x descrittore leggibile o no; contenuti non validi */
+	for (t = 0; t <= 4; t++)
+		for (j = 0; j < 2; j++)
+			for (k = 0; k < 2; k++) {
+				c = base("INVVPID", EXIT_REASON_INVVPID, M64, t);
+				c.gla = PAGINA + 0x100; c.caps_nessuna = (int)j; c.e0 = k ? PG_PF : PG_OK;
+				caso(&c);
+			}
+	for (t = 0; t <= 3; t++)
+		for (j = 0; j < 2; j++)
+			for (k = 0; k < 2; k++) {
+				c = base("INVEPT", EXIT_REASON_INVEPT, M64, t);
+				c.gla = PAGINA + 0x100; c.caps_nessuna = (int)j; c.e0 = k ? PG_PF : PG_OK;
+				caso(&c);
+			}
+	for (d = 1; d <= 3; d++)
+		for (t = 0; t <= 3; t++) {
+			c = base("INVVPID", EXIT_REASON_INVVPID, M64, t); c.gla = PAGINA + 0x100; c.desc = d;
+			caso(&c);
+		}
+	/* EPTP (#162 07): ogni variante con tipo 1 (validata) e tipo 2 (non validata); 9 = UC valido */
+	for (d = 4; d <= 10; d++)
+		for (t = 1; t <= 2; t++) {
+			c = base("INVEPT", EXIT_REASON_INVEPT, M64, t); c.gla = PAGINA + 0x100; c.desc = d;
+			caso(&c);
+		}
+	c = base("INVEPT", EXIT_REASON_INVEPT, M64, 1); c.gla = PAGINA + 0x100; c.desc = 4; c.e0 = PG_PF;
+	caso(&c);					/* EPTP non valido ma descrittore illeggibile: #PF prima */
+	/* G. VMX non attiva (#UD) e CPL 3 (#GP), per ogni istruzione; VMXON a CPL 3 anche gia' attiva */
+	for (i = 0; i < nitems(istr); i++) {
+		c = base(istr[i].nome, istr[i].motivo, istr[i].modo, istr[i].tipo);
+		c.gla = PAGINA + 0x100;
+		if (c.motivo != EXIT_REASON_VMXON) { c.novmxon = 1; caso(&c); c.novmxon = 0; }
+		c.cpl = 3; caso(&c);
+		if (c.motivo == EXIT_REASON_VMXON) { c.vmxon_gia = 1; caso(&c); }
+	}
+	/* H. R8: CPL 3 senza accesso all'operando, anche con la seconda pagina guasta; CPL 3 + tipo non annunciato;
+	 * i motivi senza operando; un'uscita di L2 gia' riflessa a CPL 3 */
+	for (i = 0; i < nitems(istr); i++)
+		for (k = 0; k < 3; k++) {
+			c = base(istr[i].nome, istr[i].motivo, istr[i].modo, istr[i].tipo);
+			c.cpl = 3; c.gla = k ? PAGINA + 0xffc : PAGINA + 0x100;
+			c.e1 = k == 1 ? PG_PF : k == 2 ? PG_NOBACK : PG_OK;
+			if (c.motivo == EXIT_REASON_VMXON) c.vmxon_gia = 1;
+			caso(&c);
+		}
+	c = base("INVVPID", EXIT_REASON_INVVPID, M64, 4); c.cpl = 3; c.gla = PAGINA + 0x100; caso(&c);
+	c = base("INVEPT", EXIT_REASON_INVEPT, M64, 3); c.cpl = 3; c.gla = PAGINA + 0x100; caso(&c);
+	for (i = 0; i < nitems(senzaop); i++) {
+		c = base(senzaop[i].nome, senzaop[i].motivo, M64, 0);
+		c.novmxon = 1; caso(&c); c.novmxon = 0;
+		c.cpl = 3; caso(&c);
+	}
+	c = base("VMPTRLD", EXIT_REASON_VMPTRLD, M64, 0); c.cpl = 3; c.restart_only = 1; c.gla = PAGINA + 0x100;
+	caso(&c);
+	/* I. shadow VMCS con shvmcs_pull VERA, per VMCLEAR e VMPTRLD */
+	for (i = 1; i <= 2; i++)
+		for (d = 1; d <= 6; d++) {
+			c = base(istr[i].nome, istr[i].motivo, M64, 0);
+			c.gla = PAGINA + 0x100; c.sh = d;
+			if (d == 2) c.e0 = PG_EFAULT;
+			if (d == 5) c.cpl = 3;
+			caso(&c);
+		}
+	/* J. (#163) segmenti, modo 32 e 16 bit, vie_calculate_gla VERA: VMPTRST (scrive), VMPTRLD e INVVPID (leggono) */
+	{
+		static const struct { const char *nome; int motivo; uint64_t tipo; } sg[] = {
+			{ "VMPTRST", EXIT_REASON_VMPTRST, 0 }, { "VMPTRLD", EXIT_REASON_VMPTRLD, 0 },
+			{ "INVVPID", EXIT_REASON_INVVPID, 1 },
+		};
+		for (i = 0; i < nitems(sg); i++)
+			for (j = 0; j < 2; j++) {
+				int m = j ? M16 : M32;
+				size_t L;
+
+				c = base(sg[i].nome, sg[i].motivo, m, sg[i].tipo);
+				L = lunghezza(&c);
+				for (d = 0; d < 2; d++) {		/* expand-up: ultimo byte sul limite, poi oltre */
+					c.limite = 0x7fff; c.gla = 0x7fff - L + 1 + d; caso(&c);
+					c.seg = 2; caso(&c); c.seg = 3;
+				}
+				c.acc = m == M32 ? 0xc097 : 0x0097; c.limite = 0x0fff;	/* expand-down */
+				c.gla = 0x1000; caso(&c);			/* primo byte sopra il limite: ok */
+				c.gla = 0x0ffc; caso(&c);			/* primo byte <= limite: fuori */
+				c.gla = (m == M32 ? 0xfffffff0ULL : 0xfff0) + 16 - L; caso(&c);	/* fino alla cima */
+				c.gla = m == M32 ? 0xfffffffcULL : 0xfffc; caso(&c);	/* oltre la cima */
+				c.acc = 0; c.limite = 0; c.gla = 0x7100;
+				c.acc = (m == M32 ? 0xc093 : 0x0093) | 0x10000; caso(&c);	/* inutilizzabile */
+				c.acc = m == M32 ? 0xc091 : 0x0091; caso(&c);	/* dati sola lettura */
+				c.acc = m == M32 ? 0xc099 : 0x0099; caso(&c);	/* codice solo esecuzione */
+				c.acc = m == M32 ? 0xc09b : 0x009b; caso(&c);	/* codice leggibile */
+				c.acc = 0;
+				c.base = 0x100000; caso(&c); c.base = 0;	/* base non nulla */
+				if (m == M16) {					/* EA oltre 0xffff */
+					c.gla = 0xfffc; caso(&c);		/* limite 0xffff: #GP */
+					c.limite = 0xfffff; caso(&c);		/* limite grande: contiguo */
+					c.limite = 0;
+				} else {
+					c.gla = 0xfffffffcULL; caso(&c);	/* segmento piatto: #GP, non avvolto */
+				}
+			}
+	}
+	/* K. (#163) modo 64 bit: FS/GS con address size 64 e 32, EA troncato PRIMA della base, somma non troncata;
+	 * ultimo byte non canonico per la base; DS con base ignorata; estremi di 2^64 */
+	for (i = 0; i < 2; i++) {
+		c = base(i ? "VMPTRLD" : "VMPTRST", i ? EXIT_REASON_VMPTRLD : EXIT_REASON_VMPTRST, M64, 0);
+		for (d = 4; d <= 5; d++) {
+			c.seg = d; c.base = 0x00007f0000000000ULL;
+			c.gla = 0x7100; caso(&c);
+			c.asz = 4; c.gla = 0x100007100ULL; caso(&c);
+			c.gla = 0xfffffffcULL; caso(&c);
+			c.asz = 0;
+			c.base = 0x00007ffffffff000ULL; c.gla = 0xffc; caso(&c);
+		}
+		c.seg = 3; c.base = 0x00007f0000000000ULL; c.gla = 0x7100; caso(&c);
+		c.base = 0;
+		c.gla = 0xfffffffffffffff8ULL; caso(&c);
+		c.gla = 0xfffffffffffffffcULL; caso(&c);
+		c.gla = 0xffffffffffffffffULL; caso(&c);
+		c.gla = 0xffff7ffffffffff8ULL; caso(&c);
+		c.seg = 2; caso(&c); c.seg = 3;
+	}
+	c = base("INVVPID", EXIT_REASON_INVVPID, M64, 1); c.asz = 4; c.gla = 0xfffffff8ULL; caso(&c);
+	c.e1 = PG_PF; caso(&c);				/* la seconda meta' a 0x100000000, non a 0 */
+	/* L. (#163) m128 a 16 bit che passa anche i 4 GB: base 0xffff0000 + EA 0xfff8, limite 0xfffff */
+	for (k = 0; k < nitems(scw); k++) {
+		c = base("INVVPID", EXIT_REASON_INVVPID, M16, 1);
+		c.base = 0xffff0000ULL; c.gla = 0xfff8; c.limite = 0xfffff; c.e0 = scw[k][0]; c.e1 = scw[k][1];
+		caso(&c);
+	}
+	/* M. (#164 §5) U64, la tabella del parere: operandi da 8 e 16 byte a 0xffff...fff8/fffc/ffff in modo 64 bit,
+	 * con la prima pagina o la pagina ZERO guasta (CR2 atteso = 0 se manca la pagina zero), e scrittura senza effetti
+	 * parziali. Modello KVM (indirizzo modulo 2^64): etichetta U64 informativa, non conformita' SDM */
+	{
+		static const struct { const char *nome; int motivo; uint64_t tipo; } u[] = {
+			{ "VMPTRST", EXIT_REASON_VMPTRST, 0 }, { "VMPTRLD", EXIT_REASON_VMPTRLD, 0 },
+			{ "INVVPID", EXIT_REASON_INVVPID, 1 },
+		};
+		static const uint64_t ug[] = { 0xfffffffffffffff8ULL, 0xfffffffffffffffcULL, 0xffffffffffffffffULL };
+		static const int us[][2] = {
+			{ PG_OK, PG_OK }, { PG_PF, PG_OK }, { PG_OK, PG_PF }, { PG_OK, PG_EFAULT }, { PG_OK, PG_NOBACK },
+			{ PG_RO, PG_RO },
+		};
+		for (i = 0; i < nitems(u); i++)
+			for (j = 0; j < nitems(ug); j++)
+				for (k = 0; k < nitems(us); k++) {
+					c = base(u[i].nome, u[i].motivo, M64, u[i].tipo);
+					c.gla = ug[j]; c.e0 = us[k][0]; c.e1 = us[k][1];
+					caso(&c);
+				}
+	}
+	/* N. STADIO 10: K1, K2, K3, K6 */
+	{
+		static const struct { const char *nome; int motivo; uint64_t tipo; } sk[] = {
+			{ "VMPTRST", EXIT_REASON_VMPTRST, 0 }, { "VMPTRLD", EXIT_REASON_VMPTRLD, 0 },
+			{ "INVVPID", EXIT_REASON_INVVPID, 1 }, { "INVEPT", EXIT_REASON_INVEPT, 1 },
+		};
+		for (i = 0; i < nitems(sk); i++)		/* K1: expand-down B=1 con limite 0xffffffff, DS e SS */
+			for (j = 0; j < 2; j++) {
+				c = base(sk[i].nome, sk[i].motivo, M32, sk[i].tipo);
+				c.acc = 0xc097; c.limite = 0xffffffffU; c.gla = j ? 0x7100 : 0x10;
+				caso(&c);
+				c.seg = 2; caso(&c);
+			}
+		for (i = 0; i < 2; i++)				/* K2 e il caso obbligatorio di K3 (32 bit: nessun VMfail) */
+			for (j = 0; j < 2; j++)
+				for (d = 0; d < 2; d++) {
+					c = base(i ? "VMWRITE" : "VMREAD", i ? EXIT_REASON_VMWRITE : EXIT_REASON_VMREAD,
+					    j ? M32 : M64, 0);
+					c.gla = PAGINA + 0x100; c.reg = d; c.campo_alto = 1;
+					caso(&c);
+					if (!d) { c.e0 = PG_PF; caso(&c); }	/* VMWRITE: la sorgente prima del campo */
+				}
+		for (i = 2; i < 4; i++)				/* K3: tipo col bit 32 */
+			for (j = 0; j < 2; j++)
+				for (t = 1; t <= 2; t++) {
+					c = base(sk[i].nome, sk[i].motivo, j ? M32 : M64, t);
+					c.gla = PAGINA + 0x100; c.tipo_alto = 1;
+					caso(&c);
+				}
+		for (i = 2; i < 4; i++)				/* K6: non esposte, CPL 0 e 3, VMX attiva o no */
+			for (d = 1; d <= 2; d++)
+				for (k = 0; k < 2; k++) {
+					c = base(sk[i].nome, sk[i].motivo, M64, 1);
+					c.gla = PAGINA + 0x100; c.non_esposto = (int)d; c.cpl = k ? 3 : 0;
+					caso(&c);
+					c.novmxon = 1; caso(&c);
+				}
+	}
+	printf("%s: %d casi, %d ok, %d errati\n", argc > 1 ? argv[1] : "?", ncasi, nok, nf);
+	return (nf != 0);
+}

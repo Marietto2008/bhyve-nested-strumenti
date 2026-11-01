@@ -1,0 +1,119 @@
+#!/bin/sh
+# test-smoke-stadio9.sh -- Claude 31/10/2026, parere #167R1 par. 9.5. Collaudo di smoke-modulo.sh per l'identita'
+# stadio9 (e di non regressione per ripfix-nested e originale) su un sistema SIMULATO: mc-finto.sh per kld, sha, oid,
+# pci, kenv; in piu' sysctl dei contatori, elenco delle sonde, compilazione dello script FBT e dtrace vivo, tutti da
+# file. Nessun sudo, nessun dtrace, nessun kld. Sessioni e diari SINTETICI (mai quelli veri).
+# Uso: test-smoke-stadio9.sh <cartella nuova su ZFS>
+set -u
+C=$(cd "$(dirname "$0")" && pwd)
+O=${1:?cartella}
+case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+[ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
+mkdir -p "$O" || exit 2
+ORIG=/boot/kernel/vmm-restore.ko
+RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+S9=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
+S9_SHA=$(sha256 -q "$S9")
+nf=0; nok=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }
+no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
+
+cat > "$O/finto.sh" <<'FINE_FINTO_SMOKE_S9'
+. "$SM_C/mc-finto.sh"
+s_sysctl_val() { cat "$FS/sysctl_$1" 2>/dev/null; }
+sm_sonde_lista() { printf '   ID   PROVIDER   MODULE   FUNCTION NAME\n'; cat "$FS/sonde" 2>/dev/null; }
+sm_fbt_compila() { [ -e "$FS/fbt_ok" ]; }
+sm_dtrace_vivo() { [ -e "$FS/dtrace_vivo" ]; }
+FINE_FINTO_SMOKE_S9
+
+L_LATCH='1 vmm vmm-restore none fatal-latch'
+L_RIT='2 vmm vmm-restore none fatal-ritorno'
+L_UNEM='3 vmm vmx nested veptunemul'
+L_OPND='4 vmm vmx nested opndfatal'
+# prepara <nome> <orig|ripfix|s9> -- contatori in FTL/VMU/OPN (default 0), sonde in SONDE (righe separate da '|'),
+# iniezioni mc-finto in INI, FBT=0 per uno script che non compila
+prepara() {
+	N=$1; FS=$O/$N; export FS
+	case "$2" in orig) k=$ORIG;; ripfix) k=$RIPFIX;; s9) k=$S9;; esac
+	( . "$C/mc-finto.sh"; f_init "$k"
+	  for i in ${INI:-}; do : >| "$FS/$i"; done )
+	echo "${FTL:-0}" >| "$FS/sysctl_hw.vmm.fatal_latches"
+	echo "${VMU:-0}" >| "$FS/sysctl_hw.vmm.vmx.nested_vept_mmio_unemulable"
+	echo "${OPN:-0}" >| "$FS/sysctl_hw.vmm.vmx.nested_operand_fatal"
+	: >| "$FS/sonde"; [ -n "${SONDE:-}" ] && echo "$SONDE" | tr '|' '\n' >| "$FS/sonde"
+	[ "${FBT:-1}" = 1 ] && : >| "$FS/fbt_ok"
+	[ -n "${DTV:-}" ] && : >| "$FS/dtrace_vivo"
+	SMD=${DIARIO:-$O/diario-vuoto.txt}	# le assegnazioni davanti a una funzione sono temporanee: si conserva qui
+	return 0
+}
+# smoke <rc atteso> <argomenti di smoke-modulo.sh...>
+smoke() {
+	a=$1; shift
+	SM_C=$C SM_FINTO=$O/finto.sh FS=$FS SM_DIARIO=$SMD sh "$C/smoke-modulo.sh" "$@" > "$FS/out" 2>&1; r=$?
+	[ $r = $a ] && ok "$N rc=$r" || no "$N rc=$r, atteso $a ($(grep -E 'ERRATO|uso:' $FS/out | head -2 | tr '\n' ' '))"
+}
+ha()  { grep -qF -- "$1" "$FS/out" && ok "$N: '$1'" || no "$N: manca '$1'"; }
+non() { grep -qF -- "$1" "$FS/out" && no "$N: inatteso '$1'" || ok "$N: nessun '$1'"; }
+errati() { n=$(grep -c 'ERRATO' "$FS/out"); [ "$n" = "$1" ] && ok "$N: $1 controlli falliti" || no "$N: $n controlli falliti, attesi $1 ($(grep ERRATO $FS/out | tr '\n' ' '))"; }
+: >| "$O/diario-vuoto.txt"
+S4="$L_LATCH|$L_RIT|$L_UNEM|$L_OPND"
+S3="$L_LATCH|$L_RIT|$L_UNEM"
+
+echo "A: C1 (primo caricamento)"
+SONDE=$S4 prepara a1 s9; smoke 0 stadio9; ha 'firma OID 11011'; ha 'le 4 sonde del latch, ESATTAMENTE'; ha 'hw.vmm.vmx.nested_operand_fatal = 0 (C1'; ha 'SMOKE stadio9: COERENTE'; errati 0
+SONDE=$S3 prepara a2 ripfix; smoke 4 stadio9; ha "atteso 'completo $S9'"
+SONDE=$S3 INI=s9_senza_opnd prepara a3 s9; smoke 4 stadio9; ha "firma OID 11010 non e' quella di stadio9"; errati 2
+SONDE=$S4 OPN=1 prepara a4 s9; smoke 4 stadio9; ha "hw.vmm.vmx.nested_operand_fatal = '1' (C1 esige 0"; errati 1
+SONDE=$S3 prepara a5 s9; smoke 4 stadio9; ha 'sonde del latch'; errati 1
+SONDE="$S4|5 vmm vmx nested altra" prepara a6 s9; smoke 4 stadio9; errati 1
+SONDE=$S4 FBT=0 prepara a7 s9; smoke 4 stadio9; ha 'NON compila'; errati 1
+SONDE=$S4 INI=s9_ricompilato prepara a8 s9; smoke 4 stadio9; ha "sha del file $S9 diverso"
+SONDE=$S4 DTV=1 prepara a9 s9; smoke 4 stadio9; ha 'dtrace in esecuzione'; errati 1
+echo "B: non regressione delle altre identita'"
+SONDE=$S3 prepara b1 ripfix; smoke 0 ripfix-nested; ha 'firma OID 11010'; ha 'le 3 sonde del latch, ESATTAMENTE'; non 'nested_operand_fatal'; errati 0
+SONDE=$S4 prepara b2 ripfix; smoke 4 ripfix-nested; ha 'sonde del latch'; errati 1
+FBT=0 prepara b3 orig; smoke 0 originale; ha 'firma OID 00000'; ha 'nessuna sonda del latch'; errati 0
+SONDE=$L_OPND FBT=0 prepara b4 orig; smoke 4 originale; ha 'sonde del latch col modulo originale'; errati 1
+echo "C: --continuita (sessione SINTETICA nel formato di run-opnd-kut.sh)"
+T=$(date -j -f '%Y-%m-%d %H:%M:%S' '2026-10-31 11:00:00' +%s)
+sessione() {	# sessione <nome> [contatori] [righe in piu']: manifest + file del verdetto + SHA256SUMS
+	d=$O/sess-$1; mkdir -p "$d/drv"
+	{ echo "piano F4 modo --esegui-d"; echo "modulo caricato: $S9 $S9_SHA"; echo "avvio sessione: $T"
+	  echo "${2-contatori dopo: fatal_latches=1 nested_vept_mmio_unemulable=0 nested_operand_fatal=1}"; [ -n "${3:-}" ] && echo "$3"; } > "$d/manifest.txt"
+	echo 'PASS: piano F4' > "$d/VERDETTO"; echo '1.0 OPND F4 INIZIO' > "$d/drv/seriale.txt"
+	(cd "$d" && sha256 -r manifest.txt VERDETTO drv/seriale.txt > SHA256SUMS)
+	echo "$d"
+}
+echo "2026-10-31 10:00:00 === ESEGUO: da $ORIG a $S9 ===" > "$O/diario-buono.txt"
+K=$(sessione k)
+DIARIO=$O/diario-buono.txt SONDE=$S4 FTL=1 OPN=1 prepara k1 s9; smoke 0 stadio9 --continuita "$K"
+ha 'sessione di riferimento integra (3 file conformi), modulo stadio9 nel manifest'; ha 'hw.vmm.fatal_latches = 1 (= valore finale'
+ha 'hw.vmm.vmx.nested_operand_fatal = 1 (= valore finale'; ha 'hw.vmm.vmx.nested_vept_mmio_unemulable = 0 (= valore finale'; errati 0
+DIARIO=$O/diario-buono.txt SONDE=$S4 FTL=1 OPN=2 prepara k2 s9; smoke 4 stadio9 --continuita "$K"; ha 'la sessione di riferimento chiudeva a 1: cambiato'; errati 1
+DIARIO=$O/diario-buono.txt SONDE=$S4 FTL=1 OPN=1 prepara k3 s9; smoke 4 stadio9 --continuita "$(sessione k3 'contatori dopo: fatal_latches=1')"; ha 'non registra i contatori finali'
+DIARIO=$O/diario-buono.txt SONDE=$S4 FTL=1 OPN=1 prepara k4 s9; smoke 4 stadio9 --continuita "$(sessione k4 '' 'avvio sessione: 1')"; ha "non registra l'avvio della sessione"
+K5=$(sessione k5); echo 'x' >> "$K5/VERDETTO"
+DIARIO=$O/diario-buono.txt SONDE=$S4 FTL=1 OPN=1 prepara k5 s9; smoke 4 stadio9 --continuita "$K5"; ha 'diverso dal suo SHA256SUMS'
+cp "$O/diario-buono.txt" "$O/diario-dopo.txt"; echo "2026-10-31 11:30:00 === ESEGUO: da $ORIG a $S9 ===" >> "$O/diario-dopo.txt"
+DIARIO=$O/diario-dopo.txt SONDE=$S4 FTL=1 OPN=1 prepara k6 s9; smoke 4 stadio9 --continuita "$K"; ha "dopo l'avvio della sessione"
+echo "2026-10-31 10:00:00 === ESEGUO: da $ORIG a $RIPFIX ===" > "$O/diario-ripfix.txt"
+DIARIO=$O/diario-ripfix.txt SONDE=$S4 FTL=1 OPN=1 prepara k7 s9; smoke 4 stadio9 --continuita "$K"; ha "l'ultimo scambio del diario non porta a $S9"
+# una sessione dello stadio 9 non vale per il RIPFIX (il manifest registra un altro modulo)
+DIARIO=$O/diario-ripfix.txt SONDE=$S3 FTL=1 prepara k8 ripfix; smoke 4 ripfix-nested --continuita "$K"; ha 'il manifest non registra il modulo'
+# il ramo RIPFIX di --continuita (riscritto per lo stadio 9): sessione nel formato di run-ptpad-kut-h2ad.sh
+RS=$(sha256 -q "$RIPFIX"); R=$O/sess-ripfix; mkdir -p "$R/drv"
+{ echo "modulo caricato: $RIPFIX $RS"; echo "vm2 dopo: creata $((T + 5)) (avvio sessione $T) ID Length Name 1 256MB sysmem "; } > "$R/manifest.txt"
+printf 'FTL before=0\nFTL after=1\nVMU before=0\nVMU after=0\n' > "$R/drv/combinato.txt"
+(cd "$R" && sha256 -r manifest.txt drv/combinato.txt > SHA256SUMS)
+echo "2026-10-31 10:00:00 === ESEGUO: da $ORIG a $RIPFIX ===" > "$O/diario-ripfix-buono.txt"
+DIARIO=$O/diario-ripfix-buono.txt SONDE=$S3 FTL=1 prepara k9 ripfix; smoke 0 ripfix-nested --continuita "$R"
+ha 'sessione di riferimento integra (2 file conformi), modulo ripfix-nested nel manifest'; ha 'hw.vmm.fatal_latches = 1 (= valore finale'
+ha 'hw.vmm.vmx.nested_vept_mmio_unemulable = 0 (= valore finale'; non 'nested_operand_fatal'; errati 0
+DIARIO=$O/diario-ripfix-buono.txt SONDE=$S3 FTL=1 VMU=3 prepara k10 ripfix; smoke 4 ripfix-nested --continuita "$R"
+ha "hw.vmm.vmx.nested_vept_mmio_unemulable = '3', la sessione di riferimento chiudeva a 0"; errati 1
+# una sessione RIPFIX non vale per lo stadio 9 (manca la riga dei contatori e il modulo e' un altro)
+DIARIO=$O/diario-ripfix-buono.txt SONDE=$S4 FTL=1 prepara k11 s9; smoke 4 stadio9 --continuita "$R"; ha 'il manifest non registra il modulo'
+FBT=0 prepara u1 orig; smoke 4 originale --continuita "$K"; ha 'uso:'
+SONDE=$S4 prepara u2 s9; smoke 4 stadio9 --continuita; ha 'uso:'
+echo "SUMMARY: $nok ok, $nf errati"
+[ $nf = 0 ]

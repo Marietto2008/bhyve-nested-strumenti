@@ -1,0 +1,28 @@
+#!/bin/sh
+# Claude 25/10/2026 -- parere #51: benchmark A/B della SOLA correzione VPID, shadow COSTANTE.
+# Ordine palindromico N T T N (N = nested_vpid_track=0, T = nested_vpid_track=1) per annullare una
+# deriva lineare. Lo shadow resta allo stesso valore in tutte le prove (SH, default 0), cosi' si
+# misura solo l'effetto del tracciamento. Ogni prova e' una VM nuova (run-abba-prova.sh): avvio,
+# Windows fermo, WSL, prova ext4, compilazione, spegnimento. Swap svuotato prima di ogni prova.
+B=/mnt/linuxulator2/vm/nested-work
+: "${SH:=0}"			# shadow costante; 1 per misurare il VPID sopra lo shadow
+BASE=$B/logs/abbavpid-$(date +%Y%m%d-%H%M); mkdir -p "$BASE"
+i=0
+for M in N T T N; do
+	i=$((i + 1))
+	case $M in N) TR=0 ;; T) TR=1 ;; esac
+	O=$BASE/$i-$M; mkdir -p "$O"
+	if [ "$(swapinfo -k | tail -1 | awk '{print $3}')" -gt 0 ]; then
+		sudo -n swapoff -a && sudo -n swapon -a > /dev/null
+	fi
+	{ echo "== prova $i ($M) TR=$TR SH=$SH $(date +%T)"; swapinfo -h | tail -1; ps -axo pcpu,rss,comm -r | head -8; } >> "$BASE/attivita.txt"
+	echo "######## prova $i: $M (vpid_track=$TR shadow=$SH) $(date +%T)"
+	env O="$O" MOD="$M" S0=0 SH=$SH VF=0 TR=$TR sh "$B/run-abba-prova.sh" 480 2 > "$O/run.out" 2>&1
+	esito=$(tail -1 "$O/run.out")
+	echo "   prova $i ($M): $esito ($(date +%T))"
+	/usr/bin/grep -E "CHECKPOINT 05|^real|kernel rc|ext4:" "$O/run.out" | sed 's/^/   /'
+	case "$esito" in *COMPLETA*) ;; *) echo "!!! prova $i ($M) non completa: FERMATO"; break ;; esac
+	sleep 60
+done
+sudo -n sysctl hw.vmm.vmx.nested_vpid_track=0 hw.vmm.vmx.nested_shadow_vmcs=0 hw.vmm.vmx.vept_keep=0 > /dev/null
+echo "ABBAVPID-FINE $BASE"

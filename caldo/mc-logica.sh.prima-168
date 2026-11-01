@@ -1,0 +1,416 @@
+# mc-logica.sh -- Claude 29/10/2026 (rev. #118 + generica). Cambio A CALDO del modulo vmm-restore.ko con TUTTI i
+# dispositivi di pptdevs protetti da `devctl freeze`. Usa solo le funzioni s_* (mc-sistema.sh sull'host, mc-finto.sh
+# nel banco). Non contiene nessuna BDF, nessun ID e nessun nome di driver: li ricava dal sistema al preflight.
+#
+# PERCHE' IL FREEZE (sys/kern/subr_bus.c, identico in /usr/src e nell'albero r110):
+#   - scaricare ppt NON genera i nomatch verso devd (DF_NEEDNOMATCH);
+#   - un driver caricato NON aggancia subito (DL_DEFERRED_PROBE): i driver nativi non vengono interpellati;
+#   - al thaw UNA sola asta col nuovo ppt presente: ppt_probe da' 0, gli altri GENERIC/DEFAULT -> vince ppt
+#     (solo sui dispositivi LIBERI: uno gia' preso da un altro driver resta suo).
+# IL FREEZE E' GLOBALE E NON HA PROPRIETARIO (#117 P1): sull'host l'UNICO che fa freeze/thaw in automatico e'
+#   /etc/rc.d/devmatch, che esce SUBITO se kenv boot_safe=YES (rr.46-47). Quindi per tutta la transazione:
+#   kenv boot_safe=YES                       -> nessun NUOVO devmatch
+#   barriera (#118): drenaggio dei devmatch gia' partiti, poi seconda rilettura del kenv
+#   kenv devmatch_blocklist += i moduli che devmatch proporrebbe per i dispositivi ppt (devmatch -p): seconda difesa
+#   Un `devctl thaw` dato A MANO resta scoperto: thaw nostro = EBUSY -> esito 6 anche se lo stato pare buono.
+# REGOLA: thaw SOLO con un modulo completo caricato e SOLO se il freeze e' nostro (MC_FROZEN=1). Se nessun modulo si
+#   carica, il freeze RESTA: STATO DI EMERGENZA. Il freeze differisce globalmente i probe/attach avviati dal
+#   caricamento di driver e i nomatch (#118 §2.4): NON e' un lock universale sul bus ne' sui dispositivi ppt.
+MC_EMERG="freeze LASCIATO: enumerazione/probe differiti globalmente; stato NON ripristinato; nessun ulteriore comando VM/PCI; recupero tramite operatore (niente devctl thaw a mano prima di aver verificato modulo e dispositivi ppt)"
+#
+# USCITA: 0 ok verificato (modulo, dispositivi ppt come prima, kenv ripristinato, nessuna anomalia)
+#   | 4 STOP, nulla cambiato | 5 fallito ma tornato all'ORIGINALE verificato, kenv ripristinato
+#   | 6 OPERATORE (stato dichiarato nel diario)
+
+MC_ORIG=/boot/kernel/vmm-restore.ko
+MC_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+MC_ORIG_BID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+MC_NEW=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+MC_NEW_SHA=d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873
+MC_NEW_BID=1ba0803c8165661c9e6b0a2c0c73c32182998341
+MC_R109_SHA=4626c65e824dce3f86fbfac3a6e35228187c4dedf18b5fefd167b1f9600f0dec
+MC_LOADER_SHA=4f3d0c57da4372da8cb501096aa45c359edebf7c11e061c8996e314898022230
+MC_KERNEL_BID=34ce6caea8356679eba32bdb7839cc4b5acce595
+MC_NUOVO_OID=hw.vmm.vmx.nested_ept12_viol_emul_reflected	# esiste in r110 e in h2
+# H2 (29/10, pareri #119/#120): terza identita', la correzione di H2 SOLA sopra r110 (P3 escluso, parere #120 B1;
+# la variante H2+P3 07013a44 e' RITIRATA e non ha un'identita' qui)
+MC_H2=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+MC_H2_SHA=335fe2b82a2da2cc482a32983d8d8db99b36247a6c216e2d077afdc8cb7b8d8f
+MC_H2_BID=dcfb2ea8b50752a428f3152eb54b84050a95369b
+MC_H2_OID=hw.vmm.vmx.vept_h2_viol_final				# esiste in h2 (e in ogni sua derivata)
+MC_P3_OID=hw.vmm.gla2gpa_restart_capped				# esiste SOLO nella variante con P3: mai qui
+# H2-AD rev.2 (pareri #123-#127): walk in due fasi sopra h2, superiori rinviati (G0), precedenza DATO (G1b), ricerca
+# della voce su tutto ptp_pend (audit A #127). h2ad0/h2ad1 e h2ad e29cd0b3 RITIRATI
+MC_H2AD=/mnt/linuxulator2/vm/nested-work/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+MC_H2AD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
+MC_H2AD_BID=6df2856a10e94608a69a3844ff78965e25ad97fe
+# RIPFIX nested (#135-#142): h2ad2 + latch fatale K1/K2/K3, Fase C, sonde fatal-latch e fatal-ritorno. Copia CONGELATA
+# (non l'albero di build, che si puo' ricompilare): logs/ripfix-congelato-20261030-r5. Unica identita' con l'oid
+# hw.vmm.fatal_latches
+MC_RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+MC_RIPFIX_SHA=7bdd6781d3f535798d9133bacd2ecb9791e2e34e8ab828e4f103ee402dd042d5
+MC_RIPFIX_BID=6bce1d5cc73c1b2b5087ce5647b42867285e7cdb
+MC_FATAL_OID=hw.vmm.fatal_latches				# esiste SOLO nei moduli RIPFIX (e nelle loro derivate)
+# STADIO 9 (#164-#167R1): RIPFIX r5 + unita' 01..09 (R6, R3, R7, m128, wrap, R8, EPTP, W4G, EA) sul ramo
+# nested-r3-failstop. Copia CONGELATA in sola lettura: logs/stadio9-congelato-20261031. Unica identita' con l'oid
+# hw.vmm.vmx.nested_operand_fatal (il contatore del latch dell'operando, VM_FATAL_NESTED_OPERAND)
+MC_S9=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
+MC_S9_SHA=f158dec46712e6ad03c7f1b66333b3270185c6be4dd7f64cc50052762439022d
+MC_S9_BID=1d369697acaae9cfd5354a716570f6b1f66d24ad
+MC_OPND_OID=hw.vmm.vmx.nested_operand_fatal			# esiste SOLO nello stadio 9
+MC_MODULI_ATTESI="acpi/ivhd pci/amdviiommu pci/ppt vmm"
+MC_KENV_VARS="boot_safe devmatch_blocklist"
+
+MC_FROZEN=0; MC_FASE=nulla; MC_ANOMALIE=""; MC_ULTIMO=nessuno; MC_KENV_STATO=originale; MC_TRAP_IN=0
+MC_FOTO0=""; MC_N=0; MC_BLOCCA=""
+
+mc_dice()  { echo "$*"; [ "${MC_PROVA:-1}" = 1 ] || echo "$(s_ora) $*" >> "$MC_DIARIO"; }
+mc_fatto() { MC_ULTIMO=$*; }		# ultimo comando di sistema CONCLUSO (con esito)
+mc_stato() {	# marcatore persistente, riscritto PRIMA di ogni fase che cambia lo stato
+	MC_FASE=$1
+	[ "${MC_PROVA:-1}" = 1 ] && return 0
+	printf 'fase=%s\nda=%s\na=%s\nfrozen_nostro=%s\nkenv=%s\nultimo_comando=%s\nanomalie=%s\ndispositivi=%s\nbloccati=%s\nora=%s\n' \
+	    "$1" "$MC_DA_PATH" "$MC_A_PATH" "$MC_FROZEN" "$MC_KENV_STATO" "$MC_ULTIMO" "$MC_ANOMALIE" \
+	    "$(echo "$MC_FOTO0" | awk '{print $1}' | tr '\n' ' ')" "$MC_BLOCCA" "$(s_ora)" \
+	    > "$MC_STATO.tmp" && mv -f "$MC_STATO.tmp" "$MC_STATO"
+}
+mc_stop()  { mc_dice "STOP: $*"; MC_FASE=nulla; MC_RC=4; exit 4; }	# MC_RC: la trap esce con quello
+
+mc_identita() {
+	case "$1" in
+	originale) echo "$MC_ORIG $MC_ORIG_SHA $MC_ORIG_BID";;
+	r110)      echo "$MC_NEW $MC_NEW_SHA $MC_NEW_BID";;
+	h2)        echo "$MC_H2 $MC_H2_SHA $MC_H2_BID";;
+	h2ad2)     echo "$MC_H2AD $MC_H2AD_SHA $MC_H2AD_BID";;
+	ripfix-nested) echo "$MC_RIPFIX $MC_RIPFIX_SHA $MC_RIPFIX_BID";;
+	stadio9)   echo "$MC_S9 $MC_S9_SHA $MC_S9_BID";;
+	*) return 1;;
+	esac
+}
+
+# firma dei sysctl del modulo CARICATO (oid r110, oid h2, oid P3, oid fatal, oid opnd): originale 00000, r110 10000,
+# h2/h2ad2 11000, ripfix-nested 11010, stadio9 11011. L'oid di P3 non e' ammesso in nessuna identita' (#120 B1: la
+# variante con P3 non deve passare per h2). h2ad2 e ripfix-nested si distinguono SOLO per hw.vmm.fatal_latches (#142);
+# ripfix-nested e stadio9 SOLO per hw.vmm.vmx.nested_operand_fatal (#167R1 par. 9.5). rc 0 se coincide con $1
+mc_oid_ok() {
+	mc_o1=0; mc_o2=0; mc_o3=0; mc_o4=0; mc_o5=0
+	s_sysctl_present $MC_NUOVO_OID && mc_o1=1
+	s_sysctl_present $MC_H2_OID && mc_o2=1
+	s_sysctl_present $MC_P3_OID && mc_o3=1
+	s_sysctl_present $MC_FATAL_OID && mc_o4=1
+	s_sysctl_present $MC_OPND_OID && mc_o5=1
+	case "$1" in
+	"$MC_ORIG") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 00000 ];;
+	"$MC_NEW")  [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 10000 ];;
+	"$MC_H2"|"$MC_H2AD") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11000 ];;
+	"$MC_RIPFIX") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11010 ];;
+	"$MC_S9")   [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11011 ];;
+	*) return 1;;
+	esac
+}
+
+mc_caricato() {		# "completo <path>" | "parziale <path>" | "nessuno"
+	mc_p=$(s_kld_path)
+	[ -z "$mc_p" ] && { echo nessuno; return; }
+	mc_m=$(s_kld_modules | tr '\n' ' ' | sed 's/ $//')
+	[ "$mc_m" = "$MC_MODULI_ATTESI" ] && echo "completo $mc_p" || echo "parziale $mc_p"
+}
+
+# pptdevs come li legge il kernel (vmm_is_pptdev): pptdevs, pptdevs2, pptdevs3; voci "bus/slot/func" separate da
+# spazi. Stampa "bus:slot:func" una per riga (il kernel non guarda il dominio PCI, quindi nemmeno noi).
+mc_pptdevs() {
+	for mc_pv in pptdevs pptdevs2 pptdevs3; do
+		s_kenv_esiste $mc_pv || continue
+		for mc_pe in $(s_kenv_get $mc_pv); do
+			echo "$mc_pe" | awk -F/ 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1+0 ":" $2+0 ":" $3+0}'
+		done
+	done | sort -u
+}
+# righe di s_pci per un "bus:slot:func", qualunque dominio
+mc_pci_di() { s_pci | awk -v k="$1" '{ s = $1; sub(/^pci[0-9]+:/, "", s); if (s == k) print }'; }
+
+# Fotografia: per ogni dispositivo di pptdevs PRESENTE sul bus, "sel vendor device" (deve essere su ppt).
+# Imposta MC_FOTO0, MC_N; STOP se uno presente non e' su ppt.
+mc_foto() {
+	MC_FOTO0=""; MC_N=0
+	for mc_k in $(mc_pptdevs); do
+		mc_r=$(mc_pci_di "$mc_k")
+		if [ -z "$mc_r" ]; then mc_dice "  $mc_k -> non presente sul bus (in pptdevs ma assente: lo scambio non lo tocca)"; continue; fi
+		mc_dice "  $mc_k -> $mc_r"
+		set -- $mc_r
+		[ "$2" = ppt ] || mc_stop "$1 e' in pptdevs ma e' legato a '$2', non a ppt"
+		MC_FOTO0="$MC_FOTO0$1 $4 $5
+"
+		MC_N=$((MC_N + 1))
+	done
+}
+# Dopo: ogni dispositivo della fotografia di nuovo su ppt con lo stesso vendor:device. rc 0 se tutti.
+mc_pci_ok() {
+	mc_po=0
+	echo "$MC_FOTO0" | while read sel v d; do
+		[ -n "$sel" ] || continue
+		r=$(s_pci | awk -v s="$sel" '$1 == s')
+		echo "  $sel -> ${r:-ASSENTE}"
+	done
+	echo "$MC_FOTO0" | while read sel v d; do
+		[ -n "$sel" ] || continue
+		s_pci | awk -v s="$sel" -v v="$v" -v d="$d" '$1 == s && $2 == "ppt" && $4 == v && $5 == d {t=1} END {exit !t}' || exit 1
+	done
+}
+mc_pci_unita() { s_pci | awk '$2 == "ppt" {print $1 "=" $2 $3}' | sort | tr '\n' ' '; }
+
+# Moduli che devmatch proporrebbe per i dispositivi ppt (unione, senza .ko). Imposta MC_BLOCCA.
+mc_candidati() {
+	MC_BLOCCA=$(s_pci | awk '$2 == "ppt" {print $3}' | while read u; do s_devmatch_candidati "$u"; done | sort -u | tr '\n' ' ' | sed 's/ $//')
+}
+mc_candidati_caricati() { for mc_m in $MC_BLOCCA; do s_kld_loaded "$mc_m.ko" && printf '%s ' "$mc_m"; done; }
+
+# --- kenv: salvataggio (esistenza + valore), impostazione con rilettura, ripristino esatto con rilettura
+mc_kenv_salva() {
+	for mc_kn in $MC_KENV_VARS; do
+		if s_kenv_esiste "$mc_kn"; then eval "MC_KE_$mc_kn=1"; eval "MC_KV_$mc_kn=\$(s_kenv_get $mc_kn)"
+		else eval "MC_KE_$mc_kn=0"; eval "MC_KV_$mc_kn="; fi
+	done
+}
+mc_kenv_desc() { for mc_kn in $MC_KENV_VARS; do eval "mc_ke=\$MC_KE_$mc_kn; mc_kx=\$MC_KV_$mc_kn"; [ "$mc_ke" = 1 ] && printf "%s='%s' " "$mc_kn" "$mc_kx" || printf '%s=(assente) ' "$mc_kn"; done; }
+mc_kenv_metti_una() {	# $1 var, $2 valore voluto
+	s_kenv_set "$1" "$2"; mc_r1=$?; mc_fatto "kenv $1=$2 rc=$mc_r1"
+	[ $mc_r1 = 0 ] || return 1
+	s_kenv_esiste "$1" && [ "$(s_kenv_get "$1")" = "$2" ] || { mc_dice "kenv $1: rilettura diversa da '$2'"; return 1; }
+}
+mc_blocklist_voluta() {	# lista attuale + ogni candidato non gia' presente (una volta sola, ordine conservato)
+	eval "mc_bl=\$MC_KV_devmatch_blocklist"
+	for mc_m in $MC_BLOCCA; do case " $mc_bl " in *" $mc_m "*) ;; *) mc_bl=${mc_bl:+$mc_bl }$mc_m;; esac; done
+	echo "$mc_bl"
+}
+mc_kenv_metti() {
+	MC_KENV_STATO=in-modifica
+	mc_kenv_metti_una boot_safe YES || return 1
+	mc_bv=$(mc_blocklist_voluta)
+	eval "mc_ke=\$MC_KE_devmatch_blocklist; mc_kx=\$MC_KV_devmatch_blocklist"
+	if [ "$mc_ke" = 1 ] && [ "$mc_bv" = "$mc_kx" ]; then :	# niente da aggiungere
+	elif [ -n "$mc_bv" ]; then mc_kenv_metti_una devmatch_blocklist "$mc_bv" || return 1; fi
+	MC_KENV_STATO=protezione
+}
+mc_kenv_ripristina() {	# rc 0 solo se TUTTE le variabili sono tornate esattamente come prima (riletto)
+	[ "$MC_KENV_STATO" = originale ] && return 0
+	mc_kok=0
+	for mc_kn in $MC_KENV_VARS; do
+		eval "mc_ke=\$MC_KE_$mc_kn; mc_kx=\$MC_KV_$mc_kn"
+		if [ "$mc_ke" = 1 ]; then
+			if ! { s_kenv_esiste "$mc_kn" && [ "$(s_kenv_get "$mc_kn")" = "$mc_kx" ]; }; then
+				s_kenv_set "$mc_kn" "$mc_kx"; mc_kr=$?; mc_fatto "kenv $mc_kn=$mc_kx rc=$mc_kr"; fi
+			s_kenv_esiste "$mc_kn" && [ "$(s_kenv_get "$mc_kn")" = "$mc_kx" ] || mc_kok=1
+		else
+			if s_kenv_esiste "$mc_kn"; then s_kenv_unset "$mc_kn"; mc_kr=$?; mc_fatto "kenv -u $mc_kn rc=$mc_kr"; fi
+			s_kenv_esiste "$mc_kn" && mc_kok=1
+		fi
+	done
+	if [ $mc_kok = 0 ]; then MC_KENV_STATO=originale; else MC_KENV_STATO=RIPRISTINO-FALLITO; mc_dice "kenv NON ripristinato: $(for mc_kn in $MC_KENV_VARS; do printf '%s=' $mc_kn; s_kenv_esiste $mc_kn && printf "'%s' " "$(s_kenv_get $mc_kn)" || printf '(assente) '; done)"; fi
+	return $mc_kok
+}
+
+mc_preflight() {	# SOLA LETTURA
+	mc_dice "=== preflight (sola lettura): da $1 a $2 ==="
+	set -- $(mc_identita "$1") $(mc_identita "$2")
+	MC_DA_PATH=$1; MC_DA_SHA=$2; MC_DA_BID=$3; MC_A_PATH=$4; MC_A_SHA=$5; MC_A_BID=$6
+	s_sudo_ok || mc_stop "sudo -n non disponibile"
+	[ "$(s_kernel_bid)" = "$MC_KERNEL_BID" ] || mc_stop "kernel con build-id diverso"
+	[ "$(s_loader_sha)" = "$MC_LOADER_SHA" ] || mc_stop "loader.conf diverso da quello registrato"
+	[ "$(s_sha $MC_ORIG)" = "$MC_ORIG_SHA" ] && [ "$(s_bid $MC_ORIG)" = "$MC_ORIG_BID" ] || mc_stop "originale non integro"
+	for f in "$MC_DA_PATH" "$MC_A_PATH"; do
+		[ "$(s_sha "$f")" = "$MC_R109_SHA" ] && mc_stop "$f e' r109, da non caricare"
+	done
+	[ "$(s_sha "$MC_A_PATH")" = "$MC_A_SHA" ] && [ "$(s_bid "$MC_A_PATH")" = "$MC_A_BID" ] || mc_stop "destinazione $MC_A_PATH non integra"
+	mc_c=$(mc_caricato)
+	[ "$mc_c" = "completo $MC_DA_PATH" ] || mc_stop "caricato: '$mc_c', atteso 'completo $MC_DA_PATH'"
+	[ "$(s_sha "$MC_DA_PATH")" = "$MC_DA_SHA" ] || mc_stop "il file del modulo caricato non e' piu' quello atteso"
+	mc_oid_ok "$MC_DA_PATH" || mc_stop "i sysctl del modulo caricato non sono quelli di $MC_DA_PATH (oid r110=$mc_o1 h2=$mc_o2 p3=$mc_o3 fatal=$mc_o4 opnd=$mc_o5)"
+	[ "$(s_sysctl_val hw.vmm.iommu.initialized)" = 0 ] ||
+	    mc_stop "hw.vmm.iommu.initialized != 0: una VM con passthrough ha girato da quando il modulo e' caricato"
+	mc_v=$(s_vm_procs); [ -n "$mc_v" ] && mc_stop "VM viva: $mc_v"
+	MC_NODI=""
+	for n in $(s_vmm_nodes); do
+		[ "$n" = vm2 ] || mc_stop "nodo /dev/vmm/$n: solo vm2 (residuo di QEMU) e' ammesso"
+		s_vmm_open vm2 && mc_stop "/dev/vmm/vm2 e' aperto"
+		MC_NODI=vm2
+	done
+	mc_dice "dispositivi di pptdevs ($(mc_pptdevs | tr '\n' ' ')):"
+	mc_foto
+	[ $MC_N -gt 0 ] || mc_dice "nessun dispositivo su ppt: lo scambio non tocca dispositivi PCI"
+	mc_candidati
+	mc_cc=$(mc_candidati_caricati); [ -n "$mc_cc" ] && mc_stop "moduli candidati gia' caricati: $mc_cc"
+	MC_UNITA0=$(mc_pci_unita)
+	mc_kenv_salva
+	mc_dice "ok: caricato $MC_DA_PATH; nodi: ${MC_NODI:-nessuno}; $MC_N dispositivi ppt: $MC_UNITA0; moduli da bloccare (devmatch -p): '${MC_BLOCCA:-nessuno}'; kenv: $(mc_kenv_desc)"
+}
+
+# Barriera (#118 §2.3): un devmatch partito PRIMA di boot_safe=YES ha gia' letto NO e potrebbe arrivare al suo
+# freeze/thaw durante lo scambio. Dopo aver impostato e riletto la protezione, si aspetta (con limite) che non resti
+# nessun processo della catena devd -> service devmatch -> rc.d/devmatch -> devmatch/kldload. Nessun kill, devd resta su.
+# Poi seconda rilettura del kenv. Qualunque dubbio -> rc 1 -> STOP PRIMA del freeze.
+MC_BARRIERA_MAX=${MC_BARRIERA_MAX:-15}	# secondi
+mc_barriera() {
+	mc_stato barriera
+	mc_bi=0
+	while :; do
+		mc_ba=$(s_devmatch_attivi)
+		[ -z "$mc_ba" ] && break
+		if [ $mc_bi -ge $MC_BARRIERA_MAX ]; then
+			mc_fatto "barriera: devmatch ancora attivo dopo ${mc_bi}s"
+			mc_dice "barriera: devmatch ANCORA in esecuzione dopo ${mc_bi}s: $(echo "$mc_ba" | tr '\n' ';')"; return 1
+		fi
+		mc_dice "barriera: attendo un devmatch gia' avviato: $(echo "$mc_ba" | tr '\n' ';')"
+		s_sleep 1; mc_bi=$((mc_bi + 1))
+	done
+	mc_fatto "barriera ok dopo ${mc_bi}s"
+	mc_dice "barriera: nessun devmatch in esecuzione (attesa ${mc_bi}s)"
+	s_kenv_esiste boot_safe && [ "$(s_kenv_get boot_safe)" = YES ] || { mc_dice "seconda rilettura: boot_safe non e' YES"; return 1; }
+	for mc_m in $MC_BLOCCA; do
+		case " $(s_kenv_get devmatch_blocklist) " in *" $mc_m "*) ;; *) mc_dice "seconda rilettura: devmatch_blocklist senza $mc_m"; return 1;; esac
+	done
+	mc_dice "seconda rilettura kenv prima del freeze: boot_safe=YES, devmatch_blocklist='$(s_kenv_get devmatch_blocklist)'"
+}
+
+mc_carica_sotto_freeze() {	# stampa il path caricato; messaggi su stderr
+	if s_kldload "$1"; then echo "$1"; return 0; fi
+	mc_dice "kldload $1 FALLITO" >&2
+	[ "$1" = "$MC_ORIG" ] && return 1
+	mc_dice "carico l'originale, sempre sotto freeze" >&2
+	s_kldload "$MC_ORIG" && { echo "$MC_ORIG"; return 0; }
+	mc_dice "ANCHE l'originale non si carica" >&2
+	return 1
+}
+
+mc_verifica() {		# $1 = path atteso. rc 0 = modulo, dispositivi ppt come prima, candidati assenti, loader.conf
+	s_sleep 2
+	mc_vc=$(mc_caricato); mc_bad=""
+	[ "$mc_vc" = "completo $1" ] || mc_bad="$mc_bad caricato='$mc_vc'"
+	case "$1" in
+	"$MC_ORIG") [ "$(s_sha "$1")" = "$MC_ORIG_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_NEW")  [ "$(s_sha "$1")" = "$MC_NEW_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_H2")   [ "$(s_sha "$1")" = "$MC_H2_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_H2AD") [ "$(s_sha "$1")" = "$MC_H2AD_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_RIPFIX") [ "$(s_sha "$1")" = "$MC_RIPFIX_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_S9")   [ "$(s_sha "$1")" = "$MC_S9_SHA" ] || mc_bad="$mc_bad sha";;
+	*) mc_bad="$mc_bad identita'-sconosciuta";;
+	esac
+	mc_oid_ok "$1" || mc_bad="$mc_bad oid(r110=$mc_o1,h2=$mc_o2,p3=$mc_o3,fatal=$mc_o4,opnd=$mc_o5)"
+	mc_dice "i $MC_N dispositivi ppt:"
+	mc_pci_ok || mc_bad="$mc_bad pci"
+	mc_cc=$(mc_candidati_caricati); [ -n "$mc_cc" ] && mc_bad="$mc_bad caricati:$mc_cc"
+	[ "$(s_loader_sha)" = "$MC_LOADER_SHA" ] || mc_bad="$mc_bad loader.conf"
+	u=$(mc_pci_unita)
+	[ "$u" = "$MC_UNITA0" ] || mc_dice "AVVISO: numerazione ppt cambiata: prima $MC_UNITA0 / dopo $u (20-qemu-bhyve-gpu-AMD pretende ppt0/ppt1)"
+	[ -z "$mc_bad" ] && return 0
+	mc_dice "VERIFICA FALLITA:$mc_bad"; return 1
+}
+
+mc_thaw_nostro() {	# thaw SOLO se il freeze risulta nostro; EBUSY = qualcuno ha scongelato prima -> anomalia
+	[ $MC_FROZEN = 1 ] || return 0
+	mc_stato thaw
+	if s_thaw; then mc_fatto "devctl thaw rc=0"
+	else mc_fatto "devctl thaw EBUSY"; MC_ANOMALIE="$MC_ANOMALIE freeze-perso"
+		mc_dice "ANOMALIA: thaw rifiutato: il freeze era gia' stato tolto da altri (devctl thaw a mano?)"; fi
+	MC_FROZEN=0
+}
+
+# Uno scambio: $1 da, $2 a (path). rc 0 = $2 caricato e verificato; 5 = originale verificato; 6 operatore; 4 freeze rifiutato
+mc_scambia() {
+	mc_stato freeze
+	if ! s_freeze; then mc_fatto "devctl freeze EBUSY"; mc_dice "devctl freeze rifiutato: il bus e' gia' congelato da altri"; return 4; fi
+	mc_fatto "devctl freeze rc=0"; MC_FROZEN=1; mc_stato congelato
+	if [ -n "$MC_NODI" ]; then mc_stato distruggi-vm2; s_vm_destroy vm2; mc_fatto "bhyvectl --vm=vm2 --destroy rc=$?"; MC_NODI=""; fi
+	mc_stato scarico
+	if ! s_kldunload; then
+		mc_fatto "kldunload rc!=0"
+		mc_c=$(mc_caricato)
+		if [ "$mc_c" = "completo $1" ]; then
+			mc_dice "kldunload rifiutato, il modulo $1 e' intatto"
+			mc_thaw_nostro; mc_verifica "$1" && return 5; return 6
+		fi
+		mc_dice "kldunload FALLITO a meta': '$mc_c'. $MC_EMERG"; mc_stato parziale-congelato; return 6
+	fi
+	mc_fatto "kldunload rc=0"
+	mc_stato carico
+	mc_cp=$(mc_carica_sotto_freeze "$2") || { mc_fatto "kldload: nessun modulo"; mc_stato nessun-modulo-congelato
+		mc_dice "nessun modulo caricato. $MC_EMERG"; return 6; }
+	mc_fatto "kldload $mc_cp rc=0"
+	mc_k=$(mc_caricato)
+	[ "$mc_k" = "completo $mc_cp" ] || { mc_stato modulo-incompleto-congelato; mc_dice "caricato '$mc_k', non completo. $MC_EMERG"; return 6; }
+	mc_thaw_nostro
+	mc_stato verifica
+	if mc_verifica "$mc_cp"; then [ "$mc_cp" = "$2" ] && return 0; return 5; fi
+	return 6
+}
+
+mc_dichiara() {		# stato reale, senza presumere che qualcosa sia stato riparato
+	mc_dice "STATO: modulo='$(mc_caricato)'; freeze_nostro=$MC_FROZEN; kenv=$MC_KENV_STATO; ultimo='$MC_ULTIMO'; anomalie='${MC_ANOMALIE# }'"
+	mc_dice "  i $MC_N dispositivi ppt della fotografia iniziale:"
+	echo "$MC_FOTO0" | while read sel v d; do [ -n "$sel" ] || continue; r=$(s_pci | awk -v s="$sel" '$1 == s'); mc_dice "    $sel -> ${r:-ASSENTE}"; done
+}
+
+mc_trap() {	# EXIT/INT/TERM/HUP. Idempotente (MC_TRAP_IN). Non copre SIGKILL, panic, perdita di corrente, blocco del kernel.
+	[ $MC_TRAP_IN = 1 ] && exit 6
+	MC_TRAP_IN=1
+	trap - EXIT INT TERM HUP
+	case "$MC_FASE" in nulla|fine) exit "${MC_RC:-0}";; esac
+	mc_dice "TRAP nella fase $MC_FASE (ultimo comando concluso: $MC_ULTIMO): riparo"
+	mc_c=$(mc_caricato)
+	case "$mc_c" in
+	nessuno)
+		if [ $MC_FROZEN = 1 ] && s_kldload "$MC_ORIG"; then mc_fatto "kldload $MC_ORIG (trap) rc=0"; mc_c="completo $MC_ORIG"
+		else mc_dice "nessun modulo e originale non caricabile. $MC_EMERG"; mc_stato trap-congelato; mc_dichiara; exit 6; fi;;
+	parziale*) mc_dice "modulo parziale. $MC_EMERG"; mc_stato trap-congelato; mc_dichiara; exit 6;;
+	esac
+	mc_thaw_nostro
+	mc_verifica "${mc_c#completo }"; mc_tr=$?
+	mc_kenv_ripristina; mc_tk=$?
+	if [ $mc_tr = 0 ] && [ $mc_tk = 0 ] && [ -z "$MC_ANOMALIE" ] && [ "${mc_c#completo }" = "$MC_ORIG" ]; then mc_stato trap-ok; mc_dichiara; exit 5; fi
+	mc_stato trap-da-operatore; mc_dichiara; exit 6
+}
+
+mc_main() {	# $1 --prova|--esegui  $2 da  $3 a
+	[ $# -eq 3 ] || { echo "uso: modulo-caldo.sh --prova|--esegui originale|r110|h2|h2ad2|ripfix-nested|stadio9 originale|r110|h2|h2ad2|ripfix-nested|stadio9"; exit 4; }
+	case "$1" in --prova) MC_PROVA=1;; --esegui) MC_PROVA=0;; *) echo "modo $1"; exit 4;; esac
+	mc_identita "$2" >/dev/null && mc_identita "$3" >/dev/null || { echo "da/a: originale, r110, h2, h2ad2, ripfix-nested o stadio9"; exit 4; }
+	[ "$2" = "$3" ] && [ "$2" != originale ] && { echo "$2 -> $3 non ha senso"; exit 4; }
+	mc_preflight "$2" "$3"
+	if [ $MC_PROVA = 1 ]; then
+		mc_dice "PROVA, nessuna azione. Sequenza: kenv boot_safe=YES e devmatch_blocklist='$(mc_blocklist_voluta)' (con rilettura);"
+		mc_dice "  barriera: attesa (max ${MC_BARRIERA_MAX}s) che non resti nessun devmatch avviato prima; seconda rilettura kenv;"
+		mc_dice "  devctl freeze;${MC_NODI:+ bhyvectl --vm=vm2 --destroy;} kldunload -n vmm-restore.ko; kldload $MC_A_PATH"
+		mc_dice "  (se fallisce: $MC_ORIG, sempre sotto freeze); verifica modulo completo; devctl thaw (solo se nostro);"
+		mc_dice "  verifica: i $MC_N dispositivi di nuovo su ppt con gli stessi ID, sha/oid, moduli bloccati assenti, loader.conf;"
+		mc_dice "  ripristino ESATTO del kenv (con rilettura)"
+		[ "$MC_A_PATH" != "$MC_ORIG" ] && mc_dice "  se la verifica di $3 fallisce: secondo scambio automatico $3 -> originale"
+		exit 0
+	fi
+	trap mc_trap EXIT INT TERM HUP
+	mc_dice "=== ESEGUO: da $MC_DA_PATH a $MC_A_PATH ==="
+	mc_stato kenv
+	if ! mc_kenv_metti; then
+		mc_kenv_ripristina && { MC_FASE=nulla; mc_stop "protezione kenv non impostabile o rilettura diversa: ripristinato, nulla cambiato"; }
+		MC_RC=6; mc_stato fine; mc_dichiara; exit 6
+	fi
+	if ! mc_barriera; then
+		mc_kenv_ripristina && { MC_FASE=nulla; mc_stop "barriera devmatch non superata: kenv ripristinato, nulla cambiato"; }
+		MC_RC=6; mc_stato fine; mc_dichiara; exit 6
+	fi
+	mc_scambia "$MC_DA_PATH" "$MC_A_PATH"; MC_RC=$?
+	if [ $MC_RC = 6 ] && [ "$MC_A_PATH" != "$MC_ORIG" ] && [ "$(mc_caricato)" = "completo $MC_A_PATH" ] && [ $MC_FROZEN = 0 ]; then
+		mc_dice "$3 caricato ma la verifica e' fallita: torno all'originale"
+		MC_NODI=""; mc_scambia "$MC_A_PATH" "$MC_ORIG"; mc_r2=$?; [ $mc_r2 = 0 ] && MC_RC=5 || MC_RC=6
+	fi
+	if [ $MC_RC = 4 ]; then
+		mc_kenv_ripristina && { MC_FASE=nulla; mc_dice "freeze rifiutato: kenv ripristinato, nulla cambiato"; exit 4; }
+		MC_RC=6
+	fi
+	# il kenv si ripristina SOLO se il freeze nostro e' stato tolto: in emergenza la protezione resta
+	if [ $MC_FROZEN = 0 ]; then mc_kenv_ripristina || MC_RC=6; fi
+	[ -n "$MC_ANOMALIE" ] && MC_RC=6			# fail-closed: protezione violata durante la transazione
+	[ $MC_RC = 6 ] && mc_dice "ESITO 6: OPERATORE. Nessun devctl, nessuno script di VM finche' non e' ripristinato (R3/R5)."
+	mc_dichiara
+	mc_dice "ESITO $MC_RC"
+	mc_stato fine; exit $MC_RC
+}

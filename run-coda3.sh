@@ -1,0 +1,17 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-coda3.sh.non-conforme
+echo "INERTE: run-coda3.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-coda3.sh.non-conforme" >&2; exit 4
+# Claude 23/10/2026 -- parere #34 §2: la coda dei gestori INVEPT (oltre 4 ms) con retry 2
+# e retry 1, 4 VP veri, make -j4, verifica HPA spenta. Traccia dtrace/invlong.d per corsa.
+B=/mnt/linuxulator2/vm/nested-work
+G=/usr/bin/grep
+for c in "2 C3b"; do
+	set -- $c
+	echo "######## $2: 4 VP, -j4, vept_scan_retries=$1 $(date +%T)"
+	sudo -n dtrace -s $B/dtrace/invlong.d -o $B/logs/invlong-$2-r$1-$(date +%H%M).txt 2>/dev/null &
+	sleep 3
+	VMS=12-Windows-11-vm12-senza-gpu-4core KBS=kbuild4.sh sh $B/run-b1win.sh 1 0 CODA-$2-r$1 $1 2>&1 | $G -E "topologia|^real|kernel rc|bhyve CPU|spegnimento|NON|USCITO|retry_2_success|retry_exhausted|zapped_race|faults_l0"
+	sudo -n pkill -TERM -f "invlong.d"
+	sleep 30
+done
+echo "######## FINE $(date +%T)"

@@ -1,0 +1,57 @@
+stadio 11: 1135 casi con pagine contese
+s11: 2492 casi, 2492 ok, 0 errati
+  ok      stadio 11: 0 errori
+  ok      regressione: stadio 10: 1357 casi; stadio 11: 2492 casi (1135 in piu', sezione S11); diversi sui primi 1357: 0
+  ok      mutante ritorno_0_su_host_fatale preso (403 casi): atteso FATALE/4, osservato FALSO_FAIL_STOP(latch chiuso, VM_RUN 0) PREFISSO(flush 4096 shvmcs 0 altro 0 gestor
+  ok      mutante gp_inventato_su_efault preso (371 casi): atteso FATALE/4, osservato ECCEZIONE#13
+  ok      mutante ripartenza_su_efault preso (371 casi): atteso FATALE/4, osservato GIRO_ILLIMITATO
+  ok      mutante latch_senza_rollback preso (403 casi): atteso FATALE/4, osservato FATALE_SENZA_ROLLBACK(nextrip 0x1005)
+  ok      mutante bogus_mancante preso (403 casi): atteso FATALE/4, osservato FATALE_SENZA_ROLLBACK(nextrip 0x1000) KASSERT(1)
+  ok      mutante latch_sul_pf_autentico preso (359 casi): atteso ECCEZIONE#14, osservato FALSO_HOST_FATALE(latch con 1 eccezioni iniettate)
+  ok      mutante senza_teardown preso (1035 casi): atteso ESEGUITA, osservato ESEGUITA RISORSE(1 hold aperti)
+  ok      mutante seconda_pagina_non_tradotta preso (523 casi): atteso ESEGUITA, osservato ESEGUITA EFFETTO_ERRATO(VMXON)
+  ok      mutante vmread32_otto_byte preso (123 casi): atteso ESEGUITA, osservato ESEGUITA EFFETTO_ERRATO(byte fuori dall'operando)
+  ok      mutante esito_prima_della_copia preso (186 casi): atteso FATALE/4, osservato EFFETTO_PARZIALE(eccezioni 0 esiti 1 RFLAGS 0x2)
+  ok      mutante k3_assente preso (403 casi): atteso FATALE/4, osservato K3_BYPASS(secondo VM_RUN 95, ingressi 1->2) PREFISSO(flush 2 shvmcs 0 altro 0 gesto
+  ok      mutante sonda_doppia preso (403 casi): atteso FATALE/4, osservato FATALE_SONDE(latch 1 opndfatal 2)
+  ok      mutante getdesc_silenzioso preso (10 casi): atteso FATALE/5, osservato SALTO_SILENZIOSO
+  ok      mutante m128_tipo_dopo_lettura preso (6 casi): atteso ESEGUITA_VMFAIL, osservato ECCEZIONE#14 CR2(0x7100, atteso 0xffffffffffffffff)
+  ok      mutante gla_non_valida_dichiarata preso (335 casi): atteso FATALE/4, osservato FATALE_DIAGNOSI(stadio 4 valide 0x2 gla 0 gpa 0)
+  ok      mutante vmread32_registro_non_troncato preso (2 casi): atteso ESEGUITA, osservato ESEGUITA EFFETTO_ERRATO(VMREAD registro)
+  ok      mutante vmwrite32_registro_non_troncato preso (2 casi): atteso ESEGUITA, osservato ESEGUITA EFFETTO_ERRATO(VMWRITE registro)
+  ok      mutante nessuna_pretraduzione preso (58 casi): atteso ECCEZIONE#14, osservato FATALE/4
+  ok      mutante dispatch_vmptrst_ritorna_0 preso (48 casi): atteso FATALE/4, osservato FALSO_FAIL_STOP(latch chiuso, VM_RUN 0) PREFISSO(flush 4096 shvmcs 0 altro 0 gestor
+  ok      mutante prefisso_senza_statistiche preso (2492 casi): atteso ESEGUITA, osservato ESEGUITA PREFISSO(flush 0 shvmcs 0 altro 0 gestori 0)
+  ok      mutante r8_guardia_senza_vmptrld preso (6 casi): atteso ECCEZIONE#13, osservato ESEGUITA ACCESSO_PRIMA_DEL_GP PREFISSO(flush 1 shvmcs 1 altro 0 gestori 0)
+  ok      mutante r8_guardia_senza_vmx_attiva preso (5 casi): atteso ECCEZIONE#6, osservato ECCEZIONE#6 PREFISSO(flush 1 shvmcs 1 altro 0 gestori 0)
+  ok      mutante r8_guardia_dopo_shvmcs preso (56 casi): atteso ECCEZIONE#6, osservato ECCEZIONE#6 PREFISSO(flush 1 shvmcs 1 altro 0 gestori 0)
+  ok      mutante eptp_non_controllato preso (6 casi): atteso ESEGUITA_VMFAIL, osservato ESEGUITA
+  ok      mutante eptp_vmfail_ma_invalida preso (6 casi): atteso ESEGUITA_VMFAIL, osservato ESEGUITA_VMFAIL EFFETTO_PARZIALE(stato)
+  ok      mutante w4g_oltre_4gb preso (235 casi): atteso ESEGUITA, osservato FATALE/4 OLTRE_4G(1)
+  ok      mutante fsgs_base_ignorata preso (52 casi): atteso ESEGUITA, osservato FATALE_DIAGNOSI(stadio 4 valide 0x2 gla 0xeffffff8 gpa 0)
+  ok      mutante expand_down_invertito preso (50 casi): atteso ECCEZIONE#13, osservato ESEGUITA
+  ok      mutante ultimo_byte_non_controllato preso (38 casi): atteso ECCEZIONE#13, osservato ESEGUITA
+  ok      mutante gla_troncato_a_32_bit preso (8 casi): atteso ESEGUITA, osservato FATALE_DIAGNOSI(stadio 4 valide 0x2 gla 0x7100 gpa 0)
+  ok      mutante secondo_pezzo_non_copiato preso (38 casi): atteso ESEGUITA, osservato ESEGUITA EFFETTO_ERRATO(INVEPT)
+  ok      mutante copia_prima_dell_ultimo_setup preso (11 casi): atteso FATALE/4, osservato FATALE/4 EFFETTO_PARZIALE(memoria)
+  ok      mutante eptp_capacita_fisiche preso (1 casi): atteso ESEGUITA_VMFAIL, osservato ESEGUITA
+  ok      mutante caso_host_fatale_dimenticato preso dal compilatore (-Werror=switch)
+  ok      mutante s10_k1_limite_avvolto preso (16 casi): atteso ECCEZIONE#13, osservato ESEGUITA
+  ok      mutante s10_k2_assente preso (3 casi): atteso ESEGUITA_VMFAIL, osservato ESEGUITA
+  ok      mutante s10_k2_senza_k3 preso (3 casi): atteso ESEGUITA, osservato ESEGUITA_VMFAIL
+  ok      mutante s10_k3_assente preso (10 casi): atteso ESEGUITA, osservato ESEGUITA_VMFAIL
+  ok      mutante s10_k6_assente preso (8 casi): atteso ECCEZIONE#6, osservato ESEGUITA
+  ok      mutante s10_k6_solo_capacita preso (2 casi): atteso ECCEZIONE#6, osservato ESEGUITA
+  ok      mutante s10_k6_dopo_la_cpl preso (8 casi): atteso ECCEZIONE#6, osservato ECCEZIONE#13
+  ok      mutante s11_conteso_come_iniettato preso (108 casi): atteso CONTESA_SERVITA, osservato SALTO_SILENZIOSO(contesa senza ripartenza, 2 ingressi) PREFISSO(flush 1 shvm
+  ok      mutante s11_conteso_senza_teardown preso (18 casi): atteso CONTESA_SERVITA, osservato CONTESA_SERVITA RISORSE(1 hold aperti)
+  ok      mutante s11_copia_legacy preso (650 casi): atteso CONTESA_SERVITA, osservato ESEGUITA LEGACY_SU_CONTESO(1)
+  ok      mutante s11_pretraduzione_legacy preso (108 casi): atteso CONTESA_SERVITA, osservato CONTESA_SERVITA LEGACY_SU_CONTESO(4096)
+  ok      mutante s11_senza_segnale preso (399 casi): atteso CONTESA_SERVITA, osservato GIRO_ILLIMITATO
+  ok      mutante s11_senza_ripartenza preso (722 casi): atteso CONTESA_SERVITA, osservato SALTO_SILENZIOSO(contesa senza ripartenza, 2 ingressi) PREFISSO(flush 1 shvm
+  ok      mutante s11_un_gestore_ignora preso (60 casi): atteso CONTESA_SERVITA, osservato SALTO_SILENZIOSO(contesa senza ripartenza, 2 ingressi) PREFISSO(flush 1 shvm
+  ok      mutante s11_gestore_dimenticato preso dal compilatore (-Werror=switch)
+  ok      mutante s11_vm_run_non_converte preso (399 casi): atteso CONTESA_SERVITA, osservato GIRO_ILLIMITATO
+  ok      mutante s11_flag_non_spento preso (722 casi): atteso CONTESA_SERVITA, osservato CONTESA_SERVITA FLAG_RESIDUO
+  ok      sanitizer address+undefined: nessun rapporto, stesso esito (2492 casi, 2492 ok, 0 errati)
+banco-opnd-s11: errori 0

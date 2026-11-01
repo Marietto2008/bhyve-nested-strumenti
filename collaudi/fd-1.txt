@@ -1,0 +1,20 @@
+1. figlio che termina con SIGTERM
+  ok      c1: rc 0, non forzato
+  ok      c1: sudo terminato
+  ok      c1: fermato in 0 s (nessuna attesa inutile)
+  ok      c1: manifest intatto
+2. figlio che IGNORA SIGTERM: attesa limitata, poi SIGKILL e ATTENZIONE
+  ok      c2: rc 0, OM_DT_FORZATO=1
+  ok      c2: sudo terminato
+  ok      c2: attesa limitata (3 s)
+  ok      c2: ATTENZIONE nel manifest
+3. figlio gia' uscito (dtrace terminato da solo, es. DTRACE_SCADUTO)
+  ok      c3: rc 0, nulla da fermare
+  ok      nessun processo del collaudo rimasto
+4. #169 H1: il processo dtrace IDENTIFICATO sopravvive a SIGKILL (stato simulato: o_vivo/o_figlio/o_segnala)
+  ok      c4: sudo uscito ma dtrace 901 vivo dopo SIGKILL -> rc 1 (nessuna finalizzazione)
+  ok      c4: SIGKILL mandato al processo identificato
+  ok      c4: ATTENZIONE nel manifest
+5. #169 H1: sudo uscito, dtrace orfano vivo che SIGKILL ferma: rc 0, forzato
+  ok      c5: dtrace orfano fermato con SIGKILL, sessione marcata forzata
+SUMMARY: 14 ok, 0 errati

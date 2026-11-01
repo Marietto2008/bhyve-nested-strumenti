@@ -1,0 +1,53 @@
+kldload: i due versi dello scambio e i rifiuti
+  ok      kldload-andata: /sbin/kldload|/mnt/linuxulator2/vm/nested-work/collaudi/va-3/s10/vmm-restore.ko
+  ok      kldload-ritorno: /sbin/kldload|/mnt/linuxulator2/vm/nested-work/collaudi/va-3/orig/vmm-restore.ko
+  ok      kldload-fuori-elenco: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-3/fuori/vmm-restore.ko: non nell'elenco approvato
+  ok      kldload-sha-cambiato: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-3/cambiato/vmm-restore.ko: sha diverso dall'approvato
+  ok      kldload-non-vmm: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-3/altro.ko: solo moduli vmm-restore.ko
+  ok      kldload-uso: RIFIUTO kldload: uso
+kldunload, devctl
+  ok      kldunload: /sbin/kldunload|-n|vmm-restore.ko
+  ok      kldunload-argomento: RIFIUTO kldunload: uso
+  ok      freeze: /usr/sbin/devctl|freeze
+  ok      thaw: /usr/sbin/devctl|thaw
+  ok      devctl-detach: RIFIUTO devctl: solo freeze o thaw
+kenv: valori chiusi
+  ok      boot-safe: /bin/kenv|boot_safe=YES
+  ok      boot-safe-no: RIFIUTO kenv-set boot_safe 'NO': solo YES o il ripristino esatto del valore originale ('<assente>')
+  ok      blocklist: /bin/kenv|devmatch_blocklist=if_cdce amdgpu
+  ERRATO  blocklist-altro: rc=1 'RIFIUTO kenv-set devmatch_blocklist 'amdgpu': ammessi solo l'unione originale+devmatch ('if_cdce amdgpu') o il ripristino esatto ('<assente>')' (atteso rifiuto 'ammesso solo l'elenco')
+  ERRATO  blocklist-devmatch-vuoto: rc=1 'RIFIUTO kenv-set devmatch_blocklist '': ammessi solo l'unione originale+devmatch ('') o il ripristino esatto ('<assente>')' (atteso rifiuto 'ammesso solo l'elenco')
+kenv: ripristino esatto degli originali e unione con una blocklist preesistente (parere Opus par. 4.2)
+  ok      boot-safe-ripristino: /bin/kenv|boot_safe=NO
+  ok      boot-safe-altro: RIFIUTO kenv-set boot_safe 'MAYBE': solo YES o il ripristino esatto del valore originale ('NO')
+  ok      blocklist-unione: /bin/kenv|devmatch_blocklist=if_cdce foo amdgpu
+  ok      blocklist-ripristino: /bin/kenv|devmatch_blocklist=if_cdce foo
+  ok      blocklist-unione-altro: RIFIUTO kenv-set devmatch_blocklist 'if_cdce amdgpu': ammessi solo l'unione originale+devmatch ('if_cdce foo amdgpu') o il ripristino esatto ('if_cdce foo')
+  ok      blocklist-gia-tutta: RIFIUTO kenv-set devmatch_blocklist 'if_cdce amdgpu amdgpu': ammessi solo l'unione originale+devmatch ('if_cdce amdgpu') o il ripristino esatto ('if_cdce amdgpu')
+  ok      blocklist-ripristino-vuota: /bin/kenv|devmatch_blocklist=
+  ok      kenv-altro-nome: RIFIUTO kenv-set: nome non ammesso 'kern.securelevel'
+  ok      unset: /bin/kenv|-u|boot_safe
+  ok      unset-altro: RIFIUTO kenv-unset: nome non ammesso
+distruggi: identita' riconvalidata DENTRO il confine
+  ok      distruggi: /usr/sbin/bhyvectl|--vm=vm2|--destroy
+  ok      distruggi-ctime: RIFIUTO distruggi: ctime di vm2 '1793473984', autorizzato '1793473000'
+  ok      distruggi-memseg: RIFIUTO distruggi: memseg di vm2 diversa da quella autorizzata
+  ok      distruggi-nodo-assente: RIFIUTO distruggi: ctime di vm2 '', autorizzato '1793473984'
+  ok      distruggi-altra-vm: RIFIUTO distruggi: solo vm2 (la VM della campagna: da aggiungere con la sua identita')
+  ok      distruggi-senza-identita: RIFIUTO distruggi: uso distruggi vm2 <ctime> <sha memseg>
+  ok      distruggi-sha-malformato: RIFIUTO distruggi: sha della memseg malformato
+ombra, primitive non implementate, sconosciute
+  ok      ombra-1: /sbin/sysctl|hw.vmm.vmx.nested_shadow_vmcs=1
+  ok      ombra-2: RIFIUTO ombra: 0 o 1
+  ok      avvio-vm: RIFIUTO avvio-vm: primitiva non ancora implementata (progetto nel rapporto; finche' manca, [omesso] non si toglie)
+  ok      ferma-dtrace: RIFIUTO ferma-dtrace: primitiva non ancora implementata (progetto nel rapporto; finche' manca, [omesso] non si toglie)
+  ok      sconosciuta: RIFIUTO primitiva sconosciuta: 'sh'
+gettone: l'operazione DECISA deve essere nel gettone
+  ok      fuori-gettone-distruggi: RIFIUTO gettone: operazione 'distruggi' non autorizzata dal gettone (scambio)
+  ok      fuori-gettone-ombra: RIFIUTO gettone: operazione 'ombra' non autorizzata dal gettone (scambio)
+  ok      gettone-assente: RIFIUTO gettone: gettone assente
+  ok      elenco-cambiato: RIFIUTO gettone: l'elenco degli strumenti e' cambiato dopo il gettone (66fca1d52720ecb49b1db1a18e3cfc92a007a75f861c53578158796b952b0d57, gettone aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+  ok      elenco assente: RIFIUTO elenco approvato illeggibile
+il wrapper vero, come collaudo: si ferma prima di tutto
+  ok      vmm-azione come collaudo: vmm-azione: RIFIUTO: non sono root
+SUMMARY: 42 ok, 2 errati

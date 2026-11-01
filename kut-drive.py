@@ -1,0 +1,159 @@
+#!/usr/local/bin/python3
+# kut-drive.py (v2) -- Claude 31/10/2026, pareri #166-#167R1. Driver GENERICO delle sessioni KUT u64 e opnd. Lancia la
+# QEMU in un gruppo di processi suo, registra la seriale con i tempi, applica REGOLE a colpo singolo, chiude tutto
+# allo scadere. NESSUN rilancio, mai.
+#
+#   kut-drive.py --out DIR --timeout S [--regola 'TESTO|foto|INVIO']... [--foto-cmd 'CMD'] -- <comando QEMU...>
+#
+# Regola: alla prima riga della seriale che COMINCIA con TESTO (non una sottostringa: #167R1 §4) esegue, se c'e'
+# "foto", --foto-cmd e salva l'uscita in DIR/foto-<TESTO normalizzato>.txt; SOLO se la fotografia e' riuscita (rc 0)
+# scrive INVIO + '\n' sulla seriale. Una fotografia fallita NON abilita il test: la sessione diventa non valida e
+# l'invio non avviene. La regola e' "fatta" solo a fotografia e invio conclusi.
+# #169 R1: il PRIMO errore che invalida il protocollo (fotografia fallita, eccezione del lettore) blocca ogni INVIO
+# successivo, di qualunque regola: un piano non parte mai dopo una fotografia iniziale fallita. La seriale si continua
+# a registrare; le regole rimaste diventano "non concluse" (sessione non valida).
+# Stato: DIR/stato.json (avvio, regole, fotografie con rc, invii, termine, errori, esito); DIR/seriale.txt,
+# DIR/qemu-stderr.txt, DIR/driver.txt. Uscita: 0 sessione valida (tutte le regole fatte, nessun errore, nessun
+# TIMEOUT); 2 sessione NON valida (il motivo in stato.json). Il codice della QEMU NON e' il verdetto: lo decodifica
+# il runner (isa-debug-exit).
+import argparse, json, os, re, signal, subprocess, sys, threading, time
+
+def main():
+	ap = argparse.ArgumentParser()
+	ap.add_argument('--out', required=True)
+	ap.add_argument('--timeout', type=int, required=True)
+	ap.add_argument('--regola', action='append', default=[])
+	ap.add_argument('--foto-cmd', default='')
+	ap.add_argument('--foto-timeout', type=int, default=30)
+	ap.add_argument('cmd', nargs=argparse.REMAINDER)
+	a = ap.parse_args()
+	cmd = a.cmd[1:] if a.cmd and a.cmd[0] == '--' else a.cmd
+	if not cmd:
+		sys.exit('manca il comando QEMU')
+	if os.path.exists(os.path.join(a.out, 'seriale.txt')):
+		sys.exit('uscita gia\' presente: nessuna sovrascrittura')
+	os.makedirs(a.out, exist_ok=True)
+	regole = []
+	for r in a.regola:
+		p = r.split('|')
+		if len(p) != 3 or not p[0] or p[1] not in ('', 'foto'):
+			sys.exit('regola malformata: %r' % r)
+		if p[1] == 'foto' and not a.foto_cmd:
+			sys.exit('regola con foto ma senza --foto-cmd')
+		regole.append({'testo': p[0], 'foto': p[1] == 'foto', 'invio': p[2], 'stato': 'attesa',
+		    'foto_file': None, 'foto_rc': None})
+	for i, r in enumerate(regole):		# un testo non puo' essere il prefisso di un altro: ambiguita' (#167R1 §4)
+		for j, q in enumerate(regole):
+			if i != j and q['testo'].startswith(r['testo']):
+				sys.exit('regole ambigue: %r e\' prefisso di %r' % (r['testo'], q['testo']))
+
+	stato = {'avvio': time.time(), 'comando': cmd, 'regole': regole, 'invii': [], 'errori': [], 'termine': None,
+	    'qemu_rc': None, 'timeout': False, 'valida': None}
+	t0 = time.monotonic()
+	log = open(os.path.join(a.out, 'driver.txt'), 'w', buffering=1)
+	ser = open(os.path.join(a.out, 'seriale.txt'), 'w', buffering=1)
+	err = open(os.path.join(a.out, 'qemu-stderr.txt'), 'wb')
+	def dice(s):
+		log.write('%.3f %s\n' % (time.monotonic() - t0, s))
+	def errore(s):
+		stato['errori'].append(s)
+		dice('ERRORE ' + s)
+	dice('comando: ' + ' '.join(cmd))
+	p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, start_new_session=True)
+	pgid = os.getpgid(p.pid)
+	dice('qemu pid %d (gruppo %d)' % (p.pid, pgid))
+
+	def foto(r):
+		nome = re.sub(r'[^A-Za-z0-9]+', '_', r['testo']).strip('_')
+		f = os.path.join(a.out, 'foto-%s.txt' % nome)
+		try:
+			c = subprocess.run(a.foto_cmd, shell=True, capture_output=True, text=True, timeout=a.foto_timeout)
+			rc = c.returncode
+			testo = c.stdout + c.stderr
+		except subprocess.TimeoutExpired:
+			rc, testo = 'TIMEOUT', ''
+		with open(f, 'w') as o:
+			o.write('# %s\n# evento: %s\n# rc=%s\n%s' % (a.foto_cmd, r['testo'], rc, testo))
+		r['foto_file'], r['foto_rc'] = f, rc
+		dice('foto (%s): rc %s -> %s' % (r['testo'], rc, f))
+		return rc == 0
+
+	def lettore():
+		try:
+			for b in iter(p.stdout.readline, b''):
+				riga = b.decode('utf-8', 'replace').rstrip('\r\n')
+				ser.write('%.3f %s\n' % (time.monotonic() - t0, riga))
+				if stato['errori']:		# #169 R1: protocollo gia' invalidato -> nessun invio, mai piu'
+					continue
+				for r in regole:
+					if r['stato'] != 'attesa' or not riga.startswith(r['testo']):
+						continue
+					r['stato'] = 'in_corso'
+					if r['foto'] and not foto(r):
+						r['stato'] = 'fallita'
+						errore('fotografia fallita per %r: invio NON fatto' % r['testo'])
+						break
+					if r['invio']:
+						p.stdin.write((r['invio'] + '\n').encode())
+						p.stdin.flush()
+						stato['invii'].append({'regola': r['testo'], 'invio': r['invio'], 't': time.monotonic() - t0})
+						dice('inviato %r alla riga %r' % (r['invio'], riga))
+					r['stato'] = 'fatta'
+		except Exception as e:
+			errore('lettore: %r' % e)
+	th = threading.Thread(target=lettore)
+	th.start()
+	scadenza = t0 + a.timeout
+	try:
+		stato['qemu_rc'] = p.wait(timeout=a.timeout)
+	except subprocess.TimeoutExpired:
+		stato['timeout'] = True
+		errore('TIMEOUT dopo %d s' % a.timeout)
+	# il gruppo intero, finche' qualcuno e' vivo (anche se il leader e' gia' morto)
+	for sig in (signal.SIGTERM, signal.SIGKILL):
+		try:
+			os.killpg(pgid, 0)
+		except ProcessLookupError:
+			break
+		dice('segnale %d al gruppo %d' % (sig, pgid))
+		try:
+			os.killpg(pgid, sig)
+		except ProcessLookupError:
+			break
+		fine = time.monotonic() + 5
+		while time.monotonic() < fine:
+			p.poll()		# raccoglie il leader: uno zombie terrebbe "vivo" il gruppo
+			try:
+				os.killpg(pgid, 0)
+			except ProcessLookupError:
+				break
+			time.sleep(0.1)
+	p.poll()
+	try:
+		os.killpg(pgid, 0)
+		errore('il gruppo %d e\' ancora vivo dopo SIGKILL' % pgid)
+	except ProcessLookupError:
+		pass
+	if stato['qemu_rc'] is None:
+		stato['qemu_rc'] = p.poll()
+	# il lettore finisce quando la seriale si chiude; la fotografia in corso ha il suo tetto (--foto-timeout)
+	th.join(timeout=a.foto_timeout + 10)
+	if th.is_alive():
+		errore('lettore ancora vivo: fotografia o seriale non concluse')
+	for r in regole:
+		if r['stato'] != 'fatta':
+			errore('regola %r non conclusa (%s)' % (r['testo'], r['stato']))
+	stato['termine'] = time.time()
+	stato['valida'] = not stato['errori']
+	with open(os.path.join(a.out, 'stato.json'), 'w') as o:
+		json.dump(stato, o, indent=1, default=str)
+	esito = 'QEMU rc %s%s; sessione %s' % (stato['qemu_rc'], ' (TIMEOUT)' if stato['timeout'] else '',
+	    'VALIDA' if stato['valida'] else 'NON VALIDA: ' + '; '.join(stato['errori']))
+	with open(os.path.join(a.out, 'esito.txt'), 'w') as o:
+		o.write(esito + '\n')
+	dice('esito: ' + esito)
+	print(esito)
+	return 0 if stato['valida'] else 2
+
+if __name__ == '__main__':
+	sys.exit(main())

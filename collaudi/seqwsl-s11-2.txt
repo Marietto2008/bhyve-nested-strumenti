@@ -1,0 +1,59 @@
+W1: campagna completa
+  ok      w1-due-corse-vm-resta uscita 2
+  ERRATO  w1-due-corse-vm-resta invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2 residuo_--classifica-ritorno_corsa2 residuo_--distruggi-da_corsa2 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2_stadio10 residuo_--classifica-ritorno_corsa2 residuo_--distruggi-da_corsa2 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 caldo_--esegui_stadio10_originale smoke_originale
+  ERRATO  w1: SEQUENZA SIMULATA ESITO 2: campagna completa su stadio10: 2 corse, ombra 0; host sull'originale
+  ok      w2-vm-sparisce uscita 2
+  ERRATO  w2-vm-sparisce invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 runner_--esegui_corsa3 residuo_--classifica-ritorno_corsa3 smoke_stadio10_--continuita_corsa3 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2_stadio10 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 runner_--esegui_corsa3_stadio10 residuo_--classifica-ritorno_corsa3 smoke_stadio10_--continuita_corsa3 caldo_--esegui_stadio10_originale smoke_originale
+  ok      w3-ombra uscita 2
+  ERRATO  w3-ombra invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui-ombra_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui-ombra_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 caldo_--esegui_stadio10_originale smoke_originale
+W2: argomenti rifiutati prima di qualunque invocazione
+  ok      w4-zero-corse uscita 4
+  ok      w4-zero-corse invocazioni esatte
+  ok      w5-troppe uscita 4
+  ok      w5-troppe invocazioni esatte
+  ok      w6-ombra-2 uscita 4
+  ok      w6-ombra-2 invocazioni esatte
+  ok      w7-corse-non-numero uscita 4
+  ok      w7-corse-non-numero invocazioni esatte
+  ok      w8-senza-sha uscita 4
+  ok      w8-senza-sha invocazioni esatte
+  ok      w9-sha-diverso uscita 4
+  ok      w9-sha-diverso invocazioni esatte
+W3: STOP dopo lo scambio -> solo recupero e ritorno
+  ERRATO  w10-corsa-fail uscita 2, attesa 4 (SEQUENZA SIMULATA ESITO 2: campagna completa su stadio10: 2 corse, ombra 0; host sull'originale)
+  ERRATO  w10-corsa-fail invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2_stadio10 residuo_--classifica-ritorno_corsa2 residuo_--distruggi-da_corsa2 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 caldo_--esegui_stadio10_originale smoke_originale
+  ERRATO  w11-corsa2-fail-con-vm uscita 2, attesa 4 (SEQUENZA SIMULATA ESITO 2: campagna completa su stadio10: 3 corse, ombra 0; host sull'originale)
+  ERRATO  w11-corsa2-fail-con-vm invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2 residuo_--classifica-ritorno_corsa2 residuo_--distruggi-da_corsa2 residuo_--classifica-ritorno_corsa2 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 runner_--esegui_corsa2_stadio10 residuo_--classifica-ritorno_corsa2 residuo_--distruggi-da_corsa2 residuo_--classifica-ritorno_corsa2 smoke_stadio10_--continuita_corsa2 runner_--esegui_corsa3_stadio10 residuo_--classifica-ritorno_corsa3 residuo_--distruggi-da_corsa3 residuo_--classifica-ritorno_corsa3 smoke_stadio10_--continuita_corsa3 caldo_--esegui_stadio10_originale smoke_originale
+  ok      w12-pulizia-ko uscita 6
+  ERRATO  w12-pulizia-ko invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1
+  ok      w13-classifica-operatore uscita 6
+  ERRATO  w13-classifica-operatore invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--classifica-ritorno_corsa1
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--classifica-ritorno_corsa1
+  ok      w14-continuita-ko uscita 4
+  ERRATO  w14-continuita-ko invocazioni
+          attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 residuo_--classifica-ritorno_corsa1 caldo_--esegui_stadio10_originale smoke_originale
+          avute:  smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_corsa1_stadio10 residuo_--classifica-ritorno_corsa1 residuo_--distruggi-da_corsa1 residuo_--classifica-ritorno_corsa1 smoke_stadio10_--continuita_corsa1 residuo_--classifica-ritorno_corsa1 caldo_--esegui_stadio10_originale smoke_originale
+  ok      w15-C1-ko uscita 4
+  ok      w15-C1-ko invocazioni esatte
+W4: --prova
+  ok      w16-prova uscita 2
+  ERRATO  w16-prova invocazioni
+          attese: smoke_originale caldo_--prova_originale_stadio10 runner_--prova_prova-corsa
+          avute:  smoke_originale caldo_--prova_originale_stadio10 runner_--prova_prova-corsa_stadio10
+  ok      w16: la prova stampa lo sha
+W5: nessuna trappola scattata
+  ok      nessuna trappola scattata
+SUMMARY: 23 ok, 12 errati

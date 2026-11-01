@@ -1,0 +1,447 @@
+#!/usr/local/bin/python3
+# test-verdetti.py -- Claude 31/10/2026, parere #167R1 §9. Regressioni OFFLINE di u64-verdetto.py, opnd-verdetto.py e
+# kut-drive.py (v2): sessioni SINTETICHE (nessuna VM) e finte QEMU (script Python che simulano solo la seriale).
+# Ogni caso dichiara l'uscita attesa; almeno una sessione completa per verdetto deve essere ACCETTATA.
+#   test-verdetti.py <cartella di lavoro nuova>
+import json, os, subprocess, sys, textwrap
+
+B = '/mnt/linuxulator2/vm/nested-work'
+PY = sys.executable
+W = sys.argv[1]
+os.makedirs(W)
+nok = nko = 0
+def esito(nome, rc, atteso, out):
+	global nok, nko
+	ok = rc == atteso
+	nok += ok
+	nko += not ok
+	print('  %s %-44s uscita %s (attesa %s): %s' % ('ok    ' if ok else 'ERRATO', nome, rc, atteso, out.strip()[:110]))
+
+# ---------------------------------------------------------------- u64
+CONT = ('vm exits for instruction emulation', 'vm exits due to nested page fault')
+def sess_u64(nome, casi=28, contrari=(), dup=False, fine='auto', chiuso=True, foto=(('U64 PRONTO', 0, (5, 7)),
+    ('U64 FINE casi=', 0, (5, 7))), rc=None, valida=True, attesi=28, extra=()):
+	d = os.path.join(W, 'u64-' + nome)
+	os.makedirs(d)
+	r = ['U64 INIZIO', 'U64 ATTESI casi=%d' % attesi, 'U64 PRONTO: ...', 'U64 MISURA APERTA']
+	for i in range(1, casi + 1):
+		r.append('U64 CASO %d mov_r8 va=... -> %s' % (i, 'CONTRARIO_AL_MODELLO' if i in contrari else 'MODELLO'))
+	if dup:
+		r.append('U64 CASO 1 mov_r8 va=... -> MODELLO')
+	if fine == 'auto':
+		r.append('U64 FINE casi=%d modello=%d contrari=%d' % (casi, casi - len(contrari), len(contrari)))
+	elif fine:
+		r.append(fine)
+	if chiuso:
+		r.append('U64 CHIUSO')
+	r.extend(extra)
+	open(os.path.join(d, 'seriale.txt'), 'w').write(''.join('%.3f %s\n' % (i * 0.01, x) for i, x in enumerate(r)))
+	regole = []
+	for ev, frc, vals in foto:
+		f = os.path.join(d, 'foto-%s.txt' % ev.replace(' ', '_').strip('='))
+		corpo = ''.join('%s\t%s\n' % (c, v) for c, v in zip(CONT, vals)) if vals else ''
+		open(f, 'w').write('# cmd\n# evento: %s\n# rc=%s\n%s' % (ev, frc, corpo))
+		regole.append({'testo': ev, 'foto': True, 'invio': 'g' if 'PRONTO' in ev else 'f',
+		    'stato': 'fatta' if frc == 0 else 'fallita', 'foto_file': f, 'foto_rc': frc})
+	if rc is None:
+		rc = 3 if contrari else 1
+	json.dump({'valida': valida, 'timeout': False, 'errori': [] if valida else ['x'], 'regole': regole,
+	    'qemu_rc': rc}, open(os.path.join(d, 'stato.json'), 'w'))
+	return d
+def u64(nome, atteso, **k):
+	d = sess_u64(nome, **k)
+	p = subprocess.run([PY, B + '/u64-verdetto.py', d], capture_output=True, text=True)
+	esito('u64 ' + nome, p.returncode, atteso, p.stdout + p.stderr)
+
+print('u64-verdetto.py')
+u64('completa_modello', 0)
+u64('completa_un_contrario', 1, contrari=(5,))
+u64('finestra_mossa', 3, foto=(('U64 PRONTO', 0, (5, 7)), ('U64 FINE casi=', 0, (6, 7))))
+u64('nested_pf_mosso', 3, foto=(('U64 PRONTO', 0, (5, 7)), ('U64 FINE casi=', 0, (5, 9))))
+# la riproduzione di #167R1 §4: misura aperta, nessun caso, nessun record finale; anche con stato "valida" forzato
+u64('finestra_aperta_senza_fine', 5, casi=0, fine=None, chiuso=False, foto=(('U64 PRONTO', 0, (5, 7)),), rc=1)
+u64('zero_casi_con_record', 5, casi=0, rc=1)
+u64('ventisette_casi', 5, casi=27)
+u64('caso_duplicato', 5, dup=True)
+u64('foto_finale_rc_1', 5, foto=(('U64 PRONTO', 0, (5, 7)), ('U64 FINE casi=', 1, (5, 7))))
+u64('foto_finale_timeout', 5, foto=(('U64 PRONTO', 0, (5, 7)), ('U64 FINE casi=', 'TIMEOUT', None)))
+u64('contatore_mancante', 5, foto=(('U64 PRONTO', 0, (5,)), ('U64 FINE casi=', 0, (5, 7))))
+u64('contatore_non_numerico', 5, foto=(('U64 PRONTO', 0, ('cinque', 7)), ('U64 FINE casi=', 0, (5, 7))))
+u64('uscita_anticipata_senza_chiuso', 5, chiuso=False)
+u64('record_incoerente', 5, fine='U64 FINE casi=28 modello=27 contrari=0')
+u64('rc_incoerente_coi_contrari', 5, contrari=(3,), rc=1)
+u64('codice_qemu_non_kut', 5, rc=0)
+u64('driver_non_valido', 5, valida=False)
+u64('prerequisito_fallito', 5, extra=('U64 PREREQ ERRATO: CR0/CR4',))
+
+# ---------------------------------------------------------------- opnd (v4, #169 R2)
+# Fixture REALISTICHE: le righe CASO/CONTROLLO nel formato di opnd_test.c.inc, generate da un modello SCRITTO QUI (non
+# importato dal verdetto); il controllo statico in fondo lo confronta col SORGENTE C.
+M_OFF8 = ['0xffc', '0xff9', '0xfff', '0x100']
+M_OFF16 = ['0xff8', '0xff1', '0x100']
+M_ISTR8 = ['VMPTRST', 'VMPTRLD', 'VMCLEAR', 'VMREAD', 'VMWRITE']
+M_CTRL = ['VMCS corrente dopo VMPTRLD', 'VMCS corrente dopo VMCLEAR', 'GUEST_RIP del VMCS di lavoro dopo VMWRITE']
+M_S10_CTRL = ['GUEST_RIP invariato dopo VMWRITE K2 (memoria)', 'destinazione di VMREAD K2 invariata (registro)',
+    'GUEST_RIP invariato dopo VMWRITE K2 (registro)']
+M_F3 = ['VMPTRLD', 'INVVPID', 'INVVPID_tipo4_non_annunciato', 'VMXON_VMX_gia_attiva', 'VMCLEAR', 'VMPTRST', 'INVEPT',
+    'VMREAD', 'VMWRITE', 'VMXOFF', 'VMLAUNCH', 'VMRESUME']
+def righe_f123(piano, iv=1, ie=1, etichetta=None):
+	c, k = [], []
+	for f in piano.split(','):
+		passi = {'F1': [('F1', 'ok')], 'F2': [('F2', 'P1_assente'), ('F2', 'P1_sola_lettura')]}.get(f, [])
+		for fase, var in passi:
+			for o in M_OFF8:
+				for i, x in enumerate(M_ISTR8):
+					c.append((etichetta or fase, '%s off=%s var=%s vec=0 err=0 cr2=0 rflags=0x2 vmerr=0 memoria=come_attesa '
+					    'atteso(vec=0 err=0 cr2=0 vmerr=0) nota' % (x, o, var)))
+					if x in ('VMPTRLD', 'VMCLEAR', 'VMWRITE'):
+						k.append((etichetta or fase, M_CTRL[['VMPTRLD', 'VMCLEAR', 'VMWRITE'].index(x)]))
+			for o in M_OFF16:
+				for x in ['INVVPID'] * iv + ['INVEPT'] * (2 * ie):
+					c.append((etichetta or fase, '%s off=%s var=%s vec=0 err=0 cr2=0 rflags=0x2 vmerr=0 memoria=come_attesa '
+					    'atteso(vec=0 err=0 cr2=0 vmerr=0) tipo' % (x, o, var)))
+			if fase == 'F1':			# stadio 10: opnd_s10, una volta dopo il passaggio F1
+				s10 = [('VMREAD', '0x100'), ('VMWRITE', '0x100'), ('VMREAD_R', '0x100'), ('VMWRITE_R', '0x100')] + \
+				    [('INVVPID', '0xff8')] * iv + [('INVEPT', '0xff8')] * (2 * ie)
+				for x, o in s10:
+					c.append((etichetta or 'F1', '%s off=%s var=s10 vec=0 err=0 cr2=0 rflags=0x42 vmerr=12 '
+					    'memoria=come_attesa atteso(vec=0x100 err=0 cr2=0 vmerr=12) K2' % (x, o)))
+				k.extend((etichetta or 'F1', n) for n in M_S10_CTRL)
+		if f == 'F3':
+			for x in M_F3:
+				c.append(('F3', '%s cpl3 #GP=si atteso(#GP prima di ogni accesso e di ogni VMfail)' % x))
+	return c, k
+STDERR_OK = ('bhyve-mmap: pc.ram GPA=0xc3000 size=0x25000 segid=1 memflags=0x2 (wired=1)\n'
+    'Error running vm: State not recoverable (errno=95, error=-1)\n'
+    'bhyve: vCPU 0: VM_RUN State not recoverable (errno=95): errore non transitorio; porta chiusa, nessun nuovo VM_RUN; '
+    'RIP del registro 0x405123\n'
+    'bhyve: porta della VM chiusa dal vCPU 0: nessun vCPU rientra; arresto della VM richiesto (VM_RUN non recuperabile)\n')
+SONDE_F123 = ('DTRACE_ATTIVO\nFBT nested_operand_copy 120\nFBT nested_vmread 41\nFBT nested_vmwrite 37\nDTRACE_FINE\n')
+SONDE_OK = ('DTRACE_ATTIVO\nOPNDFATAL vcpu=0 stadio=4 err=14 rip=0x405123 gla=0x600000000ffc\n'
+    'FATAL_LATCH vcpu=0 errno=14 stadio=4 rip=0x405123 gpa=0x0 gla=0x600000000ffc\n'
+    'FATAL_RITORNO vcpu=0 nextrip=0x405123 rip=0x405123 len=0 fatal_rip=0x405123\n'
+    'FBT nested_operand_copy 3\nFBT nested_vmread 2\nFBT nested_vmwrite 2\nDTRACE_FINE\n')
+def sess_opnd(nome, piano='F1,F2,F3', piano_seriale=None, iv=1, ie=1, attesi=None, errati_casi=(), errati_ctr=(),
+    fine='auto', rc=None, timeout=False, valida=True, errori=None, regole=None, invii=None, cont='auto', cont_testo=None,
+    dmesg='', extra=(), togli=(), f4=None, sonde=None, stderr=None, etichetta=None, summary=True, ritocca=None,
+    sonde_err='', modo=None, ombra_ap='0', ombra_ch='0', shv=None, manifest=None):
+	d = os.path.join(W, 'opnd-' + nome)
+	os.makedirs(os.path.join(d, 'drv'))
+	r = ['OPND INIZIO P0 ...', 'OPND MSR ctls2 0x6fbff00000000 (enable EPT 1, enable VPID 1) ept_vpid 0xf0106534141 (INVEPT 1, INVVPID 1)', 'OPND PIANO? (F1,F2,F3 oppure F4)',
+	    'OPND PIANO "%s" F1=1 F2=1 F3=1 F4=0' % (piano_seriale or piano)]
+	if piano != 'F4':
+		c, k = righe_f123(piano, iv, ie, etichetta)
+		r.append(attesi or 'OPND ATTESI casi=%d controlli=%d invvpid1=%d invept1=%d' % (len(c), len(k), iv, ie))
+		e = 0
+		for i, (fase, testo) in enumerate(c, 1):
+			r.append('OPND CASO %s %d %s -> %s' % (fase, i, testo, 'ERRATO' if i in errati_casi else 'OK'))
+			e += i in errati_casi
+		for i, (fase, cosa) in enumerate(k, 1):
+			r.append('OPND CONTROLLO %s %d %s: 0x1 (atteso 0x1) -> %s' % (fase, i, cosa, 'ERRATO' if i in errati_ctr else 'OK'))
+			e += i in errati_ctr
+		r = [x for x in r if not any(x.startswith(t) for t in togli)]
+		r.extend(extra)
+		if fine == 'auto':
+			r.append('OPND FINE casi=%d controlli=%d errati=%d' % (len(c), len(k), e))
+		elif fine:
+			r.append(fine)
+		if summary:
+			r.append('SUMMARY: 1 tests' + (', 1 unexpected failures' if e else ''))
+		if rc is None:
+			rc = 3 if e else 1
+		if cont == 'auto':
+			cont = ((7, 7), (0, 0), (2, 2))
+		if sonde is None:
+			sonde = SONDE_F123
+		if stderr is None:
+			stderr = ''
+		reg = ['OPND INIZIO', 'OPND PIANO?', 'OPND FINE casi=']
+	else:
+		r.extend(f4 or ['OPND F4 INIZIO ram=0x10000000 P1->gpa 0x40000000 ...'])
+		r = [x for x in r if not any(x.startswith(t) for t in togli)]
+		r.extend(extra)
+		if summary is True:
+			summary = False
+		if summary:
+			r.append('SUMMARY: 1 tests')
+		if rc is None:
+			rc = 1			# contratto della QEMU protetta (host-error, EXIT_FAILURE)
+		if cont == 'auto':
+			cont = ((7, 8), (0, 0), (2, 3))
+		if sonde is None:
+			sonde = SONDE_OK
+		if stderr is None:
+			stderr = STDERR_OK
+		reg = ['OPND INIZIO', 'OPND PIANO?']
+	open(os.path.join(d, 'drv', 'seriale.txt'), 'w').write(''.join('%.3f %s\n' % (i * 0.01, x) for i, x in enumerate(r)))
+	regole_j = [{'testo': t, 'stato': 'fatta'} for t in reg] if regole is None else regole
+	invii_j = [{'regola': 'OPND PIANO?', 'invio': piano, 't': 0.1}] if invii is None else invii
+	stj = {'valida': valida, 'timeout': timeout, 'errori': ([] if valida else ['x']) if errori is None else errori,
+	    'regole': regole_j, 'invii': invii_j, 'qemu_rc': rc}
+	if ritocca:
+		ritocca(stj)
+	json.dump(stj, open(os.path.join(d, 'drv', 'stato.json'), 'w'))
+	if cont_testo is not None:
+		open(os.path.join(d, 'contatori.txt'), 'w').write(cont_testo)
+	elif cont is not None:
+		open(os.path.join(d, 'contatori.txt'), 'w').write('fatal_latches %d %d\nnested_vept_mmio_unemulable %d %d\n'
+		    'nested_operand_fatal %d %d\n' % (cont[0] + cont[1] + cont[2]))
+	if sonde is not False:
+		open(os.path.join(d, 'sonde.txt'), 'w').write(sonde)
+	if sonde_err is not None:
+		open(os.path.join(d, 'sonde-err.txt'), 'w').write(sonde_err)
+	if sonde is not False and shv is not None:		# parere Opus C1: ingressi in vmx_shvmcs_enter (ombra)
+		open(os.path.join(d, 'sonde.txt'), 'w').write(sonde.replace('DTRACE_FINE', 'FBT vmx_shvmcs_enter %d\nDTRACE_FINE' % shv))
+	if manifest is None:
+		manifest = ('sessione: APERTA\npiano %s modo %s timeout 300\nnested_shadow_vmcs %s\navvio sessione: 1\n'
+		    'nested_shadow_vmcs alla chiusura %s\nsessione: CHIUSA\n' % (piano, modo or ('--esegui-d' if piano == 'F4' else
+		    '--esegui'), ombra_ap, ombra_ch))
+	if manifest is not False:
+		open(os.path.join(d, 'manifest.txt'), 'w').write(manifest)
+	if dmesg is not None:
+		open(os.path.join(d, 'dmesg-sessione.txt'), 'w').write(dmesg)
+	if stderr is not False:
+		open(os.path.join(d, 'drv', 'qemu-stderr.txt'), 'w').write(stderr)
+	return d
+def opnd(nome, atteso, piano='F1,F2,F3', **k):
+	d = sess_opnd(nome, piano=piano, **k)
+	p = subprocess.run([PY, B + '/opnd-verdetto.py', d, piano], capture_output=True, text=True)
+	esito('opnd ' + nome, p.returncode, atteso, p.stdout + p.stderr)
+print('opnd-verdetto.py')
+# --- sessioni complete ACCETTATE, con la copertura reale (99/36 col piano intero e le due capacita')
+opnd('f123_completa_106_39', 0)
+opnd('f123_senza_invvpid', 0, iv=0)
+opnd('f123_senza_invept', 0, ie=0)
+opnd('f1_da_sola', 0, piano='F1')
+opnd('f3_da_sola_zero_controlli', 0, piano='F3')
+opnd('f1_f2', 0, piano='F1,F2')
+opnd('f2_f3', 0, piano='F2,F3')
+opnd('f4_completa', 0, piano='F4')
+# --- i due falsi PASS F1-F3 riprodotti nel #169
+opnd('f123_vuoto_coerente', 5, attesi='OPND ATTESI casi=0 controlli=0 invvpid1=1 invept1=1', togli=('OPND CASO', 'OPND CONTROLLO'),
+    fine='OPND FINE casi=0 controlli=0 errati=0')
+opnd('f123_tutti_etichettati_F1', 5, etichetta='F1')
+# --- altri negativi F1-F3
+opnd('f123_caso_errato', 1, errati_casi=(4,))
+opnd('f123_controllo_errato', 1, errati_ctr=(2,))
+opnd('f123_errore_senza_riga', 5, fine='OPND FINE casi=106 controlli=39 errati=1', rc=3)
+opnd('f123_timeout_senza_casi', 5, timeout=True, valida=False, togli=('OPND CASO', 'OPND CONTROLLO'), fine=None)
+opnd('f123_manca_un_caso', 5, togli=('OPND CASO F2 50 ',))
+opnd('f123_caso_duplicato', 5, extra=('OPND CASO F1 3 VMPTRST off=0xffc var=ok vec=0 err=0 cr2=0 rflags=0x2 vmerr=0 '
+    'memoria=come_attesa atteso(vec=0 err=0 cr2=0 vmerr=0) nota -> OK',))
+opnd('f123_attesi_sbagliati', 5, attesi='OPND ATTESI casi=99 controlli=36 invvpid1=1 invept1=1')
+opnd('f123_senza_casi_s10', 5, togli=('OPND CASO F1 30 ',))
+opnd('f123_senza_riga_msr', 5, togli=('OPND MSR ',))
+opnd('f123_msr_vpid_spento', 5, togli=('OPND MSR ',), extra=('OPND MSR ctls2 0x4fbff00000000 (enable EPT 1, enable VPID 0) ept_vpid 0xf0106534141 (INVEPT 1, INVVPID 1)',))
+opnd('f4_senza_riga_msr', 5, piano='F4', togli=('OPND MSR ',))
+opnd('f123_capacita_mentite', 5, attesi='OPND ATTESI casi=98 controlli=39 invvpid1=1 invept1=0')
+opnd('f123_senza_summary', 5, summary=False)
+opnd('f123_rc_incoerente', 5, rc=3)
+opnd('f123_arresto_terminale', 1, stderr=STDERR_OK)
+opnd('f123_contatori_mossi', 1, cont=((7, 8), (0, 0), (2, 2)))
+opnd('f123_vmu_mosso', 1, cont=((7, 7), (0, 1), (2, 2)))
+opnd('f123_contatori_assenti', 5, cont=None)
+opnd('f123_prereq', 1, extra=('OPND PREREQ VMCLEAR del VMCS di lavoro prima del riuso -> ERRATO',),
+    fine='OPND FINE casi=106 controlli=39 errati=1', rc=3)
+opnd('f123_piano_diverso', 5, piano='F1,F2', piano_seriale='F1,F2,F3')
+opnd('f123_piano_non_ammesso', 5, piano='F3,F1')
+# --- precondizioni comuni del driver
+opnd('f123_driver_non_valido', 5, valida=False)
+opnd('f123_regola_fine_assente', 5, regole=[{'testo': 'OPND INIZIO', 'stato': 'fatta'}, {'testo': 'OPND PIANO?', 'stato': 'fatta'}])
+opnd('f123_regola_fallita', 5, regole=[{'testo': 'OPND INIZIO', 'stato': 'fallita'}, {'testo': 'OPND PIANO?', 'stato': 'fatta'},
+    {'testo': 'OPND FINE casi=', 'stato': 'fatta'}])
+opnd('f123_due_invii', 5, invii=[{'regola': 'OPND PIANO?', 'invio': 'F1,F2,F3'}, {'regola': 'OPND PIANO?', 'invio': 'F1,F2,F3'}])
+opnd('f123_qemu_rc_null', 5, ritocca=lambda s: s.update(qemu_rc=None))
+# --- i sei falsi PASS F4 riprodotti nel #169
+opnd('f4_driver_non_valido_con_errore', 5, piano='F4', valida=False, errori=['regola fallita'])
+opnd('f4_regole_vuote', 5, piano='F4', regole=[])
+opnd('f4_qemu_rc_null', 5, piano='F4', ritocca=lambda s: s.update(qemu_rc=None))
+opnd('f4_errno_5', 1, piano='F4', stderr=STDERR_OK.replace('errno=95', 'errno=5'))
+opnd('f4_rip_latch_diverso', 1, piano='F4', sonde=SONDE_OK.replace('FATAL_LATCH vcpu=0 errno=14 stadio=4 rip=0x405123',
+    'FATAL_LATCH vcpu=0 errno=14 stadio=4 rip=0xdead'))
+opnd('f4_vcpu_latch_diversa', 1, piano='F4', sonde=SONDE_OK.replace('FATAL_LATCH vcpu=0', 'FATAL_LATCH vcpu=7'))
+# --- altri negativi F4
+opnd('f4_rip_stderr_diverso', 1, piano='F4', stderr=STDERR_OK.replace('RIP del registro 0x405123', 'RIP del registro 0x405125'))
+opnd('f4_rip_non_letto', 5, piano='F4', stderr=STDERR_OK.replace('RIP del registro 0x405123', 'RIP del registro 0 (lettura fallita)'))
+opnd('f4_vcpu_porta_diversa', 1, piano='F4', stderr=STDERR_OK.replace('chiusa dal vCPU 0', 'chiusa dal vCPU 1'))
+opnd('f4_stderr_assente', 5, piano='F4', stderr=False)
+opnd('f4_stderr_senza_porta', 5, piano='F4', stderr=STDERR_OK.split('bhyve: porta')[0])
+opnd('f4_rc_diverso_dal_contratto', 5, piano='F4', rc=0)
+# riesame Opus della sequenza stadio 10: rc 1 e' anche l'uscita di una KUT conclusa, quindi ogni altro codice e' fuori
+# contratto (INCONCLUSIVO) e la discriminazione regge sul CONTENUTO (SUMMARY, righe della porta, RIP)
+opnd('f4_rc_3', 5, piano='F4', rc=3)
+opnd('f4_rc_2', 5, piano='F4', rc=2)
+opnd('f4_rc_255', 5, piano='F4', rc=255)
+opnd('f4_summary_kut', 1, piano='F4', summary='si')
+opnd('f4_ritornata', 1, piano='F4', extra=('OPND F4 RITORNATO vec=0 rflags=0x2 -> ERRATO',))
+opnd('f4_fine_raggiunta', 1, piano='F4', extra=('OPND FINE casi=0 controlli=0 errati=1',))
+opnd('f4_senza_sonde', 5, piano='F4', sonde='DTRACE_ATTIVO\nDTRACE_FINE\n')
+opnd('f4_dtrace_non_attivata', 5, piano='F4', sonde='')
+opnd('f4_timeout', 5, piano='F4', timeout=True, valida=False)
+opnd('f4_stadio_sbagliato', 1, piano='F4', sonde=SONDE_OK.replace('stadio=4 err', 'stadio=5 err'))
+opnd('f4_nextrip_avanzato', 1, piano='F4', sonde=SONDE_OK.replace('nextrip=0x405123', 'nextrip=0x405128'))
+opnd('f4_contatori_fermi', 1, piano='F4', cont=((7, 7), (0, 0), (2, 2)))
+opnd('f4_vmu_mosso', 1, piano='F4', cont=((7, 8), (0, 1), (2, 3)))
+opnd('f4_solo_opnd', 1, piano='F4', cont=((7, 7), (0, 0), (2, 3)))
+opnd('f4_doppio_incremento', 1, piano='F4', cont=((7, 9), (0, 0), (2, 4)))
+opnd('f4_non_raggiunta', 5, piano='F4', f4=['OPND INIZIO ...'])
+opnd('f4_regola_fine_in_piu', 5, piano='F4', regole=[{'testo': t, 'stato': 'fatta'} for t in ('OPND INIZIO', 'OPND PIANO?',
+    'OPND FINE casi=')])
+# --- contatori, traccia, dmesg (comuni)
+opnd('contatori_formato_v2', 5, cont_testo='fatal_latches 7 7\nnested_operand_fatal 2 2\n')
+opnd('contatori_riga_doppia', 5, cont_testo='fatal_latches 7 7\nnested_vept_mmio_unemulable 0 0\n'
+    'nested_operand_fatal 2 2\nfatal_latches 7 7\n')
+opnd('contatori_lettura_fallita', 5, cont_testo='fatal_latches 7 7\nnested_vept_mmio_unemulable 0 X\nnested_operand_fatal 2 2\n')
+opnd('f123_senza_dtrace_fine', 5, sonde=SONDE_F123.replace('DTRACE_FINE\n', ''))
+opnd('f123_dtrace_scaduto', 5, sonde=SONDE_F123 + 'DTRACE_SCADUTO\n')
+opnd('f123_vmread_dal_silicio', 5, sonde=SONDE_F123.replace('FBT nested_vmread 41\n', ''))
+opnd('f123_vmwrite_zero', 5, sonde=SONDE_F123.replace('FBT nested_vmwrite 37', 'FBT nested_vmwrite 0'))
+opnd('f123_senza_copia_operando', 5, sonde=SONDE_F123.replace('FBT nested_operand_copy 120\n', ''))
+opnd('f123_drop', 5, sonde=SONDE_F123 + 'dtrace: 12 drops on CPU 3\n')
+opnd('f123_witness', 5, dmesg='lock order reversal:\n 1st 0xfffff8 vmm vcpu lock\n')
+opnd('f123_sleeping_with', 5, dmesg='Sleeping thread 0x1 owns a non-sleepable lock\n')
+opnd('f123_senza_dmesg', 5, dmesg=None)
+opnd('f123_dmesg_innocuo', 0, dmesg='vmm: nested: riga qualunque della sessione\n')
+opnd('f4_senza_dtrace_fine', 5, piano='F4', sonde=SONDE_OK.replace('DTRACE_FINE\n', ''))
+opnd('f4_drop', 5, piano='F4', sonde=SONDE_OK + 'dtrace: 1 drop on CPU 0\n')
+# sessione A: lo stderr di dtrace e' un file a se' (sonde.txt e' di root)
+opnd('f123_sonde_err_assente', 5, sonde_err=None)
+opnd('f123_sonde_err_drop', 5, sonde_err='dtrace: 3 drops on CPU 1\n')
+opnd('f123_sonde_err_errore', 5, sonde_err='dtrace: failed to enable probe\n')
+opnd('f4_sonde_err_drop', 5, piano='F4', sonde_err='dtrace: 1 aggregation drop on CPU 0\n')
+# --- parere Opus C1: il contratto dell'ombra e del modo, nel verdetto (evidenza sigillata)
+OMBRA = dict(modo='--esegui-ombra', ombra_ap='1', ombra_ch='0', shv=57)
+opnd('ombra_completa', 0, **OMBRA)
+opnd('ombra_senza_ingressi', 5, **dict(OMBRA, shv=0))
+opnd('ombra_sonda_assente', 5, **dict(OMBRA, shv=None))
+opnd('ombra_apertura_0', 5, **dict(OMBRA, ombra_ap='0'))
+opnd('ombra_chiusura_1', 5, **dict(OMBRA, ombra_ch='1'))
+opnd('ombra_chiusura_illeggibile', 5, **dict(OMBRA, ombra_ch='LETTURA FALLITA'))
+opnd('ombra_lasciata_spenta', 5, dmesg="nested shadow VMCS: l'hardware non ha VMCS shadowing o VMWRITE su ogni campo: resta spento\n", **OMBRA)
+opnd('ombra_vmclear_fallito', 5, dmesg='nested shadow VMCS: VMCLEAR iniziale fallito: resta spento\n', **OMBRA)
+opnd('ombra_guasto_vm_fermata', 1, dmesg='nested shadow VMCS: vcpu0 errore 5 sul campo 0x681e: VM fermata (parere #44 \n', **OMBRA)
+opnd('normale_con_ingressi', 5, shv=3)
+opnd('normale_ingressi_zero', 0, shv=0)
+opnd('normale_apertura_1', 5, ombra_ap='1')
+opnd('normale_chiusura_1', 5, ombra_ch='1')
+opnd('normale_messaggio_ombra', 5, dmesg='nested shadow VMCS: VMCLEAR iniziale fallito: resta spento\n')
+opnd('manifest_assente', 5, manifest=False)
+opnd('manifest_senza_riga_chiusura', 5, manifest='piano F1,F2,F3 modo --esegui timeout 300\nnested_shadow_vmcs 0\n')
+opnd('manifest_altro_piano', 5, manifest='piano F1 modo --esegui timeout 300\nnested_shadow_vmcs 0\nnested_shadow_vmcs alla chiusura 0\n')
+opnd('f4_con_modo_esegui', 5, piano='F4', modo='--esegui')
+opnd('f4_con_ingressi_ombra', 5, piano='F4', shv=4)
+opnd('f123_con_modo_d', 5, modo='--esegui-d')
+# --- il modello del verdetto contro il SORGENTE C (se cambia il test, cambia l'inventario)
+import importlib.util, re as _re
+_sp = importlib.util.spec_from_file_location('vd', B + '/opnd-verdetto.py'); _vd = importlib.util.module_from_spec(_sp)
+_sp.loader.exec_module(_vd)
+_src = open(B + '/kut-src-opnd/x86/opnd_test.c.inc').read()
+_o8 = [hex(int(x, 16)) for x in _re.search(r'opnd_offs_8\[\] = \{([^}]*)\}', _src).group(1).split(',')]
+_o16 = [hex(int(x, 16)) for x in _re.search(r'opnd_offs_16\[\] = \{([^}]*)\}', _src).group(1).split(',')]
+_f3 = _re.findall(r'\{ "([A-Za-z0-9_]+)", opnd_u_', _src)
+_n3 = int(_re.search(r'#define OPND_F3_CASI\s+(\d+)', _src).group(1))
+_conta = _re.search(r'\*casi \+= \(int\)ARRAY_SIZE\(opnd_offs_8\) \* (\d+) \+ \(int\)ARRAY_SIZE\(opnd_offs_16\) \* \(iv \+ ie\);', _src)
+_ie2 = 'is_invept_type_supported(INVEPT_SINGLE) ? 2 : 0' in _src
+_ctr = _re.search(r'\*controlli \+= \(int\)ARRAY_SIZE\(opnd_offs_8\) \* (\d+);', _src)
+for nome, ok in (('offs_8', list(_vd.OFFS8) == _o8 == M_OFF8), ('offs_16', list(_vd.OFFS16) == _o16 == M_OFF16),
+    ('F3 (nomi e ordine)', list(_vd.F3) == _f3 == M_F3 and len(_f3) == _n3),
+    ('istruzioni per offset 8', _conta is not None and int(_conta.group(1)) == len(_vd.ISTR8) == len(M_ISTR8)),
+    ('INVEPT 2 per offset', _ie2), ('controlli per offset', _ctr is not None and int(_ctr.group(1)) == len(_vd.CTRL8)),
+    ('stadio 10: casi di opnd_s10', 'return (4 + (is_invvpid_type_supported(INVVPID_CONTEXT_GLOBAL) ? 1 : 0) +' in _src and
+        '(is_invept_type_supported(INVEPT_SINGLE) ? 2 : 0));' in _src),
+    ('stadio 10: controlli di opnd_s10', _re.search(r'#define OPND_S10_CONTROLLI\s+3\b', _src) is not None and
+        all(('"%s"' % n) in _src for n in _vd.S10_CTRL) and list(_vd.S10_CTRL) == M_S10_CTRL)):
+	esito('modello verdetto = sorgente: ' + nome, 0 if ok else 1, 0, '')
+
+# ---------------------------------------------------------------- kut-drive.py v2 contro finte QEMU
+print('kut-drive.py')
+def finta(nome, corpo):
+	f = os.path.join(W, 'finta-%s.py' % nome)
+	open(f, 'w').write('import sys, time\n' + textwrap.dedent(corpo))
+	return f
+def drive(nome, atteso, f, regole, foto_cmd='echo vm\\ exits\\ for\\ instruction\\ emulation\\ 5', timeout=10,
+    controllo=None):
+	d = os.path.join(W, 'drv-' + nome)
+	a = [PY, B + '/kut-drive.py', '--out', d, '--timeout', str(timeout), '--foto-timeout', '5']
+	for r in regole:
+		a += ['--regola', r]
+	if foto_cmd:
+		a += ['--foto-cmd', foto_cmd]
+	p = subprocess.run(a + ['--', PY, f], capture_output=True, text=True)
+	out = p.stdout + p.stderr
+	if controllo and p.returncode == atteso:
+		ok, m = controllo(d)
+		if not ok:
+			out = 'CONTROLLO: ' + m
+			p.returncode = 'controllo'
+	esito('drive ' + nome, p.returncode, atteso, out)
+FLUSSO = '''
+print('U64 PRONTO', flush=True)
+g = sys.stdin.readline()
+print('U64 MISURA APERTA', flush=True)
+print('U64 FINESTRA APERTA', flush=True)
+print('U64 FINE casi=28 modello=28 contrari=0', flush=True)
+f = sys.stdin.readline()
+print('U64 CHIUSO' if f.strip() == 'f' else 'U64 CHIUSURA MANCATA', flush=True)
+'''
+def foto_finale_dopo_record(d):
+	st = json.load(open(os.path.join(d, 'stato.json')))
+	r = [x for x in st['regole'] if x['testo'] == 'U64 FINE casi='][0]
+	ser = open(os.path.join(d, 'seriale.txt')).read()
+	return (r['stato'] == 'fatta' and 'U64 CHIUSO' in ser and len(st['invii']) == 2,
+	    'regola finale %s, invii %d, CHIUSO %s' % (r['stato'], len(st['invii']), 'U64 CHIUSO' in ser))
+drive('flusso_completo', 0, finta('flusso', FLUSSO), ['U64 PRONTO|foto|g', 'U64 FINE casi=|foto|f'],
+    controllo=foto_finale_dopo_record)
+def senza_invio(d):
+	st = json.load(open(os.path.join(d, 'stato.json')))
+	return (not st['invii'], 'invii %r' % st['invii'])
+drive('foto_fallita_niente_g', 2, finta('attesa', '''
+print('U64 PRONTO', flush=True)
+g = sys.stdin.readline()
+print('RICEVUTO ' + g.strip(), flush=True)
+'''), ['U64 PRONTO|foto|g'], foto_cmd='exit 7', controllo=senza_invio)
+# #169 R1: le regole EFFETTIVE del runner B; la foto iniziale fallisce -> il piano NON deve partire
+B_ATTESA_PIANO = '''
+import select
+print('OPND INIZIO P0 ...', flush=True)
+print('OPND PIANO? (F1,F2,F3 oppure F4)', flush=True)
+r, _, _ = select.select([sys.stdin], [], [], 3)
+print(('RICEVUTO ' + sys.stdin.readline().strip()) if r else 'NESSUN PIANO', flush=True)
+'''
+def b_senza_piano(d):
+	st = json.load(open(os.path.join(d, 'stato.json')))
+	ser = open(os.path.join(d, 'seriale.txt')).read()
+	r = dict((x['testo'], x['stato']) for x in st['regole'])
+	return (st['invii'] == [] and 'NESSUN PIANO' in ser and 'RICEVUTO' not in ser and r.get('OPND INIZIO') == 'fallita'
+	    and r.get('OPND PIANO?') == 'attesa', 'invii %r, regole %r, seriale %r' % (st['invii'], r, ser[-120:]))
+drive('b_foto_iniziale_fallita_niente_piano', 2, finta('b_attesa', B_ATTESA_PIANO),
+    ['OPND INIZIO|foto|', 'OPND PIANO?||F1,F2,F3', 'OPND FINE casi=|foto|'], foto_cmd='exit 7', controllo=b_senza_piano)
+def b_con_piano(d):
+	st = json.load(open(os.path.join(d, 'stato.json')))
+	ser = open(os.path.join(d, 'seriale.txt')).read()
+	return (len(st['invii']) == 1 and 'RICEVUTO F1,F2,F3' in ser, 'invii %r' % st['invii'])
+drive('b_foto_iniziale_riuscita_piano', 2, finta('b_attesa2', B_ATTESA_PIANO),
+    ['OPND INIZIO|foto|', 'OPND PIANO?||F1,F2,F3', 'OPND FINE casi=|foto|'], foto_cmd='true', controllo=b_con_piano)
+drive('foto_timeout', 2, finta('attesa2', '''
+print('U64 PRONTO', flush=True)
+time.sleep(30)
+'''), ['U64 PRONTO|foto|g'], foto_cmd='sleep 20', timeout=40)
+drive('timeout_sessione', 2, finta('lenta', '''
+print('U64 PRONTO', flush=True)
+time.sleep(60)
+'''), ['U64 PRONTO||g'], foto_cmd='', timeout=2)
+drive('regola_mai_scattata', 2, finta('corta', '''
+print('altro', flush=True)
+'''), ['U64 PRONTO||g'], foto_cmd='')
+drive('regole_ambigue', 1, finta('x', 'pass\n'), ['U64 FINE|foto|', 'U64 FINE casi=|foto|f'])
+def figlio_morto(d):
+	st = json.load(open(os.path.join(d, 'stato.json')))
+	return (not any('ancora vivo' in e for e in st['errori']), '%r' % st['errori'])
+drive('discendente_persistente', 0, finta('padre', '''
+import subprocess
+subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+print('fatto', flush=True)
+'''), [], foto_cmd='', controllo=figlio_morto)
+
+print('test-verdetti: %d ok, %d errati' % (nok, nko))
+sys.exit(1 if nko else 0)

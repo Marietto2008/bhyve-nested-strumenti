@@ -1,0 +1,15 @@
+sequenza rc=0 (11 s): SUMMARY: 110 ok, 0 errati
+mutanti-sequenza rc=0 (119 s): SUMMARY: 12 presi, 0 non presi
+gettone rc=0 (1 s): SUMMARY: 20 ok, 0 errati
+vmm-residuo rc=0 (4 s): SUMMARY: 178 ok, 0 errati
+smoke-stadio9 rc=0 (6 s): SUMMARY: 111 ok, 0 errati
+opnd-manifest rc=0 (21 s): SUMMARY: 136 ok, 0 errati
+verdetti rc=0 (50 s): test-verdetti: 139 ok, 0 errati
+ombra rc=0 (4 s): SUMMARY: 9 ok, 0 errati
+mutanti-verdetto rc=0 (503 s): mutanti del verdetto: errori 0
+banco-r9c rc=0 (1 s): SUMMARY: 22 ok, 0 errati
+mutanti-r9c rc=0 (0 s): mutanti: errori 0
+banco-kut-r3 rc=0 (1 s): SUMMARY: 16 ok, 0 errati
+banco-opnd-s10 rc=0 (61 s): banco-opnd-s10: errori 0
+modulo-caldo rc=0 (131 s): SUMMARY: 537 ok, 0 FAIL
+GIRO giro-1: 0 suite fallite

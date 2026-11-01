@@ -1,0 +1,189 @@
+V1: percorsi
+  ok      v1-verifica rc=0
+  ok      v1-verifica nessuna azione
+  ok      v1 identita' di vm2 stampata
+  ok      v2-autorizzato rc=0
+  ok      v2-autorizzato vm2 distrutto
+  ok      v2-autorizzato vm0:12 intatta
+  ok      v2 diario
+V2: rifiuti (nulla fatto)
+  ok      v3-ctime-diverso rc=4
+  ok      v3-ctime-diverso nessuna azione
+  ok      v3 motivo
+  ok      v4-memseg-diverso rc=4
+  ok      v4-memseg-diverso nessuna azione
+  ok      v5-altro-nome rc=4
+  ok      v5-altro-nome nessuna azione
+  ok      v5-altro-nome vm0:12 intatta
+  ok      v6-aperto rc=4
+  ok      v6-aperto nessuna azione
+  ok      v7-vm-viva rc=4
+  ok      v7-vm-viva nessuna azione
+  ok      v8-senza-modulo rc=4
+  ok      v8-senza-modulo nessuna azione
+  ok      v9-argomenti rc=4
+  ok      v9-argomenti nessuna azione
+  ok      v4-memseg-diverso: motivo 'memseg di vm2'
+  ok      v5-altro-nome: motivo 'solo vm2'
+  ok      v6-aperto: motivo 'e' aperto'
+  ok      v7-vm-viva: motivo 'VM viva'
+  ok      v8-senza-modulo: motivo 'nessun modulo'
+  ok      v9-argomenti: motivo 'uso:'
+V3: distruzione inefficace
+  ok      v12-inefficace rc=6
+  ok      v12 operatore dichiarato
+V4: classificazione del ritorno (#143 §5), sola lettura
+  ok      c1-sessione RAMO=NODO_DELLA_SESSIONE
+  ok      c1-sessione nessuna azione
+  ok      c1: comando da autorizzare stampato
+  ok      c2-nessun-nodo RAMO=NESSUN_NODO
+  ok      c2-nessun-nodo nessuna azione
+  ok      c2: NESSUN_NODO solo col modulo RIPFIX dichiarato
+  ok      c3-altro-nodo RAMO=OPERATORE
+  ok      c3-altro-nodo nessuna azione
+  ok      c4-aperto RAMO=OPERATORE
+  ok      c4-aperto nessuna azione
+  ok      c5-qemu-viva RAMO=OPERATORE
+  ok      c5-qemu-viva nessuna azione
+  ok      c6-dtrace-vivo RAMO=OPERATORE
+  ok      c6-dtrace-vivo nessuna azione
+  ok      c7-senza-sessione RAMO=OPERATORE
+  ok      c7-senza-sessione nessuna azione
+  ok      c8-manifest-senza-vm2 RAMO=OPERATORE
+  ok      c8-manifest-senza-vm2 nessuna azione
+  ok      c9-ctime-diverso RAMO=OPERATORE
+  ok      c9-ctime-diverso nessuna azione
+  ok      c10-memseg-diversa RAMO=OPERATORE
+  ok      c10-memseg-diversa nessuna azione
+  ok      c11-creata-prima RAMO=OPERATORE
+  ok      c11-creata-prima nessuna azione
+  ok      c12-senza-modulo RAMO=EMERGENZA
+  ok      c12-senza-modulo nessuna azione
+  ok      c13-caldo-a-meta RAMO=EMERGENZA
+  ok      c13-caldo-a-meta nessuna azione
+  ok      c14-caldo-finito RAMO=NODO_DELLA_SESSIONE
+  ok      c14-caldo-finito nessuna azione
+V5: #144 §2 -- precedenze fail-closed col /dev/vmm VUOTO e identita' del modulo
+  ok      c15-vuoto-dtrace-vivo RAMO=OPERATORE
+  ok      c15-vuoto-dtrace-vivo nessuna azione
+  ok      c16-vuoto-qemu-viva RAMO=OPERATORE
+  ok      c16-vuoto-qemu-viva nessuna azione
+  ok      c17-vuoto-bhyve-vivo RAMO=OPERATORE
+  ok      c17-vuoto-bhyve-vivo nessuna azione
+  ok      c18-vuoto-gia-originale RAMO=GIA_RIPRISTINATO
+  ok      c18-vuoto-gia-originale nessuna azione
+  ok      c18: dopo rc=5 nessun ritorno ripfix->originale
+  ok      c19-vuoto-caldo-intermedio RAMO=EMERGENZA
+  ok      c19-vuoto-caldo-intermedio nessuna azione
+  ok      c20-vuoto-modulo-incompleto RAMO=EMERGENZA
+  ok      c20-vuoto-modulo-incompleto nessuna azione
+  ok      c21-vuoto-modulo-h2ad2 RAMO=OPERATORE
+  ok      c21-vuoto-modulo-h2ad2 nessuna azione
+  ok      c22-vuoto-modulo-sconosciuto RAMO=OPERATORE
+  ok      c22-vuoto-modulo-sconosciuto nessuna azione
+  ok      c23-vm2-giusta-dtrace-vivo RAMO=OPERATORE
+  ok      c23-vm2-giusta-dtrace-vivo nessuna azione
+  ok      c24-vm2-giusta-qemu-viva RAMO=OPERATORE
+  ok      c24-vm2-giusta-qemu-viva nessuna azione
+  ok      c25-vm2-giusta-modulo-h2ad2 RAMO=OPERATORE
+  ok      c25-vm2-giusta-modulo-h2ad2 nessuna azione
+  ok      c26-vm2-giusta-modulo-originale RAMO=NODO_DELLA_SESSIONE
+  ok      c26-vm2-giusta-modulo-originale nessuna azione
+  ok      c26: dopo la distruzione si riclassifica
+  ok      c27-vm2-manifest-assente RAMO=OPERATORE
+  ok      c27-vm2-manifest-assente nessuna azione
+V6: #167R1 par. 9.5 -- lo stadio 9 e' un modulo della campagna
+  ok      c30-vuoto-stadio9 RAMO=NESSUN_NODO
+  ok      c30-vuoto-stadio9 nessuna azione
+  ok      c30: ritorno indicato DALLO STADIO 9, non dal RIPFIX
+  ok      c31-vm2-giusta-stadio9 RAMO=NODO_DELLA_SESSIONE
+  ok      c31-vm2-giusta-stadio9 nessuna azione
+  ok      c31: modulo dichiarato
+  ok      c32-stadio9-dtrace-vivo RAMO=OPERATORE
+  ok      c32-stadio9-dtrace-vivo nessuna azione
+  ok      c33-vuoto-identita-ignota RAMO=OPERATORE
+  ok      c33-vuoto-identita-ignota nessuna azione
+V7: #168 par. 4 -- sessione del produttore non conclusa; il finto non raggiunge la distruzione reale
+  ok      c34-sessione-interrotta RAMO=OPERATORE
+  ok      c34-sessione-interrotta nessuna azione
+  ok      c34: motivo
+  ok      c35-sessione-conclusa RAMO=NODO_DELLA_SESSIONE
+  ok      c35-sessione-conclusa nessuna azione
+  ok      c36-memseg-illeggibile RAMO=OPERATORE
+  ok      c36-memseg-illeggibile nessuna azione
+  ok      c36: uscita marcata SIMULAZIONE
+  ok      v13: senza r_distruggi finto la distruzione reale e' irraggiungibile (rc 6)
+V8: #169 R5 -- letture dell'identita' fallite: nessuna distruzione, nessuna attribuzione
+  ok      v14-distruggi-memseg-illeggibile rc=4
+  ok      v14-distruggi-memseg-illeggibile nessuna azione
+  ok      v14: motivo
+  ok      c37-classifica-memseg-testo-illeggibile RAMO=OPERATORE
+  ok      c37-classifica-memseg-testo-illeggibile nessuna azione
+  ok      c38-classifica-memseg-hash-illeggibile RAMO=OPERATORE
+  ok      c38-classifica-memseg-hash-illeggibile nessuna azione
+V9: stadio 10
+  ok      c39-vuoto-stadio10 RAMO=NESSUN_NODO
+  ok      c39-vuoto-stadio10 nessuna azione
+  ok      c39: ritorno dallo stadio 10
+  ok      c40-vm2-giusta-stadio10 RAMO=NODO_DELLA_SESSIONE
+  ok      c40-vm2-giusta-stadio10 nessuna azione
+V10: riesame Opus (sequenza stadio 10) par. 3 -- --distruggi-da <sessione>: istanza dal manifest e dallo stato
+  ok      d1-sessione rc=0
+  ok      d1-sessione vm2 distrutto
+  ok      d1 diario ESITO 0
+  ok      d1 classificazione stampata prima dell'azione
+  ok      d2-sessione-stadio10 rc=0
+  ok      d2-sessione-stadio10 vm2 distrutto
+  ok      d3-nessun-nodo rc=4
+  ok      d3-nessun-nodo nessuna azione
+  ok      d3-nessun-nodo rifiuto scritto nel diario
+  ok      d4-altro-nodo rc=4
+  ok      d4-altro-nodo nessuna azione
+  ok      d4-altro-nodo rifiuto scritto nel diario
+  ok      d4-altro-nodo vm0:12 intatta
+  ok      d5-ctime-diverso rc=4
+  ok      d5-ctime-diverso nessuna azione
+  ok      d5-ctime-diverso rifiuto scritto nel diario
+  ok      d6-memseg-diversa rc=4
+  ok      d6-memseg-diversa nessuna azione
+  ok      d6-memseg-diversa rifiuto scritto nel diario
+  ok      d7-sessione-interrotta rc=4
+  ok      d7-sessione-interrotta nessuna azione
+  ok      d7-sessione-interrotta rifiuto scritto nel diario
+  ok      d8-dtrace-vivo rc=4
+  ok      d8-dtrace-vivo nessuna azione
+  ok      d8-dtrace-vivo rifiuto scritto nel diario
+  ok      d9-qemu-viva rc=4
+  ok      d9-qemu-viva nessuna azione
+  ok      d9-qemu-viva rifiuto scritto nel diario
+  ok      d10-aperto rc=4
+  ok      d10-aperto nessuna azione
+  ok      d10-aperto rifiuto scritto nel diario
+  ok      d11-caldo-a-meta rc=4
+  ok      d11-caldo-a-meta nessuna azione
+  ok      d11-caldo-a-meta rifiuto scritto nel diario
+  ok      d12-senza-modulo rc=4
+  ok      d12-senza-modulo nessuna azione
+  ok      d12-senza-modulo rifiuto scritto nel diario
+  ok      d13-modulo-non-previsto rc=4
+  ok      d13-modulo-non-previsto nessuna azione
+  ok      d13-modulo-non-previsto rifiuto scritto nel diario
+  ok      d14-memseg-illeggibile rc=4
+  ok      d14-memseg-illeggibile nessuna azione
+  ok      d14-memseg-illeggibile rifiuto scritto nel diario
+  ok      d15-nessuna rc=4
+  ok      d15-nessuna nessuna azione
+  ok      d15-nessuna rifiuto scritto nel diario
+  ok      d16-manifest-assente rc=4
+  ok      d16-manifest-assente nessuna azione
+  ok      d16-manifest-assente rifiuto scritto nel diario
+  ok      d17-senza-argomento rc=4
+  ok      d17-senza-argomento nessuna azione
+  ok      d17 motivo: uso
+  ok      d18-inefficace rc=6
+  ok      d18 operatore dichiarato
+  ok      c28-intermedio-e-dtrace RAMO=EMERGENZA
+  ok      c28-intermedio-e-dtrace nessuna azione
+  ok      c29-originale-e-dtrace RAMO=OPERATORE
+  ok      c29-originale-e-dtrace nessuna azione
+SUMMARY: 178 ok, 0 errati

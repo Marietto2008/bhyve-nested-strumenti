@@ -1,0 +1,55 @@
+W1: campagna completa
+  ok      w1-due-corse-vm-resta uscita 2
+  ok      w1-due-corse-vm-resta invocazioni esatte
+  ok      w1: successo SIMULATO esce 2
+  ok      w2-vm-sparisce uscita 2
+  ok      w2-vm-sparisce invocazioni esatte
+  ok      w3-ombra-rifiutata uscita 4
+  ok      w3-ombra-rifiutata invocazioni esatte
+W2: argomenti rifiutati prima di qualunque invocazione
+  ok      w4-zero-corse uscita 4
+  ok      w4-zero-corse invocazioni esatte
+  ok      w5-troppe uscita 4
+  ok      w5-troppe invocazioni esatte
+  ok      w6-ombra-2 uscita 4
+  ok      w6-ombra-2 invocazioni esatte
+  ok      w7-corse-non-numero uscita 4
+  ok      w7-corse-non-numero invocazioni esatte
+  ok      w8-senza-sha uscita 4
+  ok      w8-senza-sha invocazioni esatte
+  ok      w9-sha-diverso uscita 4
+  ok      w9-sha-diverso invocazioni esatte
+W3: STOP dopo lo scambio -> solo recupero e ritorno
+  ok      w10-corsa-fail uscita 4
+  ok      w10-corsa-fail invocazioni esatte
+  ok      w11-corsa2-fail-con-vm uscita 4
+  ok      w11-corsa2-fail-con-vm invocazioni esatte
+  ok      w12-pulizia-ko uscita 6
+  ok      w12-pulizia-ko invocazioni esatte
+  ok      w13-classifica-operatore uscita 6
+  ok      w13-classifica-operatore invocazioni esatte
+  ok      w14-continuita-ko uscita 4
+  ok      w14-continuita-ko invocazioni esatte
+  ok      w15-C1-ko uscita 4
+  ok      w15-C1-ko invocazioni esatte
+W4: --prova
+  ok      w16-prova uscita 2
+  ok      w16-prova invocazioni esatte
+  ok      w16: la prova stampa lo sha
+W6: stadio 11 (parere #172): stessa sequenza, lo stadio in ogni invocazione; stadio non valido rifiutato
+  ok      w17-stadio11 uscita 2
+  ok      w17-stadio11 invocazioni esatte
+  ok      w17: esito dice stadio11
+  ok      w18-stadio11-corsa-fail uscita 4
+  ok      w18-stadio11-corsa-fail invocazioni esatte
+  ok      w19-stadio-ignoto uscita 4
+  ok      w19-stadio-ignoto invocazioni esatte
+  ok      w19b-stadio10-rifiutato uscita 4
+  ok      w19b-stadio10-rifiutato invocazioni esatte
+  ok      w20-prova-stadio11 uscita 2
+  ok      w20-prova-stadio11 invocazioni esatte
+  ok      w21-argomento-in-piu uscita 4
+  ok      w21-argomento-in-piu invocazioni esatte
+W5: nessuna trappola scattata
+  ok      nessuna trappola scattata
+SUMMARY: 48 ok, 0 errati

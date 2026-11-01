@@ -1,0 +1,1135 @@
+#!/usr/local/bin/python3
+# ptpad_an.py -- Claude 27/10/2026, parere #101: oracolo e classificatore del test deterministico
+# AUDIT-PTP-HOLD (H1 scrittura A/D non autorizzata, H2 EFAULT che uccide la VM). OFFLINE: nessuna
+# VM. Legge il log COMBINATO prodotto dal runner (righe della serie di L1 = kvm-unit-tests +
+# fotografie del contatore host nested_ept_mmio_emulated attorno a ogni caso + stato terminale).
+#
+# Verdetti per caso (parere #101 §5), uno solo:
+#   PATH_COVERED_ARCH_PASS        percorso emulato raggiunto, oracolo ARCHITETTURALE soddisfatto
+#   PATH_COVERED_H1_REPRODUCED    A/D scritti in una pagina EPT12 R-only senza EPT violation: H1
+#   PATH_COVERED_H2_REPRODUCED    EFAULT -> vm_run error -> bhyve terminato: H2
+#   INCONCLUSIVE_HW_PREEMPTED     EPT violation hardware PRIMA del percorso emulato (nessuna emul.)
+#   INCONCLUSIVE_PATH_NOT_COVERED contatore/sonde/RIP non confermano il ramo emulato
+#   INCONCLUSIVE_TEST_SETUP       MMIO, permessi, pagine o traduzioni non controllabili
+#   TEST_ERROR                    marcatori mancanti, contatore a ritroso, drop, log incompleto
+# Casi H/H_D (dopo la sessione 1c): controllo HARDWARE di A/A_D, nessuna emulazione attesa:
+#   HW_CONTROL_PASS               EPT violation di scrittura su T riflessa a L1 (gpa = PTE di D),
+#                                 delta mmio 0, delta riflessioni 1: il R-only di T E' in vigore
+#   HW_CONTROL_NO_VIOLATION       scrittura hardware passata su T R-only: R-only NON in vigore
+# Attribuzione (righe (attr-A), (attr-A_D)): H1_ATTRIBUITA_EMULATORE solo se A e' H1_REPRODUCED e
+# il suo controllo hardware e' HW_CONTROL_PASS nella STESSA sessione.
+# Dopo la correzione (parere di Astra sul caso H, §5): H1_CORRECTED_ARCH_PASS se A e' ARCH_PASS, H e'
+# HW_CONTROL_PASS, la violazione di A ha la stessa CATEGORIA di quella di H (bit1, bit7, bit8=0,
+# permessi bit 3-5 e gpa uguali; i bit indefiniti 9-11 e il bit 0 non si confrontano) e il contatore
+# delle riflessioni DELL'EMULATORE (RFE, nested_ept12_viol_emul_reflected) sale di 1 nel caso A.
+# Senza RFE (modulo senza contatore) la correzione non e' attribuita: ATTRIBUZIONE_INCONCLUSIVA.
+# Parere #110 §5.6: con il modulo corretto servono anche EST (nested_ept12_viol_emul_stale) ed ENC
+# (nested_ept12_viol_emul_nocache) con delta 0 nel caso; un delta > 0 in QUALSIASI caso rende la
+# sessione SESSIONE_NON_IDONEA_H1 (riga globale) e nessuna correzione viene attribuita.
+# Parere #111 §5: anche i retry RTX/RTR (vept_ptp_write_retry_xlate/_remap) > 0 rendono la sessione non
+# idonea (interleaving inattesi in una prova a 1 vCPU). H/H_D: delta RFE 0 e, con la riga XINFO, GLA =
+# va_d e RIP = istruzione su D. A/A_D corretti: XINFO obbligatoria ed esatta, delta RFL (hardware) 0.
+#
+# Il contatore host e' path-proof: delta >= 1 fra le due fotografie di UN caso prova che l'accesso
+# e' stato EMULATO (VEPT_MMIO), non gestito dall'hardware. Senza delta il caso NON copre il ramo.
+# L'oracolo architetturale e' interno a L1 (vede o no l'EPT violation riflessa da L0); H2 lo vede
+# il runner (morte di bhyve). Stesse VM/vCPU/istruzione: il campo rip deve combaciare col setup.
+#
+# Formato del log combinato, per caso (una riga CASE apre; le righe CTR/L1/TERM seguono):
+#   CASE <nome>
+#   CTR before=<n>
+#   L1 viol=<0|1> reason=<n> qual=<hex> gpa=<hex> paddr=<0|1> pte0=<hex> pte1=<hex> dwr=<0|1> ripadv=<0|1>
+#   CTR after=<n>
+#   RFL before=<n> / RFL after=<n>   (nested_ept12_viol_reflected; obbligatorie nei casi H)
+#   RFE before=<n> / RFE after=<n>   (nested_ept12_viol_emul_reflected; solo col modulo corretto)
+#   TERM <alive|bhyve_died>
+# Prima dei casi: MAP ... pteaddr=<hex> (GPA della PTE di D, da L1; obbligatoria nei casi H).
+# L1 e TERM possono mancare (morte prima della risposta di L1): regole sotto.
+#
+# H2 (29/10, parere #119 §3.2). Casi HD_DATA/HD_PTP: controlli HARDWARE di D_DATA/D_PTP (scrittura
+# ordinaria con D, o T, NON presente in EPT12): HW_CONTROL_PASS = violazione riflessa dal percorso dello
+# shadow EPT (delta mmio 0, RFL 1, RFE 0) con gpa = D (finale, bit8=1) o = PTE di D (tabella, bit8=0).
+# Casi D, quattro chiusure distinte:
+#   VM viva, violazione riflessa  -> PATH_COVERED_ARCH_PASS (forma esatta: gpa, bit, XINFO, RFE 1 e il
+#                                    contatore H2 del tipo giusto 1, RFL 0) o PATH_COVERED_H2_NO_VIOLATION
+#   errore di VM_RUN (EFAULT)     -> PATH_COVERED_H2_REPRODUCED (come prima)
+#   tempo scaduto senza risposta  -> H2_LOOP_SAME_RIP se l'emulazione e' ripetuta (delta mmio > 1),
+#                                    altrimenti INCONCLUSIVE_HANG
+#   VM uscita da sola             -> FAIL_CLOSED_STOP se ENC sale (spegnimento senza VMCS12), altrimenti
+#                                    INCONCLUSIVE_VM_EXIT
+# [superato da H2-AD, sotto] Attribuzione (attr-D_DATA, attr-D_PTP): H2_CORRECTED_ARCH_PASS se D e' ARCH_PASS, HD e' HW_CONTROL_PASS
+# nella stessa sessione e le due violazioni coincidono: motivo, gpa, bit 0-5, 7, 8 e, per l'indirizzo
+# finale, i bit 9-11. Riga (ad-...) informativa: A/D della PTE dopo D contro dopo HD.
+#
+# H2-AD (30/10, parere #123 §3, §4.6). Casi _PDE/_ALL (A=0 nella PDE, o in PML4E+PDPTE+PDE, di D) e riga LIV
+# (quattro livelli del walk di D, prima>dopo). L'attribuzione si divide in due:
+#   (evento-D)  H2_EVENT_PASS        motivo, gpa, qualificazione (0-5, 7, 8; 9-11 sul finale) come l'hardware
+#               H2_QUAL_DIVERSA / ATTRIBUZIONE_INCONCLUSIVA
+#   (effetti-D) H2_SIDE_EFFECT_PASS  per OGNI livello misurato i bit A/D cambiati come nel controllo hardware,
+#                                    a parita' di partenza (stessi A/D prima)
+#               H2_SIDE_EFFECT_FAIL  un livello cambia diversamente (dettaglio per livello)
+#               EFFETTI_INCONCLUSIVI partenze diverse, o i livelli da azzerare non erano a A=0
+#   Senza riga LIV (log precedenti) si confronta la sola foglia (pte0/pte1 della riga L1).
+# Riga finale PULIZIA: PULITA solo se ogni caso e' ARCH_PASS/HW_CONTROL_PASS/NOT_RUN, nessuna riga globale,
+# ogni attribuzione e' H1_CORRECTED_ARCH_PASS/H2_EVENT_PASS e ogni (effetti-) e' H2_SIDE_EFFECT_PASS.
+# Uscita: 3 con TEST_ERROR, 4 se NON_PULITA, 0 altrimenti.
+#
+# G1 (parere #124 §2): casi _CONFLICT (T senza W, A=D=0, D assente) e _CONFLICT_PDE (PD senza W, PDE A=0, D
+# assente). Il controllo hardware accetta UNA delle due violazioni legittime (dato: bit8=1, gpa D; tabella:
+# bit8=0, bit1, gpa la PTE o la PDE) e dice quale (precedenza); il caso D deve avere la STESSA. Maschera dei bit
+# 9-11 decisa dal bit8 del controllo hardware.
+#
+# G1b (parere #126): H_PDE = controllo POSITIVO di HD_CONFLICT_PDE (PD senza W, PDE A=0, D presente: violazione di
+# scrittura sulla PDE, gpa = pdeaddr); H lo e' di HD_CONFLICT. Riga EPT t= pd= d= (voci foglia di EPT12 prima del
+# run). Righe (discr-HD_CONFLICT*): DISCRIMINANTE solo se il controllo della STESSA sessione e' HW_CONTROL_PASS e le
+# voci EPT di T e della PD coincidono fra controllo e conflitto, con D presente nel controllo e assente nel
+# conflitto; altrimenti NON_DISCRIMINANTE, e la sessione NON_PULITA.
+#
+# H2_MMIO (#131): HM_RAM (controllo positivo: T -> Y' RAM, il walk riesce), HM_PTP (hardware, T -> Y buco) e DM_PTP
+# (emulato, T -> Y). Righe di sessione MEM/FIXMMIO/BAR/BRIDGE: Y deve essere fuori da RAM, MMIO fisso, BAR e finestre
+# (Y' dentro la RAM), altrimenti Y_NON_LIBERO. Esiti tecnici, assegnati SOLO qui:
+#   HM_PTP: FABRICATED_L1_VIOLATION (48 riflessa a L1 sulla voce, bit8=0, con EPT12 che CONCEDE T -> Y),
+#           L0_HANDLED, TIMEOUT / TIMEOUT_LOOP_RIFLESSIONI, VM_RUN_ERROR, VM_EXIT, INCONCLUSIVE_*
+#   DM_PTP: H2_MMIO_VM_RUN_ERROR_REPRODUCED (un errore), HOT_LOOP_REPRODUCED (errori ripetuti o emulazioni che
+#           crescono), TERMINAL_ERROR_CONFIRMED (QEMU esce dopo l'errore), TIMEOUT, VM_EXIT, L0_HANDLED,
+#           FABRICATED_L1_VIOLATION, INCONCLUSIVE_*
+# (discr-HM_PTP) DISCRIMINANTE solo con HM_RAM HW_CONTROL_PASS e HD_PTP HW_CONTROL_PASS nella STESSA sessione;
+# (discr-DM_PTP) con HM_RAM. L'esito del RUNNER (riga RUNNER=) e' un'altra cosa e si riporta a parte.
+#
+# Uso: ptpad_an.py <log combinato>   (uscita 0 se nessun TEST_ERROR, 3 altrimenti)
+import re, sys
+from collections import OrderedDict
+
+CASI = ('B', 'C', 'A', 'A_D', 'H', 'H_D', 'HD_DATA', 'HD_PTP', 'HD_DATA_PDE', 'HD_DATA_ALL', 'HD_PTP_ALL',
+    'HD_CONFLICT', 'HD_CONFLICT_PDE', 'H_PDE', 'HM_RAM', 'HM_PTP',
+    'D_DATA', 'D_PTP', 'D_DATA_PDE', 'D_DATA_ALL', 'D_PTP_ALL', 'D_CONFLICT', 'D_CONFLICT_PDE', 'DM_PTP')
+CONTROLLO_HW = {'A': 'H', 'A_D': 'H_D'}
+CONTROLLO_HW_D = {'D_DATA': 'HD_DATA', 'D_PTP': 'HD_PTP', 'D_DATA_PDE': 'HD_DATA_PDE',
+    'D_DATA_ALL': 'HD_DATA_ALL', 'D_PTP_ALL': 'HD_PTP_ALL', 'D_CONFLICT': 'HD_CONFLICT',
+    'D_CONFLICT_PDE': 'HD_CONFLICT_PDE'}
+CASI_D = tuple(CONTROLLO_HW_D)
+CASI_HD = tuple(CONTROLLO_HW_D.values())
+LIVELLI = ('pml4', 'pdpt', 'pde', 'pte')
+# livelli che il caso azzera (A=0) prima del run, oltre alla foglia dei casi DATA
+AZZERATI = {'PDE': ('pde',), 'ALL': ('pml4', 'pdpt', 'pde')}
+
+def base(nome):
+	"""D_DATA_PDE -> D_DATA, HD_PTP_ALL -> HD_PTP"""
+	for suf in ('_PDE', '_ALL'):
+		if nome.endswith(suf):
+			return nome[:-len(suf)]
+	return nome
+
+# #132 §3.1: regioni della VM corrente, raccolte in modo RIGOROSO. Ogni anomalia va in sess['bad'] e rende Y NON
+# dimostrata libera (fail-closed). La .flat le stampa una volta, prima del piano, chiuse da PCI_SCAN_COMPLETE.
+PREFISSI_SESSIONE = ('MEM ', 'FIXMMIO ', 'PCIDEV ', 'BRIDGE ', 'BAR ', 'BARBAD ', 'ROM ', 'PCI_SCAN_COMPLETE ')
+RAM_ATTESA = 0x10000000		# -m 256 nella riga QEMU del runner
+FIX_ATTESI = ('ioapic', 'hpet', 'lapic', 'pctestdev', 'bios')
+
+def sessione_vuota():
+	return {'mem': None, 'fix': None, 'bar': [], 'bridge': [], 'rom': [], 'pcidev': OrderedDict(),
+	    'scan': None, 'bad': []}
+
+def riga_sessione(sess, t):
+	"""Consuma una riga di sessione (gia' riconosciuta dal prefisso); ogni anomalia va in sess['bad']."""
+	if sess['scan'] is not None:
+		sess['bad'].append('riga di sessione dopo PCI_SCAN_COMPLETE: %s' % t)
+		return
+	m = re.match(r'MEM ram=([0-9a-f]+) y=([0-9a-f]+) yp=([0-9a-f]+)$', t)
+	if m:
+		if sess['mem'] is not None:
+			sess['bad'].append('MEM ripetuta')
+		sess['mem'] = dict(zip(('ram', 'y', 'yp'), (int(x, 16) for x in m.groups())))
+		return
+	m = re.match(r'FIXMMIO ((?:\w+=[0-9a-f]+\+[0-9a-f]+ ?)+)$', t)
+	if m:
+		if sess['fix'] is not None:
+			sess['bad'].append('FIXMMIO ripetuta')
+		sess['fix'] = [(n, int(b, 16), int(l, 16)) for n, b, l in re.findall(r'(\w+)=([0-9a-f]+)\+([0-9a-f]+)', m.group(1))]
+		return
+	m = re.match(r'PCIDEV bdf=([0-9a-f]+) id=([0-9a-f]+) hdr=([0-9a-f]+)$', t)
+	if m:
+		bdf, idv, hdr = (int(x, 16) for x in m.groups())
+		if bdf in sess['pcidev']:
+			sess['bad'].append('PCIDEV %x ripetuto' % bdf)
+		if bdf > 0xff or idv == 0xffffffff or (hdr & 0x7f) not in (0, 1):
+			sess['bad'].append('PCIDEV %x anomalo (id %x hdr %x)' % (bdf, idv, hdr))
+		sess['pcidev'][bdf] = {'hdr': hdr & 0x7f, 'bridge': 0}
+		return
+	m = re.match(r'BRIDGE bdf=([0-9a-f]+) mem=([0-9a-f]+) pref=([0-9a-f]+) prefhi=([0-9a-f]+) preflimhi=([0-9a-f]+)$', t)
+	if m:
+		bdf, mem, pref, phi, plhi = (int(x, 16) for x in m.groups())
+		d = sess['pcidev'].get(bdf)
+		if d is None or d['hdr'] != 1 or d['bridge']:
+			sess['bad'].append('BRIDGE %x senza PCIDEV di tipo 1, o ripetuto' % bdf)
+		else:
+			d['bridge'] = 1
+		b, l = (mem & 0xfff0) << 16, ((mem >> 16) & 0xfff0) << 16 | 0xfffff
+		if l >= b:
+			sess['bridge'].append(('bridge %x mem' % bdf, b, l - b + 1))
+		b, l = (pref & 0xfff0) << 16, ((pref >> 16) & 0xfff0) << 16 | 0xfffff
+		if (pref & 0xf) == 1:			# finestra prefetch a 64 bit: parte alta
+			b, l = b | phi << 32, l | plhi << 32
+		elif pref & 0xf or phi or plhi:
+			sess['bad'].append('BRIDGE %x: finestra prefetch non decodificabile (%x %x %x)' % (bdf, pref, phi, plhi))
+		if l >= b:
+			sess['bridge'].append(('bridge %x pref' % bdf, b, l - b + 1))
+		return
+	m = re.match(r'BAR bdf=([0-9a-f]+) n=(\d) mem=(\d) addr=([0-9a-f]+) size=([0-9a-f]+)$', t)
+	if m:
+		bdf, n, mem = int(m.group(1), 16), int(m.group(2)), m.group(3)
+		addr, size = int(m.group(4), 16), int(m.group(5), 16)
+		d = sess['pcidev'].get(bdf)
+		if d is None or n >= (2 if d['hdr'] == 1 else 6) or mem != '1':
+			sess['bad'].append('BAR %x/%d fuori posto (PCIDEV, numero o tipo)' % (bdf, n))
+		elif size == 0 or size & (size - 1) or addr % size or addr + size > 1 << 64:
+			sess['bad'].append('BAR %x/%d non decodificabile (addr %x size %x)' % (bdf, n, addr, size))
+		sess['bar'].append(('bar %x/%d' % (bdf, n), addr, size))
+		return
+	m = re.match(r'ROM bdf=([0-9a-f]+) addr=([0-9a-f]+) size=([0-9a-f]+) en=([01])$', t)
+	if m:
+		bdf, addr, size = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3), 16)
+		if bdf not in sess['pcidev'] or size == 0 or size & (size - 1) or addr + size > 1 << 32:
+			sess['bad'].append('ROM %x anomala (addr %x size %x)' % (bdf, addr, size))
+		sess['rom'].append(('rom %x' % bdf, addr, size))	# abilitata o no: conta come regione
+		return
+	m = re.match(r'PCI_SCAN_COMPLETE n=(\d+) bars=(\d+) roms=(\d+)$', t)
+	if m:
+		sess['scan'] = tuple(int(x) for x in m.groups())
+		return
+	sess['bad'].append('riga di sessione malformata o BARBAD: %s' % t)
+
+def sessione_da_testo(testo):
+	sess = sessione_vuota()
+	for riga in testo.splitlines():
+		t = riga.strip()
+		if t.startswith(PREFISSI_SESSIONE):
+			riga_sessione(sess, t)
+	return sess
+
+def sovrapposti(a, la, b, lb):
+	return a < b + lb and b < a + la
+
+def regioni_motivo(sess):
+	"""#131 §2, #132 §3.1: None SOLO se la raccolta e' completa e coerente, Y e' una pagina che non tocca RAM, MMIO
+	fisso, BAR, ROM e finestre dei bridge, e Y' e' una pagina dentro la RAM diversa da Y. Altrimenti il motivo."""
+	if sess['bad']:
+		return 'raccolta delle regioni anomala: %s' % '; '.join(sess['bad'][:3])
+	mem = sess['mem']
+	if mem is None:
+		return 'manca la riga MEM (RAM, Y, Y\')'
+	if sess['fix'] is None or sorted(n for n, _, _ in sess['fix']) != sorted(FIX_ATTESI):
+		return 'riga FIXMMIO assente o incompleta (%s)' % sess['fix']
+	if sess['scan'] is None:
+		return 'enumerazione PCI non chiusa da PCI_SCAN_COMPLETE'
+	n, nb, nr = sess['scan']
+	if (n, nb, nr) != (len(sess['pcidev']), len(sess['bar']), len(sess['rom'])):
+		return 'enumerazione PCI incompleta: marcatore n=%d bars=%d roms=%d, righe %d/%d/%d' % (
+		    n, nb, nr, len(sess['pcidev']), len(sess['bar']), len(sess['rom']))
+	if n == 0:
+		return 'nessun dispositivo PCI: enumerazione non credibile'
+	if any(d['hdr'] == 1 and not d['bridge'] for d in sess['pcidev'].values()):
+		return 'bridge senza riga BRIDGE: finestre dei bus secondari non dimostrate'
+	y, yp, ram = mem['y'], mem['yp'], mem['ram']
+	if ram != RAM_ATTESA:
+		return 'RAM_SIZE %x inattesa (attesa %x)' % (ram, RAM_ATTESA)
+	if y % 4096 or yp % 4096:
+		return 'Y o Y\' non allineati alla pagina'
+	if yp == y:
+		return 'Y\' coincide con Y'
+	if sovrapposti(y, 4096, 0, ram):
+		return 'Y %x dentro la RAM di L1 (%x)' % (y, ram)
+	if not yp + 4096 <= ram:
+		return 'Y\' %x fuori dalla RAM di L1' % yp
+	for nome, b, l in sess['fix'] + sess['bar'] + sess['rom'] + sess['bridge']:
+		if sovrapposti(y, 4096, b, l):
+			return 'Y_NON_LIBERO: %s copre Y (%x+%x)' % (nome, b, l)
+	return None
+
+def leggi(testo):
+	casi = OrderedDict()
+	cur = None
+	plan = None
+	mp = re.search(r'^PLAN cases=(\S+)', testo, re.M)
+	if mp:
+		plan = set(mp.group(1).split(','))
+	drop = 'drop' in testo.lower() or 'DROP' in testo
+	# parere #107: il driver chiude la sessione con una riga STOP (cancello, protocollo, timeout,
+	# errore di VM_RUN). Le righe EVENT (VMRUN_ERROR_QEMU, QEMU_TERMINATED_BY_DRIVER) sono fatti
+	# registrati, non verdetti.
+	ms = re.search(r'^STOP kind=(\S+) motivo=(.*)$', testo, re.M)
+	stop = (ms.group(1), ms.group(2)) if ms else None
+	pteaddr = dgpa = pdeaddr = None
+	sess = sessione_vuota()
+	for riga in testo.splitlines():
+		t = riga.strip()
+		if t.startswith(PREFISSI_SESSIONE):
+			if cur is not None:
+				sess['bad'].append('riga di sessione dentro il caso %s' % cur)
+			else:
+				riga_sessione(sess, t)
+			continue
+		if t.startswith('RUNNER='):
+			continue
+		m = re.match(r'MAP .*\bpteaddr=([0-9a-fA-Fx]+)$', t)
+		if m and cur is None:
+			pteaddr = int(m.group(1), 16)
+			md = re.search(r'\bd=([0-9a-fA-Fx]+) ', t)
+			dgpa = int(md.group(1), 16) if md else None
+			mp = re.search(r'\bpdeaddr=([0-9a-fA-Fx]+) ', t)
+			pdeaddr = int(mp.group(1), 16) if mp else None
+			continue
+		m = re.match(r'CASE (\S+)$', t)
+		if m:
+			cur = m.group(1)
+			casi[cur] = {'ctr': [], 'rfl': [], 'l1': None, 'term': None, 'dup': cur in casi, 'bad': [],
+			    'pteaddr': pteaddr, 'dgpa': dgpa, 'pdeaddr': pdeaddr, 'sess': sess}
+			continue
+		if cur is None:
+			continue
+		c = casi[cur]
+		m = re.match(r'CTR (before|after)=(-?\d+)$', t)
+		if m:
+			c['ctr'].append((m.group(1), int(m.group(2))))
+			continue
+		m = re.match(r'RFL (before|after)=(-?\d+)$', t)
+		if m:
+			c['rfl'].append((m.group(1), int(m.group(2))))
+			continue
+		m = re.match(r'LIV pml4=([0-9a-f]+)>([0-9a-f]+) pdpt=([0-9a-f]+)>([0-9a-f]+) pde=([0-9a-f]+)>([0-9a-f]+) pte=([0-9a-f]+)>([0-9a-f]+)$', t)
+		if m:
+			v = [int(x, 16) for x in m.groups()]
+			c['liv'] = dict((LIVELLI[i], (v[2 * i], v[2 * i + 1])) for i in range(4))
+			continue
+		m = re.match(r'EVENT VMRUN_ERRORS n=(\d+) ctr_delta=(-?\d+) qemu_uscito=(\d)'
+		    r'(?: seriale_dopo=(\d+) ms=(\d+) motivo=(finestra|ripetuti|emulazioni|uscita|subito|l1))?$', t)
+		if m:
+			c['vmrun'] = dict(zip(('n', 'ctr_delta', 'uscito'), (int(x) for x in m.groups()[:3])))
+			if m.group(4) is not None:
+				c['vmrun'].update(seriale=int(m.group(4)), ms=int(m.group(5)), motivo=m.group(6))
+			continue
+		m = re.match(r'EPTW (\S+) t=([0-9a-f]+)/(\d) l4=([0-9a-f]+)/(\d) l3=([0-9a-f]+)/(\d) l2=([0-9a-f]+)/(\d)'
+		    r' d=([0-9a-f]+)/(\d) ok=([01])$', t)
+		if m:
+			g = m.groups()
+			c['eptw'] = {'caso': g[0], 'ok': int(g[11]),
+			    'liv': dict((k, (int(g[1 + 2 * i], 16), int(g[2 + 2 * i]))) for i, k in enumerate(('t', 'l4', 'l3', 'l2', 'd')))}
+			continue
+		if t.startswith('EPTW '):
+			c['bad'].append(riga)
+			continue
+		if re.match(r'EPTBAD \S+$', t):
+			c['eptbad'] = True
+			continue
+		m = re.match(r'EVENT QMP_SHUTDOWN guest=(\S+) reason=(\S+)$', t)
+		if m:
+			c['qmp_shutdown'] = m.group(2)
+			continue
+		m = re.match(r'EVENT QMP_NON_CONNESSO', t)
+		if m:
+			c['qmp_shutdown'] = 'non-connesso'
+			continue
+		m = re.match(r'EVENT QEMU_PORTA_VM ', t)
+		if m:
+			c['porta_vm'] = True
+			continue
+		m = re.match(r'EVENT QEMU_PORTA .*\(errno=(\d+)\)', t)
+		if m:
+			c['porta'] = int(m.group(1))
+			continue
+		m = re.match(r'FBTV errori=(\d+) dopo_errore=(\d+) rc=(-?\d+|None) caso=(\S+) tid=(\d+)$', t)
+		if m:
+			c['fbtv'] = {'errori': int(m.group(1)), 'dopo': int(m.group(2)),
+			    'rc': None if m.group(3) == 'None' else int(m.group(3)), 'caso': m.group(4), 'tid': int(m.group(5))}
+			continue
+		m = re.match(r'FBTSTATO stderr=(\d+) righe_perdite=(\d+) chiusa=([01])$', t)
+		if m:
+			c['fbtstato'] = tuple(int(x) for x in m.groups())
+			continue
+		if t.startswith('FBTV '):
+			c['bad'].append(riga)		# formato precedente o malformato: fail-closed
+			continue
+		m = re.match(r'EPTPOST t=([0-9a-f]+)/(\d)$', t)
+		if m:
+			c['eptpost'] = (int(m.group(1), 16), int(m.group(2)))
+			continue
+		m = re.match(r'EPT t=([0-9a-f]+) pd=([0-9a-f]+) d=([0-9a-f]+)$', t)
+		if m:
+			c['ept'] = dict(zip(('t', 'pd', 'd'), (int(x, 16) for x in m.groups())))
+			continue
+		m = re.match(r'XINFO gla=([0-9a-fA-Fx]+) rip=([0-9a-fA-Fx]+) rip_atteso=([0-9a-fA-Fx]+) va_d=([0-9a-fA-Fx]+)$', t)
+		if m:
+			c['xinfo'] = dict(zip(('gla', 'rip', 'rip_atteso', 'va_d'), (int(x, 16) for x in m.groups())))
+			continue
+		m = re.match(r'(RFE|EST|ENC|RTX|RTR|H2F|H2P|H2M|H2U|H2A|MER|CAP) (before|after)=(-?\d+)$', t)
+		if m:
+			c.setdefault(m.group(1).lower(), []).append((m.group(2), int(m.group(3))))
+			continue
+		if t.startswith('FBT '):
+			m2 = re.match(r'FBT mmio=(\d+) ptp=(\d+)$', t)
+			if m2:
+				casi[cur]['fbt'] = {'mmio': int(m2.group(1)), 'ptp': int(m2.group(2))}
+			else:
+				casi[cur]['bad'].append(riga)
+			continue
+		if t.startswith('L1 '):
+			d = {}
+			ok = True
+			for kv in t[3:].split():
+				k, sep, v = kv.partition('=')
+				if not sep:
+					ok = False; break
+				try:
+					d[k] = int(v, 16) if k in ('qual', 'gpa', 'pte0', 'pte1') else int(v)
+				except ValueError:
+					ok = False; break
+			if ok and set(d) == {'viol', 'reason', 'qual', 'gpa', 'paddr', 'pte0', 'pte1', 'dwr', 'ripadv'}:
+				c['l1'] = d
+			else:
+				c['bad'].append(riga)
+			continue
+		m = re.match(r'TERM (alive|bhyve_died|timeout|vm_exited|rfl_loop)$', t)
+		if m:
+			c['term'] = m.group(1)
+			continue
+	# parere #106 D1: NOT_RUN vale solo per i casi FUORI piano e assenti (in analizza). Un caso
+	# del piano assente dal log e' TEST_ERROR; un caso presente ma fuori piano e' TEST_ERROR.
+	return casi, drop, plan, stop
+
+VMX_EPT_VIOLATION = 48
+
+def delta(c, chiave='ctr'):
+	b = [v for k, v in c.get(chiave, []) if k == 'before']
+	a = [v for k, v in c.get(chiave, []) if k == 'after']
+	if len(b) != 1 or len(a) != 1:
+		return None
+	return a[0] - b[0]
+
+def qual_kut(l1):
+	"""Qualifica ESATTA attesa da KUT (ept_access_test_paddr_read_only_ad_disabled): RD|WR|PERM_RD|
+	LADDR_VLD = 0x8b sui bit 0-8. Solo annotazione: il verdetto H vuole bit1, bit7, bit8=0."""
+	return (l1['qual'] & 0x1bf) == 0x8b
+
+def stessa_categoria(la, lh):
+	"""Violazione dell'emulatore (A) nella stessa categoria di quella hardware (H): scrittura a una
+	struttura di paging (bit1, bit7, bit8=0), stessi permessi EPT (bit 3-5), stesso gpa. Il bit 0
+	(lettura di un read-modify-write) e i bit 9-11 (indefiniti con bit8=0) non si confrontano."""
+	return bool(la and lh and viol_scrittura_T(la) and viol_scrittura_T(lh) and
+	    (la['qual'] & 0x38) == (lh['qual'] & 0x38) and la['gpa'] == lh['gpa'])
+
+def xinfo_esatto(c):
+	"""#111 §5.5: GLA del VMCS12 = indirizzo lineare di D, RIP fermo sull'istruzione su D."""
+	x = c.get('xinfo')
+	return bool(x and x['gla'] == x['va_d'] and x['rip'] == x['rip_atteso'])
+
+def verdetto_h(nome, c, d):
+	"""Casi H/H_D: scrittura ORDINARIA su D con T R-only in EPT12; nessuna emulazione attesa."""
+	l1 = c['l1']
+	dr = delta(c, 'rfl')
+	if dr is None:
+		return 'TEST_ERROR', 'fotografie del contatore delle riflessioni (RFL) mancanti o doppie'
+	if dr < 0:
+		return 'TEST_ERROR', 'contatore delle riflessioni a ritroso'
+	fbt = c.get('fbt')
+	if d != 0 or (fbt and fbt['mmio']):
+		return 'INCONCLUSIVE_TEST_SETUP', 'emulazione nel caso H (delta mmio %d): il controllo non e\' hardware' % d
+	if viol_scrittura_T(l1) and not pte_ad_scritti(l1) and not l1['dwr'] and not l1['ripadv']:
+		if c['pteaddr'] is None:
+			return 'TEST_ERROR', 'manca la riga MAP pteaddr: GPA della violazione non verificabile'
+		if l1['gpa'] != c['pteaddr']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'violazione su gpa %x, non sulla PTE di D (%x)' % (l1['gpa'], c['pteaddr'])
+		if dr != 1:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %d != 1' % dr
+		de = delta(c, 'rfe')
+		if de is not None and de != 0:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni dell\'emulatore %d != 0 in un caso hardware' % de
+		if c.get('xinfo') is not None and not xinfo_esatto(c):
+			return 'INCONCLUSIVE_TEST_SETUP', 'GLA o RIP del VMCS12 diversi da quelli di D (%s)' % c['xinfo']
+		return 'HW_CONTROL_PASS', 'EPT violation di scrittura su T riflessa: R-only di T in vigore per l\'hardware'
+	if not l1['viol'] and pte_ad_scritti(l1) and l1['dwr'] and l1['ripadv']:
+		if dr != 0:
+			return 'INCONCLUSIVE_TEST_SETUP', 'scrittura passata ma delta riflessioni %d != 0' % dr
+		return 'HW_CONTROL_NO_VIOLATION', 'scrittura hardware passata su T R-only: R-only di T NON in vigore'
+	return 'INCONCLUSIVE_TEST_SETUP', 'esito del controllo hardware non classificabile'
+
+def y_libero(c):
+	"""#131 §2 / #132 §3.1: None se la raccolta e' completa e Y e' un buco; altrimenti il motivo."""
+	return regioni_motivo(c.get('sess') or sessione_vuota())
+
+def ept_t_verso(c, dove):
+	"""#132 §4.3: la voce EPT12 di T (riga EPT) e la traduzione completa (riga EPTW, AND dei permessi su tutti i
+	livelli) portano T ESATTAMENTE a 'dove' con R+W+X; PML4/PDPT/PD di D e D presenti RWX (identita' verificata da
+	L1, ok=1); dopo il caso T non e' stata rimappata (EPTPOST, se L1 e' vivo). None se va bene, altrimenti il motivo."""
+	e, w = c.get('ept'), c.get('eptw')
+	if c.get('eptbad'):
+		return 'L1 ha trovato EPT12 diversa da quella del caso (EPTBAD): L2 non eseguito'
+	if e is None or w is None:
+		return 'manca la riga EPT o EPTW del caso'
+	if (e['t'] & 0x000ffffffffff000) != dove or (e['t'] & 7) != 7:
+		return 'voce EPT12 di T %x: non RWX verso %x' % (e['t'], dove)
+	if not w['ok'] or w['liv']['t'] != (dove, 7) or any(w['liv'][k][1] != 7 for k in ('l4', 'l3', 'l2', 'd')):
+		return 'traduzione EPT12 del walk non conforme (%s)' % w
+	p = c.get('eptpost')
+	if p is not None and p != w['liv']['t']:
+		return 'T rimappata durante il caso (prima %s, dopo %s)' % (w['liv']['t'], p)
+	return None
+
+def verdetto_hm(nome, c, d):
+	"""#131/#132: HM_RAM (controllo positivo) e HM_PTP (caratterizzazione, percorso hardware). FABRICATED_L1_VIOLATION
+	solo con TUTTE le condizioni di #132 §4.3-4.5 sul caso; la conferma (con HD_PTP e HM_RAM) e' una riga a parte."""
+	l1 = c['l1']
+	mem = (c.get('sess') or {}).get('mem')
+	y = y_libero(c)
+	if y:
+		return 'INCONCLUSIVE_TEST_SETUP', y
+	e = ept_t_verso(c, mem['yp'] if nome == 'HM_RAM' else mem['y'])
+	if e:
+		return 'INCONCLUSIVE_TEST_SETUP', e
+	dr = delta(c, 'rfl')
+	fbt = c.get('fbt')
+	emul = d != 0 or bool(fbt and fbt['mmio'])
+	if nome == 'HM_RAM':
+		if l1 is None or c['term'] != 'alive':
+			return 'INCONCLUSIVE_TEST_SETUP', 'controllo positivo senza risposta di L1 (%s)' % c['term']
+		if dr is None:
+			return 'TEST_ERROR', 'fotografie RFL mancanti o doppie'
+		if emul:
+			return 'INCONCLUSIVE_TEST_SETUP', 'emulazione (delta mmio %d) in un controllo hardware' % d
+		if dr != 0:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %d != 0 nel controllo positivo' % dr
+		if not l1['viol'] and l1['dwr'] and l1['ripadv']:
+			return 'HW_CONTROL_PASS', 'T -> Y\' (RAM, copia di T): il walk hardware riesce, D scritta'
+		return 'INCONCLUSIVE_TEST_SETUP', 'il controllo positivo non avanza (viol=%d dwr=%d)' % (l1['viol'], l1['dwr'])
+	if c['term'] == 'bhyve_died':
+		return 'VM_RUN_ERROR', 'errore di VM_RUN nel percorso hardware (%s)' % c.get('vmrun')
+	if c['term'] == 'vm_exited':
+		return 'VM_EXIT', 'la VM e\' uscita da sola'
+	if c['term'] == 'rfl_loop':
+		return 'LOOP_RIFLESSIONI_FERMATO', 'riflessioni ripetute senza risposta di L1 (delta %s): fermato dal driver' % dr
+	if c['term'] == 'timeout':
+		if dr is not None and dr > 1:
+			return 'TIMEOUT_LOOP_RIFLESSIONI', 'nessuna risposta di L1 e %d riflessioni: rientri ripetuti' % dr
+		return 'TIMEOUT', 'nessuna risposta di L1 entro il tempo'
+	if l1 is None:
+		return 'INCONCLUSIVE_TEST_SETUP', 'nessuna risposta di L1'
+	if dr is None:
+		return 'TEST_ERROR', 'fotografie RFL mancanti o doppie'
+	q = l1['qual']
+	if l1['viol'] and l1['reason'] == VMX_EPT_VIOLATION and l1['gpa'] == c['pteaddr'] and not bit(q, 8):
+		# forma della violazione inventata: ora TUTTE le altre condizioni (#132 §4.4)
+		manca = []
+		if not bit(q, 7):
+			manca.append('bit 7 (indirizzo lineare) a 0')
+		if emul:
+			manca.append('emulazione (delta mmio %d): non e\' il percorso hardware' % d)
+		if dr != 1:
+			manca.append('delta riflessioni %d != 1' % dr)
+		if l1['dwr'] or l1['ripadv']:
+			manca.append('D scritta o RIP avanzato')
+		x = xinfo_check(c)
+		if x:
+			manca.append(x)
+		if c.get('eptpost') is None:
+			manca.append('manca EPTPOST: rimappatura non esclusa')
+		if manca:
+			return 'INCONCLUSIVE_TEST_SETUP', 'forma di violazione inventata ma: %s' % '; '.join(manca)
+		return 'FABRICATED_L1_VIOLATION', ('L1 riceve 48 sulla voce di T (qual %x, permessi EPT nella qualifica %x) '
+		    'mentre EPT12 CONCEDE T -> Y RWX: percorso hardware, una riflessione, RIP e GLA esatti' % (q, (q >> 3) & 7))
+	if l1['viol']:
+		return 'INCONCLUSIVE_TEST_SETUP', 'violazione non sulla voce di T o non di struttura (reason %d qual %x gpa %x)' % (l1['reason'], q, l1['gpa'])
+	if l1['dwr'] and l1['ripadv']:
+		return 'L0_HANDLED', 'lo store e\' passato: L0 ha servito il walk (delta mmio %d, riflessioni %d)' % (d, dr)
+	return 'INCONCLUSIVE_TEST_SETUP', 'esito non classificabile (viol=%d reason=%d dwr=%d)' % (l1['viol'], l1['reason'], l1['dwr'])
+
+def verdetto_dm(nome, c, d):
+	"""#131/#132 §5: DM_PTP, movsq emulato con T -> Y (ultimo caso, VM terminale). Si riporta cio' che si e'
+	osservato: un errore, errori ripetuti, emulazioni ripetute (ciclo caldo), uscita autonoma, tempo scaduto."""
+	mem = (c.get('sess') or {}).get('mem')
+	y = y_libero(c)
+	if y:
+		return 'INCONCLUSIVE_TEST_SETUP', y
+	e = ept_t_verso(c, mem['y'])
+	if e:
+		return 'INCONCLUSIVE_TEST_SETUP', e
+	if c['term'] == 'bhyve_died':
+		v = c.get('vmrun') or {}
+		if d is None or d < 1:
+			return 'INCONCLUSIVE_PATH_UNPROVEN', 'errore di VM_RUN senza emulazione attestata (delta mmio %s)' % d
+		if 'seriale' not in v:
+			return 'TEST_ERROR', 'riga EVENT VMRUN_ERRORS senza seriale_dopo/ms/motivo'
+		if c.get('porta') is not None:
+			# #136 §6.1: frontend con la porta di VM_RUN. Contenimento provato SOLO se: L1 non scrive piu', la
+			# traccia FBT c'e' e mostra 0 VM_RUN dopo il primo errore, un solo errore, ed e' l'EFAULT del caso
+			if v['seriale']:
+				return 'GATE_FAILED', 'L1 ha scritto %d righe dopo l\'errore: il guest e\' rientrato' % v['seriale']
+			f = c.get('fbtv')
+			if f is None:
+				return 'INCONCLUSIVE_TEST_SETUP', 'porta di QEMU chiusa ma senza traccia FBT: l\'assenza di VM_RUN dopo l\'errore non e\' provata'
+			if f['dopo'] != 0:
+				return 'GATE_FAILED', '%d VM_RUN di QEMU DOPO il primo errore (FBT)' % f['dopo']
+			if f['errori'] != 1 or v['n'] != 1:
+				return 'INCONCLUSIVE_TEST_SETUP', 'errori di VM_RUN: FBT %d, stderr %d (atteso uno)' % (f['errori'], v['n'])
+			if c['porta'] != 14 or f['rc'] != 14:
+				return 'INCONCLUSIVE_TEST_SETUP', 'porta chiusa da errno %s (FBT %s), non dall\'EFAULT del caso' % (c['porta'], f['rc'])
+			# #137 §5: l'errore FBT cade nella finestra di QUESTO caso; la porta della VM si e' chiusa; nessuna
+			# riflessione a L1 (RFL invariato: nessuna EPT violation inventata)
+			# #138 §3.1: traccia completa (chiusa, stderr di dtrace vuoto, nessuna perdita dichiarata) e un solo thread
+			# che chiama vm_run (prova a un vCPU): altrimenti la correlazione non e' certa
+			st = c.get('fbtstato')
+			if st is None or st != (0, 0, 1):
+				return 'INCONCLUSIVE_TEST_SETUP', 'stato della traccia FBT non certo (stderr, perdite, chiusa = %s)' % (st,)
+			if f['tid'] != 1:
+				return 'INCONCLUSIVE_TEST_SETUP', '%d thread chiamano vm_run: correlazione non attribuibile a un vCPU' % f['tid']
+			if f['caso'] != nome:
+				return 'INCONCLUSIVE_TEST_SETUP', 'errore di VM_RUN (FBT) nella finestra %s, non del caso %s' % (f['caso'], nome)
+			if not c.get('porta_vm'):
+				return 'INCONCLUSIVE_TEST_SETUP', 'porta del vCPU chiusa ma nessun evento della porta della VM'
+			dr = delta(c, 'rfl')
+			if dr is None or dr != 0:
+				return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %s (atteso 0: nessuna violazione riflessa)' % dr
+			return 'GATE_CONTAINED_AFTER_EFAULT', ('un EFAULT, porta di QEMU chiusa (%s), 0 VM_RUN dopo l\'errore (FBT), '
+			    'nessuna riga di L1; QEMU %s' % ('anche quella della VM' if c.get('porta_vm') else 'solo del vCPU',
+			    'uscita da sola' if v['uscito'] else 'fermata dal driver'))
+		if v['seriale']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'L1 ha scritto %d righe dopo l\'errore: il guest e\' progredito' % v['seriale']
+		if v['uscito']:
+			return 'TERMINAL_ERROR_CONFIRMED', 'QEMU esce da sola dopo l\'errore di VM_RUN (%s)' % v
+		# delta del CASO (CTR before alla riga CASE, after alla chiusura): il movsq vale 1; 2 o piu' = l'istruzione e'
+		# rientrata nell'emulatore (stesso percorso). Non ctr_delta: e' letto quando il driver VEDE il primo errore,
+		# gia' dopo eventuali rientri (gara misurata nel collaudo dm1)
+		if d >= 2:
+			return 'HOT_LOOP_REPRODUCED', '%d emulazioni nel caso (il movsq rientra nell\'emulatore) e %d errori (%s)' % (d, v['n'], v)
+		if v['n'] >= 2:
+			return 'REPEATED_VM_RUN_ERRORS', 'errori ripetuti senza nuove emulazioni: percorso non attribuito (%s)' % v
+		return 'H2_MMIO_VM_RUN_ERROR_REPRODUCED', 'un errore di VM_RUN, nessuna ripetizione nella finestra (%s)' % v
+	if c['term'] == 'timeout':
+		return 'TIMEOUT', 'nessuna risposta e nessun errore di VM_RUN (delta mmio %s)' % d
+	if c['term'] == 'vm_exited':
+		return 'VM_EXIT', 'la VM e\' uscita da sola senza errore di VM_RUN'
+	l1 = c['l1']
+	v = c.get('vmrun')
+	if v is not None and c['term'] == 'alive':
+		# DM reale 30/10: errore di VM_RUN, poi L1 risponde. vm_handle_inst_emul avanza nextrip PRIMA di emulare
+		# (vmm.c:1035-1036): se l'emulazione fallisce, il rientro riparte DOPO l'istruzione
+		if l1 is None or d is None or d < 1:
+			return 'INCONCLUSIVE_PATH_UNPROVEN', 'errore di VM_RUN e risposta di L1 senza emulazione attestata (%s)' % v
+		if v.get('motivo') != 'l1':
+			return 'TEST_ERROR', 'errore di VM_RUN in un caso vivo senza chiusura motivo=l1 (%s)' % v
+		if not l1['viol'] and l1['ripadv'] and not l1['dwr']:
+			return 'INSTRUCTION_SKIPPED_AFTER_VMRUN_ERROR', ('%d errore/i di VM_RUN, poi L2 prosegue OLTRE il movsq '
+			    'senza scrivere D e senza eccezione: istruzione persa (%s)' % (v['n'], v))
+		return 'INCONCLUSIVE_TEST_SETUP', 'errore di VM_RUN e poi L1 viva con esito non classificabile (%s)' % v
+	if l1 is None:
+		return 'INCONCLUSIVE_TEST_SETUP', 'nessuna risposta di L1'
+	if l1['viol'] and l1['reason'] == VMX_EPT_VIOLATION and l1['gpa'] == c['pteaddr']:
+		return 'FABRICATED_L1_VIOLATION', 'l\'emulatore riflette a L1 48 sulla voce mentre EPT12 concede'
+	if not l1['viol'] and l1['dwr']:
+		return 'L0_HANDLED', 'il movsq e\' passato (gestione L0 inattesa)'
+	return 'INCONCLUSIVE_TEST_SETUP', 'esito non classificabile'
+
+def verdetto_h_pde(nome, c, d):
+	"""G1b: H_PDE, scrittura ORDINARIA su D (presente) con la pagina della PD senza W e la PDE ad A=0."""
+	l1 = c['l1']
+	dr = delta(c, 'rfl')
+	if dr is None:
+		return 'TEST_ERROR', 'fotografie RFL mancanti o doppie'
+	fbt = c.get('fbt')
+	if d != 0 or (fbt and fbt['mmio']):
+		return 'INCONCLUSIVE_TEST_SETUP', 'emulazione in un controllo hardware (delta mmio %d)' % d
+	liv = c.get('liv')
+	if liv is None:
+		return 'INCONCLUSIVE_TEST_SETUP', 'manca la riga LIV: stato della PDE non verificabile'
+	if liv['pde'][0] & 0x20:
+		return 'INCONCLUSIVE_TEST_SETUP', 'la PDE non parte da A=0 (%x)' % liv['pde'][0]
+	if viol_scrittura_T(l1) and not l1['dwr'] and not l1['ripadv']:
+		if c['pdeaddr'] is None:
+			return 'TEST_ERROR', 'manca pdeaddr nella MAP'
+		if l1['gpa'] != c['pdeaddr']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'violazione su gpa %x, non sulla PDE di D (%x)' % (l1['gpa'], c['pdeaddr'])
+		if liv['pde'][1] != liv['pde'][0]:
+			return 'INCONCLUSIVE_TEST_SETUP', 'PDE cambiata malgrado la violazione (%x>%x)' % liv['pde']
+		if dr != 1:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %d != 1' % dr
+		x = xinfo_check(c)
+		if x:
+			return 'INCONCLUSIVE_TEST_SETUP', x
+		return 'HW_CONTROL_PASS', 'EPT violation di scrittura sulla PDE riflessa: R-only della PD in vigore per l\'hardware'
+	if not l1['viol'] and l1['dwr']:
+		return 'HW_CONTROL_NO_VIOLATION', 'scrittura hardware passata con la PD senza W: R-only della PD NON in vigore'
+	return 'INCONCLUSIVE_TEST_SETUP', 'esito del controllo H_PDE non classificabile'
+
+def viol_scrittura_T(l1):
+	"""EPT violation di scrittura a una STRUTTURA di paging (bit7=LADDR valido, bit8=0)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 1)) and (q & (1 << 7)) and not (q & (1 << 8))
+
+def viol_struttura_T(l1):
+	"""EPT violation a una STRUTTURA di paging (bit7 valido, bit8=0), QUALUNQUE accesso.
+	Per D_PTP: la prima lettura della PTE fallisce PRIMA di ogni aggiornamento A/D, quindi
+	bit1 (scrittura) puo' essere 0 (parere #102 §2)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 7)) and not (q & (1 << 8))
+
+def viol_dato_D(l1):
+	"""EPT violation sull'indirizzo finale (bit8=1)."""
+	q = l1['qual']
+	return l1['viol'] == 1 and l1['reason'] == VMX_EPT_VIOLATION and (q & (1 << 8))
+
+def pte_ad_scritti(l1):
+	"""A (bit5) o D (bit6) passati da 0 a 1 fra pte0 e pte1."""
+	acceso = (l1['pte1'] & ~l1['pte0'])
+	return bool(acceso & ((1 << 5) | (1 << 6)))
+
+def bit(q, n):
+	return bool(q & (1 << n))
+
+def xinfo_check(c):
+	"""None se XINFO e' esatta, altrimenti il motivo."""
+	if c.get('xinfo') is None:
+		return 'manca la riga XINFO'
+	if not xinfo_esatto(c):
+		return 'GLA o RIP del VMCS12 diversi da quelli di D (%s)' % c['xinfo']
+	return None
+
+def forma_conflitto(nome, c, l1):
+	"""G1: ('dato'|'tabella', None) se la violazione e' una delle due legittime, altrimenti (None, motivo)."""
+	q = l1['qual']
+	if l1['reason'] != VMX_EPT_VIOLATION or not bit(q, 7):
+		return None, 'uscita %d qual %x: non una violazione con indirizzo lineare' % (l1['reason'], q)
+	voce = c['pdeaddr'] if nome.endswith('_PDE') else c['pteaddr']
+	if c['dgpa'] is None or voce is None:
+		return None, 'manca la riga MAP (d=, pdeaddr=, pteaddr=)'
+	if bit(q, 8) and bit(q, 1) and l1['gpa'] == c['dgpa']:
+		return 'dato', None
+	if not bit(q, 8) and bit(q, 1) and l1['gpa'] == voce:
+		return 'tabella', None
+	return None, 'qual %x gpa %x: ne\' il dato (%x) ne\' la scrittura sulla voce (%x)' % (q, l1['gpa'], c['dgpa'], voce)
+
+def verdetto_hd(nome, c, d):
+	"""HD_DATA/HD_PTP: scrittura ORDINARIA su D con D (o T) NON presente in EPT12."""
+	l1 = c['l1']
+	dr = delta(c, 'rfl')
+	if dr is None:
+		return 'TEST_ERROR', 'fotografie RFL mancanti o doppie'
+	fbt = c.get('fbt')
+	if d != 0 or (fbt and fbt['mmio']):
+		return 'INCONCLUSIVE_TEST_SETUP', 'emulazione in un controllo hardware (delta mmio %d)' % d
+	if not l1['viol']:
+		if l1['dwr']:
+			return 'HW_CONTROL_NO_VIOLATION', 'scrittura hardware passata: l\'assenza in EPT12 NON e\' in vigore'
+		return 'INCONCLUSIVE_TEST_SETUP', 'nessuna violazione e nessuna scrittura'
+	q = l1['qual']
+	if base(nome) == 'HD_CONFLICT':
+		f, perche = forma_conflitto(nome, c, l1)
+		if f is None:
+			return 'INCONCLUSIVE_TEST_SETUP', perche
+		if l1['dwr'] or l1['ripadv']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'D scritta o RIP avanzato malgrado la violazione'
+		if dr != 1:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %d != 1' % dr
+		x = xinfo_check(c)
+		if x:
+			return 'INCONCLUSIVE_TEST_SETUP', x
+		return 'HW_CONTROL_PASS', 'precedenza hardware: %s' % f.upper()
+	if l1['reason'] != VMX_EPT_VIOLATION or not bit(q, 7):
+		return 'INCONCLUSIVE_TEST_SETUP', 'uscita %d qual %x: non una violazione con indirizzo lineare' % (l1['reason'], q)
+	if base(nome) == 'HD_DATA':
+		atteso, cosa = c['dgpa'], 'D'
+		if not bit(q, 8) or not bit(q, 1):
+			return 'INCONCLUSIVE_TEST_SETUP', 'qual %x: non una scrittura sull\'indirizzo finale' % q
+	else:
+		atteso, cosa = c['pteaddr'], 'la PTE di D'
+		if bit(q, 8):
+			return 'INCONCLUSIVE_TEST_SETUP', 'qual %x: bit 8 = 1, non una struttura di paging' % q
+	if atteso is None:
+		return 'TEST_ERROR', 'manca la riga MAP (d=, pteaddr=)'
+	if l1['gpa'] != atteso:
+		return 'INCONCLUSIVE_TEST_SETUP', 'violazione su gpa %x, non su %s (%x)' % (l1['gpa'], cosa, atteso)
+	if l1['dwr'] or l1['ripadv']:
+		return 'INCONCLUSIVE_TEST_SETUP', 'D scritta o RIP avanzato malgrado la violazione'
+	if dr != 1:
+		return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni %d != 1' % dr
+	de = delta(c, 'rfe')
+	if de is not None and de != 0:
+		return 'INCONCLUSIVE_TEST_SETUP', 'delta riflessioni dell\'emulatore %d != 0 in un caso hardware' % de
+	x = xinfo_check(c)
+	if x:
+		return 'INCONCLUSIVE_TEST_SETUP', x
+	return 'HW_CONTROL_PASS', 'violazione hardware su %s riflessa dallo shadow EPT' % cosa
+
+def verdetto_d_vivo(nome, c, d):
+	"""D_DATA/D_PTP con la VM viva: la violazione dell'emulatore deve avere la forma ESATTA."""
+	l1 = c['l1']
+	if d == 0:
+		if l1['viol']:
+			return 'INCONCLUSIVE_HW_PREEMPTED', 'violazione hardware prima del percorso emulato'
+		return 'INCONCLUSIVE_PATH_NOT_COVERED', 'nessuna emulazione (contatore invariato)'
+	if d > 1:
+		return 'INCONCLUSIVE_TEST_SETUP', 'delta>1: evento non attribuibile al movsq del caso'
+	if not l1['viol']:
+		if l1['dwr']:
+			return 'PATH_COVERED_H2_NO_VIOLATION', 'D scritta malgrado %s NON presente in EPT12' % ('D' if base(nome) == 'D_DATA' else 'T')
+		return 'INCONCLUSIVE_TEST_SETUP', 'VM viva senza violazione ne\' scrittura'
+	q = l1['qual']
+	if l1['reason'] != VMX_EPT_VIOLATION:
+		return 'INCONCLUSIVE_TEST_SETUP', 'uscita %d (non 48): non la violazione attesa' % l1['reason']
+	if base(nome) == 'D_CONFLICT':
+		f, perche = forma_conflitto(nome, c, l1)
+		if f is None:
+			return 'INCONCLUSIVE_TEST_SETUP', perche
+		if l1['dwr'] or l1['ripadv']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'D scritta o RIP avanzato malgrado la violazione'
+		x = xinfo_check(c)
+		if x:
+			return 'INCONCLUSIVE_TEST_SETUP', x
+		# dato: violazione di H2 (H2F); tabella: violazione di H1 (solo RFE)
+		attesi = (('rfe', 1), ('h2f', 1), ('rfl', 0)) if f == 'dato' else (('rfe', 1), ('h2f', 0), ('rfl', 0))
+		for k, v in attesi:
+			dk = delta(c, k)
+			if dk is None:
+				return 'INCONCLUSIVE_TEST_SETUP', 'manca %s: modulo senza la correzione?' % k.upper()
+			if dk != v:
+				return 'INCONCLUSIVE_TEST_SETUP', 'delta %s %d != %d (precedenza %s)' % (k.upper(), dk, v, f)
+		dp = delta(c, 'h2p')		# informativo: nessuna violazione di TABELLA da H2 in un conflitto
+		if dp is not None and dp != 0:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta H2P %d != 0 in un conflitto' % dp
+		return 'PATH_COVERED_ARCH_PASS', 'EPT violation dell\'emulatore (precedenza %s) riflessa a L1, VM viva' % f.upper()
+	if base(nome) == 'D_DATA':
+		if not (viol_dato_D(l1) and bit(q, 1) and bit(q, 7)):
+			return 'INCONCLUSIVE_TEST_SETUP', 'qual %x: non una scrittura sull\'indirizzo finale' % q
+		atteso, cosa, h2 = c['dgpa'], 'D', 'h2f'
+	else:
+		if not (viol_struttura_T(l1) and bit(q, 0)):
+			return 'INCONCLUSIVE_TEST_SETUP', 'qual %x: non una lettura di struttura di paging' % q
+		atteso, cosa, h2 = c['pteaddr'], 'la PTE di D', 'h2p'
+	if atteso is None:
+		return 'TEST_ERROR', 'manca la riga MAP (d=, pteaddr=)'
+	if l1['gpa'] != atteso:
+		return 'INCONCLUSIVE_TEST_SETUP', 'violazione su gpa %x, non su %s (%x)' % (l1['gpa'], cosa, atteso)
+	if l1['dwr'] or l1['ripadv']:
+		return 'INCONCLUSIVE_TEST_SETUP', 'D scritta o RIP avanzato malgrado la violazione'
+	x = xinfo_check(c)
+	if x:
+		return 'INCONCLUSIVE_TEST_SETUP', x
+	for k, v in (('rfe', 1), (h2, 1), ('rfl', 0)):
+		dk = delta(c, k)
+		if dk is None:
+			return 'INCONCLUSIVE_TEST_SETUP', 'manca %s: modulo senza la correzione di H2?' % k.upper()
+		if dk != v:
+			return 'INCONCLUSIVE_TEST_SETUP', 'delta %s %d != %d' % (k.upper(), dk, v)
+	return 'PATH_COVERED_ARCH_PASS', 'EPT violation dell\'emulatore su %s riflessa a L1, VM viva' % cosa
+
+def verdetto(nome, c):
+	if c['dup']:
+		return 'TEST_ERROR', 'caso duplicato'
+	if c['bad']:
+		return 'TEST_ERROR', 'riga L1 malformata'
+	morto = c['term'] == 'bhyve_died'
+	if nome in ('HM_RAM', 'HM_PTP'):
+		return verdetto_hm(nome, c, delta(c) or 0)
+	if nome == 'DM_PTP':
+		return verdetto_dm(nome, c, delta(c))
+	if nome in CASI_D and c['term'] in ('timeout', 'vm_exited') and c['l1'] is None:
+		dd = delta(c)
+		if dd is None:
+			return 'TEST_ERROR', 'chiusura %s senza fotografie del contatore' % c['term']
+		if c['term'] == 'timeout':
+			if dd > 1:
+				return 'H2_LOOP_SAME_RIP', 'nessuna risposta di L1 e %d emulazioni: l\'istruzione riparte senza violazione' % dd
+			return 'INCONCLUSIVE_HANG', 'tempo scaduto con %d emulazioni' % dd
+		de = delta(c, 'enc')
+		if de is not None and de > 0:
+			return 'FAIL_CLOSED_STOP', 'VM spenta da L0 senza il suo VMCS12 (ENC +%d)' % de
+		return 'INCONCLUSIVE_VM_EXIT', 'VM uscita da sola senza risposta di L1'
+	if c['term'] in ('timeout', 'vm_exited'):
+		return 'TEST_ERROR', 'chiusura %s in un caso non-D' % c['term']
+	fbt = c.get('fbt')
+	path_proof = bool(fbt and fbt['mmio'])	# attestazione indipendente dell'ingresso emulatore
+	# H2 (parere #103 §5): i casi D possono uccidere bhyve PRIMA della risposta di L1; dopo la
+	# morte la fotografia CTR after puo' mancare. H2 richiede morte E prova di percorso.
+	if nome in CASI_D and morto:
+		before = [v for k, v in c['ctr'] if k == 'before']
+		if len(before) != 1:
+			return 'TEST_ERROR', 'morte senza CTR before persistito'
+		if path_proof:
+			return 'PATH_COVERED_H2_REPRODUCED', 'bhyve terminato + percorso attestato (FBT mmio)'
+		return 'INCONCLUSIVE_PATH_UNPROVEN', 'terminazione avvenuta ma percorso non provato'
+	d = delta(c)
+	if d is None:
+		return 'TEST_ERROR', 'fotografie del contatore mancanti o doppie'
+	if d < 0:
+		return 'TEST_ERROR', 'contatore a ritroso'
+	# H2: i casi D vivi (parere #119 §3.2: forma esatta)
+	if nome in CASI_D:
+		if c['l1'] is None:
+			return 'TEST_ERROR', 'ne\' morte ne\' risposta di L1'
+		return verdetto_d_vivo(nome, c, d)
+	# casi non-D: serve la risposta di L1
+	if morto:
+		return 'TEST_ERROR', 'bhyve terminato in un caso non-D'
+	if c['l1'] is None:
+		return 'TEST_ERROR', 'manca la riga L1'
+	l1 = c['l1']
+	if nome in ('H', 'H_D'):
+		return verdetto_h(nome, c, d)
+	if nome == 'H_PDE':
+		return verdetto_h_pde(nome, c, d)
+	if nome in CASI_HD:
+		return verdetto_hd(nome, c, d)
+	if d == 0:
+		# nessuna emulazione: se L1 ha visto una violazione, l'hardware ha preceduto
+		if l1['viol']:
+			return 'INCONCLUSIVE_HW_PREEMPTED', 'EPT violation hardware prima del percorso emulato'
+		return 'INCONCLUSIVE_PATH_NOT_COVERED', 'nessuna emulazione e nessuna violazione'
+	if d > 1:
+		return 'INCONCLUSIVE_TEST_SETUP', 'delta>1: evento non attribuibile al movsq del caso'
+	# d == 1: percorso emulato raggiunto
+	if nome == 'B':			# T=RW, A/D=0: emula, scrive A/D e D, nessuna violazione
+		if not l1['viol'] and pte_ad_scritti(l1) and l1['dwr'] and l1['ripadv']:
+			return 'PATH_COVERED_ARCH_PASS', 'emulazione corretta del movsq (controllo positivo)'
+		return 'INCONCLUSIVE_TEST_SETUP', 'il controllo positivo non emula come atteso'
+	if nome == 'C':			# T=R-only, A/D gia' 1: nessun A/D da scrivere, nessuna violazione
+		if not l1['viol'] and not pte_ad_scritti(l1) and l1['dwr']:
+			return 'PATH_COVERED_ARCH_PASS', 'nessuna scrittura A/D su T R-only (controllo negativo)'
+		if l1['viol']:
+			return 'INCONCLUSIVE_TEST_SETUP', 'violazione su T con A/D gia\' impostati: contaminazione'
+		return 'INCONCLUSIVE_TEST_SETUP', 'controllo negativo anomalo'
+	if nome in ('A', 'A_D'):	# T=R-only, A o D da scrivere
+		if viol_scrittura_T(l1) and not pte_ad_scritti(l1) and not l1['dwr'] and not l1['ripadv']:
+			return 'PATH_COVERED_ARCH_PASS', 'EPT violation di scrittura su T riflessa a L1, PTE e D invariati'
+		if not l1['viol'] and pte_ad_scritti(l1):
+			return 'PATH_COVERED_H1_REPRODUCED', 'A/D scritti su una pagina EPT12 R-only senza EPT violation'
+		return 'INCONCLUSIVE_TEST_SETUP', 'esito non classificabile (ne\' violazione attesa ne\' scrittura A/D)'
+	return 'TEST_ERROR', 'caso sconosciuto'
+
+def effetti(dn, cd, ch):
+	"""#123 §4.6: per ogni livello misurato, i bit A/D cambiati dall'emulatore come dall'hardware."""
+	AD = 0x60
+	ld, lh = cd.get('liv'), ch.get('liv')
+	if ld is None or lh is None:
+		if ld is not None or lh is not None:
+			return ('EFFETTI_INCONCLUSIVI', 'riga LIV in un solo dei due casi')
+		ld = {'pte': (cd['l1']['pte0'], cd['l1']['pte1'])}	# log senza LIV: la sola foglia
+		lh = {'pte': (ch['l1']['pte0'], ch['l1']['pte1'])}
+	suf = dn[len(base(dn)):].lstrip('_')
+	for liv in AZZERATI.get(suf, ()):
+		for nome, l in ((dn, ld), (CONTROLLO_HW_D[dn], lh)):
+			if l[liv][0] & 0x20:
+				return ('EFFETTI_INCONCLUSIVI', '%s: %s non era a A=0 prima del run (%x)' % (nome, liv, l[liv][0]))
+	diversi, dettagli = [], []
+	for liv in LIVELLI:
+		if liv not in ld:
+			continue
+		(d0, d1), (h0, h1) = ld[liv], lh[liv]
+		if (d0 & AD) != (h0 & AD):
+			return ('EFFETTI_INCONCLUSIVI', '%s: A/D di partenza diversi (%x contro %x)' % (liv, d0 & AD, h0 & AD))
+		cd_, ch_ = (d0 ^ d1) & AD, (h0 ^ h1) & AD
+		dettagli.append('%s %x/%x' % (liv, cd_, ch_))
+		if cd_ != ch_ or (d0 ^ d1) & ~AD or (h0 ^ h1) & ~AD:
+			diversi.append('%s: emulatore %x>%x, hardware %x>%x' % (liv, d0, d1, h0, h1))
+	if diversi:
+		return ('H2_SIDE_EFFECT_FAIL', '; '.join(diversi))
+	return ('H2_SIDE_EFFECT_PASS', 'A/D cambiati (emulatore/hardware): ' + ', '.join(dettagli))
+
+def pulizia(righe):
+	"""#123 §5: la sessione e' PULITA solo se ogni riga e' un esito pieno."""
+	ok_caso = ('PATH_COVERED_ARCH_PASS', 'HW_CONTROL_PASS', 'NOT_RUN')
+	motivi = []
+	for nome, v, _ in righe:
+		if nome == '(globale)':
+			motivi.append(v)
+		elif nome.startswith('(attr-') or nome.startswith('(evento-'):
+			if v not in ('H1_CORRECTED_ARCH_PASS', 'H2_EVENT_PASS'):
+				motivi.append('%s %s' % (nome, v))
+		elif nome.startswith('(effetti-'):
+			if v != 'H2_SIDE_EFFECT_PASS':
+				motivi.append('%s %s' % (nome, v))
+		elif nome.startswith('(arresto-'):
+			continue			# #140: informativa, non entra nella pulizia
+		elif nome.startswith('(discr-'):
+			if v != 'DISCRIMINANTE':
+				motivi.append('%s %s' % (nome, v))
+		elif v not in ok_caso:
+			motivi.append('%s %s' % (nome, v))
+	return motivi
+
+def analizza(testo):
+	casi, drop, plan, stop = leggi(testo)
+	out = []
+	if drop:
+		out.append(('(globale)', 'TEST_ERROR', 'drop o log incompleto segnalato'))
+	if stop is not None:
+		g = 'SESSIONE_FERMATA' if stop[0] == 'GATE' else 'INCONCLUSIVE_PROTOCOL'
+		out.append(('(globale)', g, '%s: %s' % stop))
+	for nome in casi:
+		if plan is not None and nome not in plan:
+			# parere #106 D1: un caso ESEGUITO fuori piano non si nasconde come NOT_RUN
+			out.append((nome, 'TEST_ERROR', 'caso eseguito FUORI dal piano di sessione'))
+			continue
+		v, perche = verdetto(nome, casi[nome])
+		out.append((nome, v, perche))
+	noti = set(casi)
+	for nome in CASI:
+		if nome not in noti:
+			# con un PLAN: fuori piano e assente = NOT_RUN; del piano e assente = errore
+			if plan is not None and nome not in plan:
+				out.append((nome, 'NOT_RUN', 'fuori dal piano di sessione'))
+			elif plan is not None and stop is not None:
+				# il driver ha fermato la sessione PRIMA dell'ACK: il caso non e' entrato in L2
+				out.append((nome, 'NOT_RUN_FERMATA', 'sessione fermata dal driver (%s)' % stop[0]))
+			elif plan is not None:
+				out.append((nome, 'TEST_ERROR', 'caso del piano assente dal log'))
+			else:
+				out.append((nome, 'TEST_ERROR', 'caso previsto ma assente dal log'))
+	# cancello del controllo B (parere #102 §4): se B non e' ARCH_PASS, A/H1 non sono affidabili
+	bv = dict((n, v) for n, v, _ in out)
+	if bv.get('B') not in (None, 'PATH_COVERED_ARCH_PASS', 'NOT_RUN', 'NOT_RUN_FERMATA'):
+		out.append(('(globale)', 'B_GATE_FALLITO', 'il controllo positivo B non passa: A/A_D non affidabili'))
+	# #110 §5.6: una violazione dell'emulatore persa o senza VMCS12 rende la sessione non idonea
+	anomale = [n for n in casi if any((delta(casi[n], k) or 0) > 0 for k in ('est', 'enc', 'rtx', 'rtr', 'cap', 'h2a'))]
+	if anomale:
+		out.append(('(globale)', 'SESSIONE_NON_IDONEA_H1', 'stale/nocache/retry/cap/already > 0 nei casi %s' % ','.join(anomale)))
+	# attribuzione di H1 (sessione 1c): solo con il controllo hardware nella STESSA sessione
+	for a, h in CONTROLLO_HW.items():
+		va, vh = bv.get(a), bv.get(h)
+		if va == 'PATH_COVERED_ARCH_PASS' and vh == 'HW_CONTROL_PASS':
+			# la correzione: A ora vede la violazione che vede l'hardware
+			ca, ch = casi.get(a), casi.get(h)
+			de = delta(ca, 'rfe') if ca else None
+			if not stessa_categoria(ca['l1'], ch['l1']):
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'violazione di %s diversa da quella hardware di %s' % (a, h)))
+			elif de is None:
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'manca RFE: riflessione dell\'emulatore non provata'))
+			elif de != 1:
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'delta RFE %d != 1' % de))
+			elif delta(ca, 'est') is None or delta(ca, 'enc') is None:
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'mancano EST/ENC: stato della causa non verificato'))
+			elif anomale:
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'sessione non idonea (stale/nocache/retry)'))
+			elif not xinfo_esatto(ca):
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'XINFO assente o GLA/RIP diversi da D (%s)' % ca.get('xinfo')))
+			elif delta(ca, 'rfl') != 0:
+				out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'delta riflessioni hardware %s != 0 nel caso emulato' % delta(ca, 'rfl')))
+			else:
+				out.append(('(attr-%s)' % a, 'H1_CORRECTED_ARCH_PASS', '%s riceve dall\'emulatore la violazione che %s riceve dall\'hardware' % (a, h)))
+			continue
+		if va != 'PATH_COVERED_H1_REPRODUCED' or vh in (None, 'NOT_RUN'):
+			continue
+		if vh == 'HW_CONTROL_PASS':
+			out.append(('(attr-%s)' % a, 'H1_ATTRIBUITA_EMULATORE', '%s scrive A/D dove l\'hardware (%s) riceve la violazione' % (a, h)))
+		elif vh == 'HW_CONTROL_NO_VIOLATION':
+			out.append(('(attr-%s)' % a, 'H1_NON_ATTRIBUITA', 'anche l\'hardware (%s) scrive su T: R-only non in vigore' % h))
+		else:
+			out.append(('(attr-%s)' % a, 'ATTRIBUZIONE_INCONCLUSIVA', 'controllo %s: %s' % (h, vh)))
+	# G1b (#126 §3.3): un conflitto discrimina solo col suo controllo positivo nella STESSA sessione
+	for cn, hn in (('HD_CONFLICT', 'H'), ('HD_CONFLICT_PDE', 'H_PDE')):
+		if cn not in casi:
+			continue
+		cc, ch = casi[cn], casi.get(hn)
+		ec, eh = cc.get('ept'), (ch or {}).get('ept')
+		if ch is None:
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'manca il controllo %s nella stessa sessione' % hn))
+		elif bv.get(hn) != 'HW_CONTROL_PASS':
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'controllo %s: %s' % (hn, bv.get(hn))))
+		elif ec is None or eh is None:
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'manca la riga EPT nel conflitto o nel controllo'))
+		elif ec['t'] != eh['t'] or ec['pd'] != eh['pd']:
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'EPT12 di T/PD diversa: conflitto t=%x pd=%x, controllo t=%x pd=%x' % (ec['t'], ec['pd'], eh['t'], eh['pd'])))
+		elif (eh['d'] & 7) == 0 or (ec['d'] & 7) != 0:
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'D non presente nel controllo (%x) o presente nel conflitto (%x)' % (eh['d'], ec['d'])))
+		else:
+			out.append(('(discr-%s)' % cn, 'DISCRIMINANTE', 'controllo %s positivo, stessa EPT12 di T/PD, D solo nel controllo' % hn))
+	# #140 §3: causa dell'arresto di QEMU dichiarata via QMP, a parte e solo informativa (il verdetto del
+	# contenimento non ne dipende; lo stato d'uscita da solo non basta)
+	for cn in casi:
+		if casi[cn].get('porta') is not None:
+			r = casi[cn].get('qmp_shutdown')
+			v = 'HOST_ERROR_REPORTED' if r == 'host-error' else ('NON_OSSERVATO' if r is None else 'CAUSA_' + r.upper().replace('-', '_'))
+			out.append(('(arresto-QEMU)', v, 'evento QMP SHUTDOWN: reason=%s' % r))
+	# #131: HM_PTP e DM_PTP valgono solo coi loro controlli nella STESSA sessione
+	for cn, ctrl in (('HM_PTP', ('HM_RAM', 'HD_PTP')), ('DM_PTP', ('HM_RAM',))):
+		if cn not in casi:
+			continue
+		manca = [k for k in ctrl if bv.get(k) != 'HW_CONTROL_PASS']
+		if manca:
+			out.append(('(discr-%s)' % cn, 'NON_DISCRIMINANTE', 'controlli non positivi nella sessione: %s' % ', '.join('%s=%s' % (k, bv.get(k)) for k in manca)))
+		else:
+			out.append(('(discr-%s)' % cn, 'DISCRIMINANTE', 'controlli %s positivi nella stessa sessione' % ', '.join(ctrl)))
+			if cn == 'HM_PTP' and bv.get(cn) == 'FABRICATED_L1_VIOLATION':
+				# #132 §4: le cinque condizioni, ciascuna verificata dal verdetto del suo caso nella STESSA sessione
+				out.append(('(conferma-HM_PTP)', 'FABRICATED_L1_VIOLATION_CONFIRMED',
+				    'HD_PTP e HM_RAM positivi, Y libera, EPT12 RWX verso Y, percorso hardware, 48 sulla voce di T'))
+	# H2 (#119 §3.2, #123 §4.6): attribuzione differenziale D contro il suo controllo hardware HD, in due righe
+	for dn, hn in CONTROLLO_HW_D.items():
+		vd, vh = bv.get(dn), bv.get(hn)
+		cd, ch = casi.get(dn), casi.get(hn)
+		if vd == 'PATH_COVERED_ARCH_PASS' and vh == 'HW_CONTROL_PASS':
+			qd, qh = cd['l1']['qual'], ch['l1']['qual']
+			maschera = 0x1bf | (0xe00 if qh & 0x100 else 0)	# bit 0-5, 7, 8 (+ 9-11 sul finale, dall'hardware)
+			if anomale:
+				out.append(('(evento-%s)' % dn, 'ATTRIBUZIONE_INCONCLUSIVA', 'sessione non idonea'))
+			elif cd['l1']['reason'] != ch['l1']['reason'] or cd['l1']['gpa'] != ch['l1']['gpa']:
+				out.append(('(evento-%s)' % dn, 'ATTRIBUZIONE_INCONCLUSIVA', 'motivo o gpa diversi da %s' % hn))
+			elif (qd & maschera) != (qh & maschera):
+				out.append(('(evento-%s)' % dn, 'H2_QUAL_DIVERSA', 'qual emulatore %x contro hardware %x (maschera %x)' % (qd, qh, maschera)))
+			else:
+				out.append(('(evento-%s)' % dn, 'H2_EVENT_PASS', '%s riceve dall\'emulatore la violazione che %s riceve dall\'hardware' % (dn, hn)))
+			out.append(('(effetti-%s)' % dn,) + effetti(dn, cd, ch))
+		elif vd == 'PATH_COVERED_H2_REPRODUCED' and vh == 'HW_CONTROL_PASS':
+			out.append(('(evento-%s)' % dn, 'H2_ATTRIBUITA_EMULATORE', 'VM terminata dove l\'hardware (%s) riflette la violazione' % hn))
+	return out
+
+def main():
+	testo = open(sys.argv[1], errors='replace').read()
+	righe = analizza(testo)
+	err = 0
+	print('== %s' % sys.argv[1])
+	for nome, v, perche in righe:
+		print('  %-8s %-30s %s' % (nome, v, perche))
+		err += v == 'TEST_ERROR'
+	# copertura del percorso per caso (diagnostica, non cambia i verdetti)
+	casi = leggi(testo)[0]
+	for nome in casi:
+		c = casi[nome]
+		fbt = c.get('fbt')
+		dd = delta(c)
+		mmio = (dd == 1) or bool(fbt and fbt['mmio'])
+		ptp = bool(fbt and fbt['ptp'])
+		et = []
+		if mmio:
+			et.append('MMIO_PATH_COVERED')
+		if ptp:
+			# parere di Astra sul caso H §1: walk>0 NON prova ptp_hold per l'operando di L2 (L0
+			# percorre le tabelle anche per gli operandi VMX dell'L1): solo un indizio
+			et.append('WALK_VISTO_NON_PROVA')
+		if et:
+			print('  PATH %-8s %s' % (nome, ' '.join(et)))
+		dr = delta(c, 'rfl')
+		if dr is not None:
+			print('  RFL  %-8s delta riflessioni=%d' % (nome, dr))
+		de = delta(c, 'rfe')
+		if de is not None:
+			print('  RFE  %-8s delta riflessioni dell\'emulatore=%d' % (nome, de))
+		if nome in ('H', 'H_D') and c['l1'] is not None and c['l1']['viol']:
+			print('  QUAL %-8s %x %s' % (nome, c['l1']['qual'], 'come KUT (0x8b)' if qual_kut(c['l1']) else 'DIVERSA da KUT (0x8b sui bit 0-8)'))
+	h1 = any(v == 'PATH_COVERED_H1_REPRODUCED' for _, v, _ in righe)
+	h2 = any(v == 'PATH_COVERED_H2_REPRODUCED' for _, v, _ in righe)
+	print('RIPRODUZIONE: H1=%s H2=%s' % ('SI' if h1 else 'no', 'SI' if h2 else 'no'))
+	if any(v == 'H2_EVENT_PASS' for _, v, _ in righe):
+		print('CORREZIONE: evento H2 corretto nei casi %s' % ','.join(n[8:-1] for n, v, _ in righe if v == 'H2_EVENT_PASS'))
+	if any(v == 'H2_SIDE_EFFECT_PASS' for _, v, _ in righe):
+		print('CORREZIONE: effetti H2 come l\'hardware nei casi %s' % ','.join(n[9:-1] for n, v, _ in righe if v == 'H2_SIDE_EFFECT_PASS'))
+	if any(v == 'H1_CORRECTED_ARCH_PASS' for _, v, _ in righe):
+		print('CORREZIONE: H1 corretta nei casi %s' % ','.join(n[6:-1] for n, v, _ in righe if v == 'H1_CORRECTED_ARCH_PASS'))
+	# formato storico per le righe attr- ("A=..."), nome completo per evento-/effetti-
+	at = [(n[6:-1] if n.startswith('(attr-') else n[1:-1], v) for n, v, _ in righe
+	    if n.startswith('(attr-') or n.startswith('(evento-') or n.startswith('(effetti-')]
+	if at:
+		print('ATTRIBUZIONE: %s' % ' '.join('%s=%s' % x for x in at))
+	print('  (un PATH_COVERED_H*_REPRODUCED e\' un PASS dell\'oracolo di riproduzione e un FAIL di correttezza del kernel)')
+	m = pulizia(righe)
+	print('PULIZIA: %s' % ('PULITA' if not m else 'NON_PULITA (%s)' % '; '.join(m)))
+	sys.exit(3 if err else (4 if m else 0))
+
+if __name__ == '__main__':
+	main()

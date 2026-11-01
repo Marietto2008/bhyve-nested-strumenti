@@ -1,0 +1,83 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-ept12sent-fix.sh.non-conforme
+echo "INERTE: run-ept12sent-fix.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-ept12sent-fix.sh.non-conforme" >&2; exit 4
+# run-ept12sent-fix.sh -- Claude 26/10/2026, parere #75 §5: UNA SOLA corsa di
+# ept12_remap_sentinel col test fail-closed (kut ad04d3e8, vmxc-sent.flat).
+# Da lanciare SOLO con l'assenso esplicito dell'utente per QUESTA corsa.
+# Nessun retry, nessuna corsa successiva, nessun cambio di kernel/flag.
+W=/mnt/linuxulator2/vm/nested-work
+T=$W/freebsd-nested/tools/nested
+cd $W || exit 1
+MOD=/boot/kernel/vmm-restore.ko
+MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
+FLAT=$W/kut/vmxc-sent.flat
+FLAT_SHA=fd678662b0ab94973617c58a92dd4fd24c0efe35e5b51b3b986332ce05b493e8
+SONDA=0x3fed1000	# GPA attesa della sonda (data_page2); il filtro usa ANCHE il RIP
+RIP_LETTURA=0x40fc94	# e12_sent_read: movl (%rdx),%eax di stage1 (_sentinel) in vmxc-sent.elf
+EV=$W/evidenze-ept12-rip/corsa-sent-1
+mkdir -p $EV || exit 1
+[ -e $EV/diag74.out ] && { echo "STOP: corsa gia' fatta ($EV)"; exit 1; }
+
+ferma() { echo "STOP: $*"; sudo -n /sbin/sysctl hw.vmm.vmx.nested_diag58=0 hw.vmm.vmx.nested_diag58_gpa=0 >/dev/null; exit 1; }
+
+echo "=== controlli a freddo ==="
+[ "$(/sbin/sha256 -q $MOD)" = "$MOD_SHA" ] || ferma "modulo diverso da 27125f004917"
+[ "$(/sbin/sha256 -q $FLAT)" = "$FLAT_SHA" ] || ferma "vmxc-sent.flat diverso da quello rivisto"
+[ "$(/sbin/sysctl -n hw.vmm.vmx.vept_keep)" = "0" ] || ferma "vept_keep != 0"
+[ "$(/sbin/sysctl -n hw.vmm.vmx.nested_diag58)" = "0" ] || ferma "nested_diag58 gia' acceso"
+/sbin/sysctl -n hw.vmm.vmx.nested_invept_opt >/dev/null 2>&1 && ferma "esiste un interruttore di elisione: build inattesa"
+{
+	echo "modulo $MOD_SHA"; echo "flat   $FLAT_SHA"
+	echo "diag74.d $(/sbin/sha256 -q $T/diag74.d)"
+	echo "lista  $(/sbin/sha256 -q $T/kut-ept12sent-fix.list)"
+	sudo -n /usr/sbin/cpucontrol -m 0x8b /dev/cpuctl6
+	sudo -n /usr/sbin/cpucontrol -i 0x1 /dev/cpuctl6
+	/sbin/sysctl kern.osrelease hw.vmm.vmx.vept_keep hw.vmm.vmx.vept_diag
+} > $EV/baseline.txt 2>&1
+/bin/cat $EV/baseline.txt
+
+echo "=== audit VM (vista root) ==="
+vivi=$(sudo -n /bin/ps axww -o pid,ppid,user,command | /usr/bin/grep -iE 'bhyve|qemu-system' | /usr/bin/grep -v grep)
+[ -n "$vivi" ] && { echo "$vivi"; ferma "processo VM vivo"; }
+for v in /dev/vmm/*; do
+	[ -e "$v" ] || continue
+	aperti=$(sudo -n /usr/bin/fstat "$v" 2>/dev/null | /usr/bin/sed 1d)
+	[ -n "$aperti" ] && { echo "$aperti"; ferma "$v e' aperto da un processo"; }
+done
+echo "audit: nessuna VM viva, nessun /dev/vmm aperto"
+
+echo "=== traccia ==="
+sudo -n /sbin/sysctl hw.vmm.vmx.nested_diag58_gpa=$SONDA hw.vmm.vmx.nested_diag58=1 || ferma "sysctl diag58"
+: > $EV/diag74.out
+sudo -n /usr/sbin/dtrace -s $T/diag74.d $SONDA $RIP_LETTURA -o $EV/diag74.out 2> $EV/diag74.err &
+DT=$!
+i=0
+until /usr/bin/grep -q '== TRACCIA PRONTA ==' $EV/diag74.out 2>/dev/null; do
+	i=$((i + 1))
+	[ $i -gt 30 ] && { sudo -n kill -TERM $DT; ferma "DTrace non pronto in 15 s"; }
+	sleep 0.5
+done
+
+echo "=== corsa (una) ==="
+sudo -n env TEST_CPUS=6 /bin/sh $W/kutvpid/kut-run.sh --nested $T/kut-ept12sent-fix.list > $EV/kut-run.out 2>&1
+rc=$?
+sleep 2
+sudo -n kill -TERM $DT
+wait $DT 2>/dev/null
+sudo -n /sbin/sysctl hw.vmm.vmx.nested_diag58=0 hw.vmm.vmx.nested_diag58_gpa=0
+/bin/cat $EV/kut-run.out
+echo "kut-run rc=$rc"
+
+echo "=== evidenze ==="
+ser=$(/bin/ls -t $W/logs/kut-*-ept12_remap_sentinel.serial | /usr/bin/head -1)
+/bin/cp -n "$ser" $EV/ && echo "serial: $ser"
+/usr/bin/grep -E 'E12DIAG|PASS|FAIL|SUMMARY' "$ser"
+/usr/bin/grep -q '== TRACCIA CHIUSA ==' $EV/diag74.out && echo "traccia completa ($(/usr/bin/wc -l < $EV/diag74.out) righe)" || echo "TRACCIA TRONCA: INCONCLUSIVO"
+echo "-- VMCALL (reason 18):"; /usr/bin/grep 'reason=18' $EV/diag74.out
+echo "-- violation sonda / lettura:"; /usr/bin/grep 'reason=48' $EV/diag74.out
+echo "-- riflessione L0 -> L1:"; /usr/bin/grep REFLECT $EV/diag74.out
+echo "-- foglie EPT02 installate sulla sonda:"; /usr/bin/grep INSTALL-SONDA $EV/diag74.out
+echo "-- wipe/INVEPT:"; /usr/bin/grep -c 'WIPE' $EV/diag74.out; /usr/bin/grep -c 'INVEPT-fisico' $EV/diag74.out
+/sbin/sha256 -r $EV/* > $EV/SHA256SUMS 2>/dev/null
+/bin/ls /dev/vmm
+echo "FINE: una corsa, nessuna successiva automatica"

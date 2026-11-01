@@ -1,0 +1,176 @@
+#!/bin/sh
+# smoke-modulo.sh -- Claude 30/10/2026, parere #143 §5-§6 (passo C1). SOLA LETTURA, nessuna VM: dopo un hot-swap,
+# il modulo caricato e' esattamente quello atteso e l'host e' nello stato di partenza.
+#   smoke-modulo.sh originale | ripfix-nested | stadio9
+# Controlli: path/sha/build-id del modulo caricato (dall'identita' di mc-logica.sh), kld COMPLETO, firma OID a 4 bit,
+# contatori del latch a 0 (ripfix), 6 dispositivi su ppt (pptdevs), amdgpu non caricato, /dev/vmm vuoto, nessun
+# processo bhyve/qemu/dtrace, kenv boot_safe/devmatch_blocklist assenti, loader.conf invariato, sonde SDT del latch
+# REGISTRATE (dtrace -l: 3 col ripfix, 0 con l'originale) e lo script ptpad-fbt-ripfix-nested.d che compila (ripfix) o
+# NON compila (originale). Uscita 0 = tutto coerente; 4 = STOP (elenco dei controlli falliti).
+#
+# #152 §4 -- due semantiche DISTINTE:
+#   smoke-modulo.sh ripfix-nested                         C1, solo al PRIMO caricamento: contatori del latch = 0/0
+#   smoke-modulo.sh ripfix-nested --continuita <sessione> dopo un test fatale: contatori = i valori FINALI registrati
+#        dalla <sessione> (cartella del runner, SHA256SUMS integro, modulo r5 nel manifest), letti dai suoi FTL/VMU
+#        "after"; il diario di modulo-caldo non deve avere scambi dopo l'avvio di quella sessione (lo sha del file NON
+#        identifica l'istanza caricata). Un valore diverso = STOP: la baseline non si aggiorna da sola.
+#   Il controllo /dev/vmm vuoto e' riportato a parte (CONTROLLO VMM): prima della pulizia autorizzata e' l'unico atteso
+#   a fallire.
+#
+# STADIO 9 (#167R1 par. 9.5): firma OID a 5 bit (11011), C1 con TRE contatori a 0 (fatal_latches,
+# nested_vept_mmio_unemulable, nested_operand_fatal), 4 sonde (le 3 del RIPFIX + vmm:vmx:nested:opndfatal).
+#   smoke-modulo.sh stadio9 --continuita <sessione>  sessione di run-opnd-kut.sh: i tre valori attesi sono quelli
+#        della riga "contatori dopo:" del suo manifest (coperto da SHA256SUMS), l'avvio dalla riga "avvio sessione:".
+# SM_FINTO (solo collaudo, test-smoke-stadio9.sh): file che ridefinisce le funzioni s_* e sm_* dopo quelle vere.
+#   Uscita SIMULATA: 2 = coerente (mai 0), 4 = STOP; la riga finale dice SIMULATO.
+set -u
+C=/mnt/linuxulator2/vm/nested-work/caldo
+FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+. $C/mc-sistema.sh
+. $C/mc-logica.sh
+sm_sonde_lista() { sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::fatal-ritorno' -n 'vmm:vmx:nested:veptunemul' \
+    -n 'vmm:vmx:nested:opndfatal' -n ':::fatal-latch' -n ':::fatal-ritorno' -n ':::veptunemul' -n ':::opndfatal' 2>/dev/null; }
+sm_fbt_compila() { sudo -n /usr/sbin/dtrace -e -s $FBTR 1 >/dev/null 2>&1; }
+sm_dtrace_vivo() { /bin/pgrep -x dtrace >/dev/null; }
+# #168 par. 3: identita' dell'ISTANZA caricata (lf->loadcnt, mai riusato), non solo del file
+sm_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s /mnt/linuxulator2/vm/nested-work/kld-loadcnt.d vmm-restore.ko 2>&1 |
+    sed -n 's/^KLD vmm-restore\.ko \(id=[0-9]* loadcnt=[0-9]*\)$/\1/p'; }
+# #168 par. 4: con SM_FINTO l'esito e' SIMULATO e non vale come evidenza: COERENTE esce 2, mai 0
+SIM=""; [ -n "${SM_FINTO:-}" ] && { SIM=" SIMULATO (SM_FINTO: non vale come evidenza)"; . "$SM_FINTO"; }
+nf=0
+ok() { echo "  ok      $*"; }
+no() { echo "  ERRATO  $*"; nf=$((nf+1)); }
+case "${1:-}" in originale|ripfix-nested|stadio9) ;; *) echo "uso: $0 originale|ripfix-nested|stadio9 [--continuita <sessione>]"; exit 4;; esac
+CONT=""
+if [ $# -ge 2 ]; then
+	[ $# = 3 ] && [ "$2" = --continuita ] && [ "$1" != originale ] || { echo "uso: $0 ripfix-nested|stadio9 --continuita <sessione>"; exit 4; }
+	CONT=$3
+fi
+# i contatori del latch di ciascuna identita' (C1: tutti a 0 al primo caricamento)
+case "$1" in
+ripfix-nested) CONTATORI="hw.vmm.fatal_latches hw.vmm.vmx.nested_vept_mmio_unemulable";;
+stadio9) CONTATORI="hw.vmm.fatal_latches hw.vmm.vmx.nested_vept_mmio_unemulable hw.vmm.vmx.nested_operand_fatal";;
+*) CONTATORI="";;
+esac
+set -- $(mc_identita "$1") "$1"
+P=$1; SHA=$2; BID=$3; ID=$4
+echo "=== smoke $ID (sola lettura) ==="
+c=$(mc_caricato)
+[ "$c" = "completo $P" ] && ok "kld completo: $P" || no "kld '$c', atteso 'completo $P'"
+[ "$(s_sha "$P")" = "$SHA" ] && ok "sha del file caricato" || no "sha del file $P diverso dall'identita' $ID"
+[ "$(s_bid "$P")" = "$BID" ] && ok "build-id $BID" || no "build-id diverso"
+mc_oid_ok "$P" && ok "firma OID $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5" || no "firma OID $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 non e' quella di $ID"
+if [ -n "$CONTATORI" ] && [ -z "$CONT" ]; then
+	for o in $CONTATORI; do
+		[ "$(s_sysctl_val $o)" = 0 ] && ok "$o = 0 (C1, primo caricamento)" || no "$o = '$(s_sysctl_val $o)' (C1 esige 0: dopo un test fatale usare --continuita)"
+	done
+fi
+if [ -n "$CONT" ]; then
+	# valori attesi e coerenza della sessione di riferimento, da file verificati (nessuna deduzione dal nome)
+	KLDV=$(sm_kld_loadcnt); [ "$(echo "$KLDV" | grep -c .)" = 1 ] || KLDV="LETTURA FALLITA"
+	att=$(/usr/local/bin/python3 - "$CONT" "$P" "$SHA" "$ID" "$KLDV" <<'FINE_PY_CONT152'
+import hashlib, os, re, sys, time
+d, path, sha, ident, kldv = sys.argv[1:6]
+h = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
+try:
+	n = 0
+	for r in open(os.path.join(d, 'SHA256SUMS')):
+		x, f = r.split(None, 1); f = f.strip()
+		if h(os.path.join(d, f)) != x:
+			print('ERR file %s diverso dal suo SHA256SUMS' % f); sys.exit(0)
+		n += 1
+	man = open(os.path.join(d, 'manifest.txt')).read()
+	m = re.search(r'^modulo caricato: (\S+) ([0-9a-f]{64})$', man, re.M)
+	if not m or m.group(1) != path or m.group(2) != sha:
+		print('ERR il manifest non registra il modulo %s %s' % (path, sha[:8])); sys.exit(0)
+	if ident == 'stadio9':
+		# sessione di run-opnd-kut.sh (produttore opnd-manifest.sh, #168 par. 4): CONCLUSA e sigillata, col manifest
+		# fra i file sigillati; avvio e contatori finali dal manifest, una riga ciascuno
+		elenco = [r.split(None, 1)[1].strip() for r in open(os.path.join(d, 'SHA256SUMS'))]
+		if 'manifest.txt' not in elenco:
+			print('ERR il manifest non e\' fra i file sigillati'); sys.exit(0)
+		if re.findall(r'^sessione: (.*)$', man, re.M) != ['APERTA', 'CHIUSA']:
+			print('ERR sessione non conclusa: %s' % re.findall(r'^sessione: (.*)$', man, re.M)); sys.exit(0)
+		a = re.findall(r'^avvio sessione: (\d+)$', man, re.M)
+		if len(a) != 1:
+			print('ERR il manifest non registra l\'avvio della sessione'); sys.exit(0)
+		avvio = int(a[0])
+		# la STESSA istanza del kld: un ricaricamento (anche dello stesso file) cambia loadcnt
+		kd = re.findall(r'^kld dopo: (id=\d+ loadcnt=\d+)$', man, re.M)
+		kp = re.findall(r'^kld prima: (id=\d+ loadcnt=\d+)$', man, re.M)
+		if len(kd) != 1 or len(kp) != 1 or kd != kp:
+			print('ERR il manifest non registra un\'unica istanza del kld (prima %s, dopo %s)' % (kp, kd)); sys.exit(0)
+		if kd[0] != kldv:
+			print('ERR modulo RICARICATO dopo la sessione: istanza registrata %s, ora %s' % (kd[0], kldv)); sys.exit(0)
+		k = re.findall(r'^contatori dopo: fatal_latches=(\d+) nested_vept_mmio_unemulable=(\d+) '
+		    r'nested_operand_fatal=(\d+)$', man, re.M)
+		if len(k) != 1:
+			print('ERR la sessione non registra i contatori finali'); sys.exit(0)
+		valori = list(k[0])
+	else:
+		a = re.search(r'^vm2 dopo: creata \d+ \(avvio sessione (\d+)\)', man, re.M)
+		if not a:
+			print('ERR il manifest non registra l\'avvio della sessione'); sys.exit(0)
+		avvio = int(a.group(1))
+		comb = open(os.path.join(d, 'drv', 'combinato.txt')).read()
+		ftl = re.findall(r'^FTL after=(\d+)$', comb, re.M); vmu = re.findall(r'^VMU after=(\d+)$', comb, re.M)
+		if not ftl or not vmu:
+			print('ERR la sessione non registra FTL/VMU'); sys.exit(0)
+		valori = [ftl[-1], vmu[-1]]
+	# il diario di modulo-caldo: l'ultimo scambio eseguito deve PRECEDERE l'avvio della sessione e portare a questo path
+	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
+	if not sc:
+		print('ERR diario di modulo-caldo senza scambi'); sys.exit(0)
+	u = sc[-1]
+	t = int(time.mktime(time.strptime(u[:19], '%Y-%m-%d %H:%M:%S')))
+	if not u.rstrip().endswith(' a %s ===' % path):
+		print('ERR l\'ultimo scambio del diario non porta a %s' % path); sys.exit(0)
+	if t >= avvio:
+		print('ERR scambio di modulo (%s) dopo l\'avvio della sessione (%d)' % (u[:19], avvio)); sys.exit(0)
+	print('OK %d %d %s %s' % (n, avvio, u[:19].replace(' ', '_'), ' '.join(valori)))
+except OSError as e:
+	print('ERR %s' % e)
+FINE_PY_CONT152
+)
+	case "$att" in
+	OK*)	set -- $att
+		ok "sessione di riferimento integra ($2 file conformi), modulo $ID nel manifest, avvio $3; ultimo scambio di modulo $4 (prima dell'avvio)"
+		shift 4
+		[ $# = $(echo $CONTATORI | wc -w) ] || no "la sessione registra $# contatori, $ID ne ha $(echo $CONTATORI | wc -w | tr -d ' ')"
+		for o in $CONTATORI; do
+			[ $# -gt 0 ] || break
+			[ "$(s_sysctl_val $o)" = "$1" ] && ok "$o = $1 (= valore finale della sessione di riferimento)" || \
+			    no "$o = '$(s_sysctl_val $o)', la sessione di riferimento chiudeva a $1: cambiato senza esperimento autorizzato"
+			shift
+		done;;
+	*)	no "continuita' non dimostrabile: $att";;
+	esac
+fi
+n=$(s_pci | awk '$2 == "ppt"' | wc -l | tr -d ' ')
+[ "$n" = "$(mc_pptdevs | wc -l | tr -d ' ')" ] && [ "$n" = 6 ] && ok "6 dispositivi su ppt (= pptdevs)" || no "$n dispositivi su ppt"
+s_kld_loaded amdgpu.ko && no "amdgpu caricato" || ok "amdgpu non caricato"
+[ -z "$(s_vmm_nodes)" ] && ok "CONTROLLO VMM: /dev/vmm vuoto" || no "CONTROLLO VMM: /dev/vmm: $(s_vmm_nodes | tr '\n' ' ')"
+[ -z "$(s_vm_procs)" ] && ok "nessun processo bhyve/qemu" || no "processi VM: $(s_vm_procs | tr '\n' ' ')"
+sm_dtrace_vivo && no "dtrace in esecuzione" || ok "nessun dtrace"
+for k in boot_safe devmatch_blocklist; do s_kenv_esiste $k && no "kenv $k presente ('$(s_kenv_get $k)')" || ok "kenv $k assente (come al preflight)"; done
+[ "$(s_loader_sha)" = "$MC_LOADER_SHA" ] && ok "loader.conf invariato" || no "loader.conf diverso"
+# #144 §3: le sonde per IDENTITA' (provider, modulo, funzione, nome), non per numero. sys/cddl/dev/sdt/sdt.c:165-181:
+# modulo vuoto -> nome del file del kld senza .ko (vmm-restore), funzione vuota -> "none". Le due del latch sono
+# quindi legate al kld vmm-restore; veptunemul ha modulo e funzione espliciti (vmx, nested), provider vmm.
+# Stadio 9: in piu' la sonda dell'operando, vmm:vmx:nested:opndfatal (modulo e funzione espliciti come veptunemul).
+SONDE_ATTESE="vmm vmm-restore none fatal-latch|vmm vmm-restore none fatal-ritorno|vmm vmx nested veptunemul"
+[ "$ID" = stadio9 ] && SONDE_ATTESE="$SONDE_ATTESE|vmm vmx nested opndfatal"
+sl=$(sm_sonde_lista | awk 'NR > 1 {print $2, $3, $4, $5}' | sort -u)
+np=$(echo "$sl" | grep -c .)
+sm_fbt_compila; dc=$?
+if [ "$ID" != originale ]; then
+	[ "$sl" = "$(echo "$SONDE_ATTESE" | tr '|' '\n' | sort)" ] && ok "le $(echo "$SONDE_ATTESE" | tr '|' '\n' | wc -l | tr -d ' ') sonde del latch, ESATTAMENTE: $(echo "$sl" | tr '\n' ';')" || \
+	    no "sonde del latch: '$(echo "$sl" | tr '\n' ';')', attese '$SONDE_ATTESE' (nessun altro provider/modulo ammesso)"
+	[ $dc = 0 ] && ok "ptpad-fbt-ripfix-nested.d compila sul modulo caricato" || no "ptpad-fbt-ripfix-nested.d NON compila"
+else
+	[ "$np" = 0 ] && ok "nessuna sonda del latch, di nessun provider (modulo originale)" || no "sonde del latch col modulo originale: $(echo "$sl" | tr '\n' ';')"
+	[ $dc != 0 ] && ok "ptpad-fbt-ripfix-nested.d rifiutato dal modulo originale" || no "lo script RIPFIX compila sul modulo originale"
+fi
+[ $nf = 0 ] && [ -n "$SIM" ] && { echo "SMOKE $ID${CONT:+ (continuita')}: COERENTE$SIM"; exit 2; }
+[ $nf = 0 ] && { echo "SMOKE $ID${CONT:+ (continuita')}: COERENTE"; exit 0; }
+echo "SMOKE $ID${CONT:+ (continuita')}: STOP ($nf controlli falliti)$SIM"; exit 4

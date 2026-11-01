@@ -1,0 +1,281 @@
+#!/bin/sh
+# test-opnd-manifest.sh -- Claude 31/10/2026, parere #168 par. 4. Esegue il PRODUTTORE VERO (opnd-manifest.sh: om_apri,
+# om_non_avviata, om_chiudi, om_sigilla) con le sole letture di sistema o_* simulate da file, e da' cio' che scrive ai
+# LETTORI VERI: opnd-verdetto.py, smoke-modulo.sh stadio9 --continuita (SM_FINTO), vmm-residuo.sh --classifica-ritorno
+# (VR_FINTO). Nessun sudo, nessuna VM, nessun kld. Uso: test-opnd-manifest.sh <cartella nuova su ZFS>
+set -u
+B=/mnt/linuxulator2/vm/nested-work
+C=$B/caldo
+O=${1:?cartella}
+case "$O" in $B/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+[ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
+mkdir -p "$O" || exit 2
+PY=/usr/local/bin/python3
+S9=$B/logs/stadio9-congelato-20261031/vmm-restore.ko
+ORIG=/boot/kernel/vmm-restore.ko
+nf=0; nok=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }
+no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
+
+# ---- il produttore vero, poi le sole letture di sistema ridefinite (stato in $OS)
+. ${OMT_PRODUTTORE:-$B/opnd-manifest.sh}	# OMT_PRODUTTORE: solo per i mutanti del collaudo
+# #169 R4: ogni lettura simulata ha anche il suo rc (file <nome>.rc): "contenuto valido con rc 1" e' un caso a se'
+rc_di()        { return $(cat "$1.rc" 2>/dev/null || echo 0); }
+o_sysctl()     { cat "$OS/sysctl.$1" 2>/dev/null; rc_di "$OS/sysctl.$1"; }
+o_ora()        { cat "$OS/ora"; }
+o_nodi()       { [ -e "$OS/vm2" ] && echo vm2; return 0; }
+o_vm2_esiste() { [ -e "$OS/vm2" ]; }
+o_vm2_ctime()  { cat "$OS/vm2.ctime" 2>/dev/null; }
+o_vm2_memseg() { cat "$OS/vm2.memseg"; return $(cat "$OS/vm2.memseg_rc" 2>/dev/null || echo 0); }
+o_dmesg()      { cat "$OS/dmesg"; rc_di "$OS/dmesg"; }
+o_ppt()        { printf 'ppt0@pci0:3:0:0: class=0x030000\nppt1@pci0:3:0:1: class=0x040300\n'; rc_di "$OS/ppt"; }
+o_sha()        { /sbin/sha256 -q "$1" 2>/dev/null; [ ! -e "$OS/sha.rc" ] || rc_di "$OS/sha"; }
+o_osrelease()  { echo 16.0-CURRENT; }
+o_kld_loadcnt() { cat "$OS/kld"; rc_di "$OS/kld"; }
+# identita' come le imposterebbe il runner
+PIANO=F1,F2,F3; MODO=--esegui; TMO=300; MOD=$S9; MOD_SHA=$(sha256 -q $S9); MOD_BUILDID=x; sig=11011; OID_ATTESO=11011
+CAR=$S9; FLAT_SHA=f; DRV_SHA=d; VER_SHA=v; OM_SCRIPT_SHA=s; QEMU=/q; QEMU_SHA=q; QEMU_VER='QEMU 10'; MACCHINA=m
+LIBV=/l; LIBV_SHA=l; VMCMD='qemu ...'
+T=1793400000
+MEMSEG='ID  Length  Segname
+0   256MB   sysmem
+'
+
+# ---- stato simulato: contatori "a/b/c", vm2 (ctime o vuoto)
+sistema() {	# sistema <dir> <contatori prima a/b/c>
+	OS=$1; mkdir -p "$OS"; echo $T > "$OS/ora"; printf 'riga di boot\n' > "$OS/dmesg"; contatori "$2"
+	printf '%s' "$MEMSEG" > "$OS/vm2.memseg"
+	echo 0 > "$OS/sysctl.hw.vmm.vmx.nested_shadow_vmcs"
+	kld 56 64
+}
+kld() { printf 'KLD vmm-restore.ko id=%s loadcnt=%s\nFINE_ELENCO=si visitati=53 globale=%s\n' $1 $2 $2 > "$OS/kld"; }
+contatori() {	# a/b/c (o "X" per una lettura fallita: file vuoto)
+	set -- $(echo "$1" | tr '/' ' ')
+	for p in "hw.vmm.fatal_latches $1" "hw.vmm.vmx.nested_vept_mmio_unemulable $2" "hw.vmm.vmx.nested_operand_fatal $3"; do
+		set -- $p; [ "$2" = X ] && : > "$OS/sysctl.$1" || echo "$2" > "$OS/sysctl.$1"
+	done
+}
+crea_vm2() { : > "$OS/vm2"; echo "$1" > "$OS/vm2.ctime"; }
+# drv/ e sonde della QEMU: le stesse forme di test-verdetti.py (una sessione F1-F3 completa, o F4 terminale)
+guest() {	# guest <out> F123|F4 -- sessioni COMPLETE nel formato reale (inventario 99/36, stderr della QEMU protetta)
+	$PY - "$1" "$2" <<'FINE_PY_GUEST_OM169'
+import json, os, sys
+d, k = sys.argv[1:3]
+os.makedirs(os.path.join(d, 'drv'), exist_ok=True)
+r = ['OPND INIZIO P0 ...', 'OPND PIANO? (F1,F2,F3 oppure F4)']
+if k == 'F123':
+	r += ['OPND PIANO "F1,F2,F3" F1=1 F2=1 F3=1 F4=0', 'OPND ATTESI casi=99 controlli=36 invvpid1=1 invept1=1']
+	c = k_ = 0
+	ctr = []
+	for fase, var in (('F1', 'ok'), ('F2', 'P1_assente'), ('F2', 'P1_sola_lettura')):
+		for o in ('0xffc', '0xff9', '0xfff', '0x100'):
+			for x in ('VMPTRST', 'VMPTRLD', 'VMCLEAR', 'VMREAD', 'VMWRITE'):
+				c += 1; r.append('OPND CASO %s %d %s off=%s var=%s vec=0 -> OK' % (fase, c, x, o, var))
+			for n in ('VMCS corrente dopo VMPTRLD', 'VMCS corrente dopo VMCLEAR', 'GUEST_RIP del VMCS di lavoro dopo VMWRITE'):
+				ctr.append((fase, n))
+		for o in ('0xff8', '0xff1', '0x100'):
+			for x in ('INVVPID', 'INVEPT', 'INVEPT'):
+				c += 1; r.append('OPND CASO %s %d %s off=%s var=%s vec=0 -> OK' % (fase, c, x, o, var))
+	for x in ('VMPTRLD', 'INVVPID', 'INVVPID_tipo4_non_annunciato', 'VMXON_VMX_gia_attiva', 'VMCLEAR', 'VMPTRST', 'INVEPT',
+	    'VMREAD', 'VMWRITE', 'VMXOFF', 'VMLAUNCH', 'VMRESUME'):
+		c += 1; r.append('OPND CASO F3 %d %s cpl3 #GP=si atteso(#GP) -> OK' % (c, x))
+	for i, (fase, n) in enumerate(ctr, 1):
+		r.append('OPND CONTROLLO %s %d %s: 0x1 (atteso 0x1) -> OK' % (fase, i, n))
+	r += ['OPND FINE casi=%d controlli=%d errati=0' % (c, len(ctr)), 'SUMMARY: 1 tests']
+	rc, err, piano = 1, '', 'F1,F2,F3'
+	reg = ['OPND INIZIO', 'OPND PIANO?', 'OPND FINE casi=']
+else:
+	r += ['OPND PIANO "F4" F1=0 F2=0 F3=0 F4=1', 'OPND F4 INIZIO ram=0x10000000 ...']
+	rc, piano = 1, 'F4'
+	err = ('Error running vm: State not recoverable (errno=95, error=-1)\n'
+	    'bhyve: vCPU 0: VM_RUN State not recoverable (errno=95): errore non transitorio; porta chiusa, nessun nuovo VM_RUN; '
+	    'RIP del registro 0x405123\n'
+	    'bhyve: porta della VM chiusa dal vCPU 0: nessun vCPU rientra; arresto della VM richiesto (VM_RUN non recuperabile)\n')
+	reg = ['OPND INIZIO', 'OPND PIANO?']
+	open(os.path.join(d, 'sonde.txt'), 'w').write('DTRACE_ATTIVO\nOPNDFATAL vcpu=0 stadio=4 err=14 rip=0x405123 gla=0x1\n'
+	    'FATAL_LATCH vcpu=0 errno=14 stadio=4 rip=0x405123 gpa=0x0 gla=0x1\n'
+	    'FATAL_RITORNO vcpu=0 nextrip=0x405123 rip=0x405123 len=0 fatal_rip=0x405123\n'
+	    'FBT nested_operand_copy 3\nFBT nested_vmread 2\nFBT nested_vmwrite 2\nDTRACE_FINE\n')
+open(os.path.join(d, 'drv', 'seriale.txt'), 'w').write(''.join('%.3f %s\n' % (i * 0.01, x) for i, x in enumerate(r)))
+json.dump({'valida': True, 'timeout': False, 'errori': [], 'qemu_rc': rc, 'regole': [{'testo': t, 'stato': 'fatta'} for t in reg],
+    'invii': [{'regola': 'OPND PIANO?', 'invio': piano, 't': 0.1}]}, open(os.path.join(d, 'drv', 'stato.json'), 'w'))
+open(os.path.join(d, 'drv', 'qemu-stderr.txt'), 'w').write(err)
+if not os.path.exists(os.path.join(d, 'sonde.txt')):
+	open(os.path.join(d, 'sonde.txt'), 'w').write('DTRACE_ATTIVO\nFBT nested_operand_copy 120\nFBT nested_vmread 41\n'
+	    'FBT nested_vmwrite 37\nDTRACE_FINE\n')
+FINE_PY_GUEST_OM169
+}
+# una sessione intera col produttore vero: sessione <nome> <F1,F2,F3|F4> <prima> <dopo> <ctime vm2 dopo|-> [memseg_rc]
+sessione() {
+	N=$1; OUT=$O/$1; mkdir -p "$OUT"; PIANO=$2
+	sistema "$O/sis-$1" "$3"
+	om_apri "$OUT"; ra=$?
+	[ $ra = 0 ] || { no "$N: om_apri rc $ra"; return 1; }
+	guest "$OUT" $([ "$2" = F4 ] && echo F4 || echo F123)
+	echo "driver finto" > "$OUT/driver.out"
+	contatori "$4"; [ "$5" != - ] && crea_vm2 "$5"; [ -n "${6:-}" ] && echo "$6" > "$OS/vm2.memseg_rc"
+	[ -n "${KLD_DOPO:-}" ] && kld $KLD_DOPO	# il modulo ricaricato DURANTE la sessione
+	printf 'riga di boot\nvmm: istruzione non completabile\n' > "$OS/dmesg"
+	[ -n "${PRIMA_DI_CHIUDERE:-}" ] && eval "$PRIMA_DI_CHIUDERE"	# #169 R4: iniezioni sulla chiusura
+	om_chiudi; RC_CHIUDI=$?
+	$PY $B/opnd-verdetto.py "$OUT" "$PIANO" > "$OUT/VERDETTO" 2>&1; VRC=$?
+	[ -n "${PRIMA_DEL_SIGILLO:-}" ] && eval "$PRIMA_DEL_SIGILLO"	# #169 R4: iniezioni sul sigillo
+	om_sigilla; RC_SIGILLO=$?
+}
+verdetto_e() { [ $VRC = $1 ] && ok "$N: verdetto rc $1 ($(cat $OUT/VERDETTO | cut -c1-70))" || no "$N: verdetto rc $VRC, atteso $1: $(cat $OUT/VERDETTO)"; }
+man_ha()  { grep -qxF -- "$1" "$OUT/manifest.txt" && ok "$N: manifest '$1'" || no "$N: manifest senza '$1'"; }
+man_non() { grep -q -- "$1" "$OUT/manifest.txt" && no "$N: manifest con '$1'" || ok "$N: manifest senza '$1'"; }
+sigillo_ok() { (cd "$OUT" && cut -c66- SHA256SUMS | xargs sha256 -r | cmp -s - SHA256SUMS) && ok "$N: SHA256SUMS verificato" || no "$N: SHA256SUMS non verifica"; }
+
+# ---- lettori veri: smoke (SM_FINTO = mc-finto + contatori vivi) e classificatore (VR_FINTO)
+cat > "$O/sm-finto.sh" <<'FINE_SMF_OM168'
+. "$SM_C/mc-finto.sh"
+s_sysctl_val() { cat "$FS/sysctl_$1" 2>/dev/null; }
+sm_sonde_lista() { printf ' ID PROVIDER MODULE FUNCTION NAME\n1 vmm vmm-restore none fatal-latch\n2 vmm vmm-restore none fatal-ritorno\n3 vmm vmx nested veptunemul\n4 vmm vmx nested opndfatal\n'; }
+sm_fbt_compila() { return 0; }
+sm_dtrace_vivo() { return 1; }
+sm_kld_loadcnt() { cat "$FS/kld_vivo"; }
+FINE_SMF_OM168
+echo "$(date -j -r $((T - 3600)) '+%Y-%m-%d %H:%M:%S') === ESEGUO: da $ORIG a $S9 ===" > "$O/diario.txt"
+smoke_cont() {	# smoke_cont <rc atteso> <vivi a/b/c> [frammento]
+	FS=$O/fs-$N; export FS
+	( . $C/mc-finto.sh; f_init "$S9" )
+	set -- "$1" $(echo "$2" | tr '/' ' ') "${3:-}"
+	echo $2 > "$FS/sysctl_hw.vmm.fatal_latches"; echo $3 > "$FS/sysctl_hw.vmm.vmx.nested_vept_mmio_unemulable"
+	echo $4 > "$FS/sysctl_hw.vmm.vmx.nested_operand_fatal"
+	echo "${KLDV-id=56 loadcnt=64}" > "$FS/kld_vivo"
+	SM_C=$C SM_FINTO=$O/sm-finto.sh SM_DIARIO=$O/diario.txt sh $C/smoke-modulo.sh stadio9 --continuita "$OUT" > "$O/$N.smoke" 2>&1; r=$?
+	[ $r = $1 ] && ok "$N: smoke --continuita rc $r" || no "$N: smoke rc $r, atteso $1 ($(grep -E 'ERRATO|SMOKE' $O/$N.smoke | head -3 | tr '\n' ' '))"
+	[ -z "$5" ] || { grep -qF -- "$5" "$O/$N.smoke" && ok "$N: smoke '$5'" || no "$N: smoke senza '$5'"; }
+}
+cat > "$O/vr-finto.sh" <<'FINE_VRF_OM168'
+r_nodi()    { [ -e "$OS/vm2" ] && echo vm2; return 0; }
+r_ctime()   { cat "$OS/vm2.ctime" 2>/dev/null; }
+r_memseg()  { sha256 -q "$OS/vm2.memseg"; }
+r_aperto()  { return 1; }
+r_vm_vive() { :; }
+r_modulo()  { return 0; }
+r_distruggi() { echo "destroy $1" >> "$OS/eventi"; }
+r_ora()     { echo "2026-10-31 00:00:00"; }
+r_memseg_testo() { tr -s ' \n' ' ' < "$OS/vm2.memseg"; }
+r_dtrace_vivo()  { :; }
+r_fase_caldo()   { echo fine; }
+r_modulo_id()    { echo stadio9; }
+FINE_VRF_OM168
+classifica() {	# classifica <ramo atteso>
+	OS=$OS VR_FINTO=$O/vr-finto.sh sh $C/vmm-residuo.sh --classifica-ritorno "$OUT" > "$O/$N.ramo" 2>&1
+	g=$(sed -n 's/^RAMO=\([A-Z_]*\) .*/\1/p' "$O/$N.ramo")
+	[ "$g" = "$1" ] && ok "$N: RAMO=$1" || no "$N: ramo '$g', atteso $1 ($(grep RAMO $O/$N.ramo))"
+	[ -s "$OS/eventi" ] && no "$N: il classificatore ha agito" || ok "$N: nessuna azione del classificatore"
+}
+
+echo "1. F1-F3 conclusa: tre contatori fermi, vm2 della sessione"
+sessione m1 F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+verdetto_e 0; sigillo_ok
+man_ha 'sessione: APERTA'; man_ha "avvio sessione: $T"; man_ha 'contatori prima: fatal_latches=0 nested_vept_mmio_unemulable=0 nested_operand_fatal=0'
+man_ha 'contatori dopo: fatal_latches=0 nested_vept_mmio_unemulable=0 nested_operand_fatal=0'; man_ha 'sessione: CHIUSA'; man_ha 'nested_shadow_vmcs 0'
+[ "$(grep -c '^sessione: ' $OUT/manifest.txt)" = 2 ] && [ "$(head -1 $OUT/manifest.txt)" = 'sessione: APERTA' ] && [ "$(tail -1 $OUT/manifest.txt)" = 'sessione: CHIUSA' ] && ok "m1: APERTA in testa, CHIUSA in coda" || no "m1: ordine delle righe sessione"
+[ "$(cat $OUT/contatori.txt)" = "$(printf 'fatal_latches 0 0\nnested_vept_mmio_unemulable 0 0\nnested_operand_fatal 0 0')" ] && ok "m1: contatori.txt a tre righe" || no "m1: contatori.txt: $(cat $OUT/contatori.txt)"
+grep -q '^dmesg della sessione: 1 righe nuove, 1 del latch$' $OUT/manifest.txt && ok "m1: dmesg della sessione" || no "m1: dmesg"
+classifica NODO_DELLA_SESSIONE
+grep -q -- "--distruggi vm2 $((T + 3)) $(sha256 -q $OS/vm2.memseg)" "$O/$N.ramo" && ok "m1: comando da autorizzare per QUELLA istanza" || no "m1: comando"
+smoke_cont 2 0/0/0 'nested_operand_fatal = 0 (= valore finale'
+smoke_cont 4 0/0/1 'chiudeva a 0: cambiato'
+
+echo "2. F4 conclusa: terna 1/0/1, residuo identificato"
+sessione m2 F4 0/0/0 1/0/1 $((T + 2))
+verdetto_e 0; sigillo_ok; man_ha 'contatori dopo: fatal_latches=1 nested_vept_mmio_unemulable=0 nested_operand_fatal=1'
+classifica NODO_DELLA_SESSIONE
+smoke_cont 2 1/0/1 'hw.vmm.fatal_latches = 1 (= valore finale'
+smoke_cont 4 1/1/1 'nested_vept_mmio_unemulable'
+sessione m2b F4 0/0/0 1/1/1 $((T + 2)); verdetto_e 1
+grep -q 'delta 1/1/1 (attesi 1/0/1)' $OUT/VERDETTO && ok "m2b: il terzo contatore lo respinge il VERDETTO" || no "m2b: $(cat $OUT/VERDETTO)"
+smoke_cont 2 1/1/1	# la continuita' e' coerente (vivo = registrato): a respingere e' il verdetto (#168 par. 3)
+
+echo "3. avvio fallito o sessione interrotta: nessun record finale inventato"
+N=m3; OUT=$O/m3; mkdir -p $OUT; sistema $O/sis-m3 0/0/0; om_apri $OUT; crea_vm2 $((T + 1))	# interrotta qui
+man_non 'contatori dopo'; man_non 'sessione: CHIUSA'; [ -e $OUT/SHA256SUMS ] && no "m3: sigillo su sessione interrotta" || ok "m3: nessun sigillo"
+classifica OPERATORE; grep -q 'non e. conclusa' $O/m3.ramo && ok "m3: motivo 'non conclusa'" || no "m3: $(cat $O/m3.ramo)"
+smoke_cont 4 0/0/0 "continuita' non dimostrabile"
+N=m3b; OUT=$O/m3b; mkdir -p $OUT; sistema $O/sis-m3b 0/0/0; om_apri $OUT; om_non_avviata "DTrace non attivata in 15 s"
+man_ha 'sessione: NON AVVIATA DTrace non attivata in 15 s'; man_non 'contatori dopo'; sigillo_ok
+classifica NESSUN_NODO
+smoke_cont 4 0/0/0 'sessione non conclusa'
+
+echo "4. nodo precedente all'avvio: rifiuto, nessuna distruzione"
+N=m4; OUT=$O/m4; mkdir -p $OUT; sistema $O/sis-m4 0/0/0; crea_vm2 $((T - 50))
+om_apri $OUT; ra=$?; [ $ra = 1 ] && ok "m4: om_apri rifiuta con vm2 gia' presente" || no "m4: om_apri rc $ra"
+man_ha "vm2 prima: PRESENTE (ctime $((T - 50)))"; man_non 'avvio sessione'
+om_non_avviata "vm2 gia' presente"; classifica OPERATORE
+sessione m4b F1,F2,F3 0/0/0 0/0/0 $((T - 7))	# vm2 comparsa con ctime anteriore all'avvio
+[ "$OM_VM2_ESTRANEA" = 1 ] && ok "m4b: OM_VM2_ESTRANEA=1 (il runner esce 5)" || no "m4b: OM_VM2_ESTRANEA=$OM_VM2_ESTRANEA"
+man_ha "ATTENZIONE: vm2 NON creata da questa sessione ($((T - 7)) < $T)"
+classifica OPERATORE
+
+echo "5. campo obbligatorio mancante o lettura fallita"
+N=m5; OUT=$O/m5; mkdir -p $OUT; sistema $O/sis-m5 0/X/0
+om_apri $OUT; ra=$?; [ $ra = 1 ] && ok "m5: lettura iniziale fallita -> rc 1" || no "m5: rc $ra"
+man_ha "contatori prima: LETTURA FALLITA: nested_vept_mmio_unemulable=''"; man_non 'avvio sessione'
+sessione m5b F1,F2,F3 0/0/0 0/0/X $((T + 3))
+man_ha "contatori dopo: LETTURA FALLITA: nested_operand_fatal=''"; [ -e $OUT/contatori.txt ] && no "m5b: contatori.txt scritto con una lettura fallita" || ok "m5b: nessun contatori.txt"
+verdetto_e 5; smoke_cont 4 0/0/0 'sessione non conclusa'
+sessione m5c F1,F2,F3 0/0/0 0/0/0 $((T + 3)) 1
+man_ha "vm2 dopo: LETTURA FALLITA (ctime '$((T + 3))' rc 0, memseg rc 1)"; classifica OPERATORE
+
+echo "6. sigillo: generato, verificato, poi un file alterato"
+for f in VERDETTO manifest.txt contatori.txt drv/seriale.txt; do
+	sessione m6-$(echo $f | tr '/' '_') F4 0/0/0 1/0/1 $((T + 2)); sigillo_ok
+	printf 'x\n' >> "$OUT/$f"
+	smoke_cont 4 1/0/1 'diverso dal suo SHA256SUMS'
+done
+echo "7. #168 par. 3: un ricaricamento del modulo (anche dello STESSO file, con lo stesso id) rompe la continuita'"
+sessione m7 F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+man_ha 'kld prima: id=56 loadcnt=64'; man_ha 'kld dopo: id=56 loadcnt=64'; man_non 'ATTENZIONE'
+[ "$OM_RICARICATO" = 0 ] && ok "m7: OM_RICARICATO=0" || no "m7: OM_RICARICATO=$OM_RICARICATO"
+KLDV='id=56 loadcnt=66' smoke_cont 4 0/0/0 'modulo RICARICATO dopo la sessione: istanza registrata id=56 loadcnt=64, ora id=56 loadcnt=66'
+KLDV='' smoke_cont 4 0/0/0 'ora LETTURA FALLITA'
+KLD_DOPO='56 65' sessione m7b F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+[ "$OM_RICARICATO" = 1 ] && ok "m7b: OM_RICARICATO=1 (il runner esce 5)" || no "m7b: OM_RICARICATO=$OM_RICARICATO"
+man_ha "ATTENZIONE: kld vmm-restore.ko non e' l'istanza dell'apertura (id=56 loadcnt=64 -> id=56 loadcnt=65)"
+KLDV='id=56 loadcnt=65' smoke_cont 4 0/0/0 "non registra un'unica istanza del kld"
+N=m7c; OUT=$O/m7c; mkdir -p $OUT; sistema $O/sis-m7c 0/0/0; printf 'KLD vmm-restore.ko id=56 loadcnt=64\nFINE_ELENCO=NO visitati=256 globale=64\n' > "$OS/kld"
+om_apri $OUT; ra=$?; [ $ra = 1 ] && ok "m7c: elenco dei kld non percorso per intero -> rc 1" || no "m7c: rc $ra"
+man_ha 'kld prima: LETTURA FALLITA (rc 0): KLD vmm-restore.ko id=56 loadcnt=64 FINE_ELENCO=NO visitati=256 globale=64 '; man_non 'avvio sessione'
+N=m7d; OUT=$O/m7d; mkdir -p $OUT; sistema $O/sis-m7d 0/0/0; printf 'KLD vmm-restore.ko id=56 loadcnt=64\nKLD vmm-restore.ko id=57 loadcnt=65\nFINE_ELENCO=si visitati=54 globale=65\n' > "$OS/kld"
+om_apri $OUT; ra=$?; [ $ra = 1 ] && ok "m7d: due kld con lo stesso nome -> rc 1" || no "m7d: rc $ra"
+echo "8. #169 R4: letture con rc != 0, chiusura e sigillo falliti"
+rc_e() { [ "$2" = "$3" ] && ok "$N: $1 rc $2" || no "$N: $1 rc $2, atteso $3"; }
+sessione m8-ok F1,F2,F3 0/0/0 0/0/0 $((T + 3)); rc_e om_chiudi $RC_CHIUDI 0; rc_e om_sigilla $RC_SIGILLO 0; verdetto_e 0
+apri_rotto() {	# apri_rotto <nome> <comando che rompe una lettura>; attese: om_apri rc 1, nessuna riga di avvio
+	N=$1; OUT=$O/$1; mkdir -p "$OUT"; sistema "$O/sis-$1" 0/0/0; eval "$2"
+	om_apri "$OUT"; ra=$?; rc_e om_apri $ra 1; man_non 'avvio sessione: [0-9]'; man_ha "apertura non riuscita: $3"
+}
+apri_rotto m8a 'echo 1 > "$OS/sysctl.hw.vmm.fatal_latches.rc"' 'contatori prima'
+man_ha 'contatori prima: LETTURA FALLITA: fatal_latches=rc1'
+apri_rotto m8b 'echo 1 > "$OS/kld.rc"' 'istanza del kld'
+apri_rotto m8c 'echo 1 > "$OS/sha.rc"' 'sha del modulo caricato (rc 1)'
+apri_rotto m8d 'echo 1 > "$OS/ppt.rc"' 'pciconf'
+apri_rotto m8e 'echo 1 > "$OS/sysctl.hw.vmm.vmx.nested_shadow_vmcs.rc"' 'nested_shadow_vmcs'
+N=m8f; OUT=$O/m8f; mkdir -p "$OUT"; sistema "$O/sis-m8f" 0/0/0; echo 1 > "$OS/dmesg.rc"
+om_apri "$OUT"; ra=$?; rc_e om_apri $ra 1; man_ha 'apertura non riuscita: dmesg iniziale'
+# chiusura: un "0" con rc 1, il kld con rc 1, il dmesg con rc 1, il manifest non scrivibile
+PRIMA_DI_CHIUDERE='echo 1 > "$OS/sysctl.hw.vmm.vmx.nested_operand_fatal.rc"' sessione m8g F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+rc_e om_chiudi $RC_CHIUDI 1; man_ha 'sessione: INCOMPLETA: contatori dopo'; man_non 'sessione: CHIUSA'
+[ -e "$OUT/contatori.txt" ] && no "m8g: contatori.txt scritto" || ok "m8g: nessun contatori.txt"
+verdetto_e 5; smoke_cont 4 0/0/0 'sessione non conclusa'; classifica OPERATORE
+PRIMA_DI_CHIUDERE='echo 1 > "$OS/kld.rc"' sessione m8h F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+rc_e om_chiudi $RC_CHIUDI 1; man_ha 'sessione: INCOMPLETA: istanza del kld'
+PRIMA_DI_CHIUDERE='echo 1 > "$OS/dmesg.rc"' sessione m8i F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+rc_e om_chiudi $RC_CHIUDI 1; man_ha 'sessione: INCOMPLETA: dmesg della sessione'
+PRIMA_DI_CHIUDERE='chmod 444 "$OUT/manifest.txt"' sessione m8j F1,F2,F3 0/0/0 0/0/0 $((T + 3))
+rc_e om_chiudi $RC_CHIUDI 1; chmod 644 "$OUT/manifest.txt"; man_non 'sessione: CHIUSA'
+# sigillo: un file illeggibile (hash fallito), una cartella illeggibile (elenco fallito)
+PRIMA_DEL_SIGILLO='chmod 000 "$OUT/VERDETTO"' sessione m8k F4 0/0/0 1/0/1 $((T + 2))
+rc_e om_sigilla $RC_SIGILLO 1; chmod 644 "$OUT/VERDETTO"
+[ -e "$OUT/SHA256SUMS" ] && no "m8k: SHA256SUMS pubblicato" || ok "m8k: nessun SHA256SUMS pubblicato"
+smoke_cont 4 1/0/1 "continuita' non dimostrabile"
+PRIMA_DEL_SIGILLO='chmod 000 "$OUT/drv"' sessione m8l F4 0/0/0 1/0/1 $((T + 2))
+rc_e om_sigilla $RC_SIGILLO 1; chmod 755 "$OUT/drv"
+[ -e "$OUT/SHA256SUMS" ] && no "m8l: SHA256SUMS pubblicato" || ok "m8l: nessun SHA256SUMS pubblicato"
+echo "SUMMARY: $nok ok, $nf errati"
+[ $nf = 0 ]

@@ -1,0 +1,317 @@
+/*
+ * stub.h -- Claude 01/11/2026: copia dello stub di banco-ripfix (30/10) estesa per lo stadio 11 (P3, parere #158 R1):
+ * campo gla2gpa_conteso del vCPU, uscite NESTED che segnalano CONTESO come nested_operand_conteso() (ripartenza
+ * dell'istruzione + vm_segnala_conteso), flag "vagante" impostato su un'uscita che non e' NESTED.
+ * Originale: Claude 30/10/2026, parere #135 §8. Ambiente minimo per compilare IN USERLAND le funzioni VERE estratte
+ * da sys/amd64/vmm/vmm.c dei due cloni (vm_run, vm_handle_inst_emul, vm_fatal_latch, vm_restart_instruction,
+ * vcpu_init). Tutto cio' che le funzioni chiamano e' uno stub che il banco pilota per scenario e conta.
+ */
+#include <errno.h>
+#include <setjmp.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+
+typedef unsigned long u_long;
+typedef unsigned int u_int;
+typedef uint64_t vm_paddr_t;
+typedef int cpuset_t;
+#define CPU_ISSET(i, s)		((*(s) >> (i)) & 1)
+#define KASSERT(c, m)		do { if (!(c)) { printf("KASSERT FALLITA: %s\n", #c); kassert_fallite++; } } while (0)
+#define VMM_CTR1(v, f, a)	do { } while (0)
+#define VMM_CTR2(v, f, a, b)	do { } while (0)
+#define SDT_PROBE6(...)		do { sdt_latch++; } while (0)
+/* #142 §4.1.5: la sonda del ritorno registra cio' che vedrebbe DTrace (vcpuid, nextrip, rip, inst_length, fatal.rip) */
+#define SDT_PROBE5(p, m, f, n, a0, a1, a2, a3, a4) do { sdt_ritorno++; sdt_r[0] = (a0); sdt_r[1] = (a1); \
+	sdt_r[2] = (a2); sdt_r[3] = (uint64_t)(int64_t)(a3); sdt_r[4] = (a4); } while (0)
+#ifndef __predict_false
+#define __predict_false(x)	(x)
+#endif
+#define __diagused
+#define PCPU_GET(x)		((void *)0)
+#define PCB_FULL_IRET		1
+#define PRI_USER		0
+#define PSL_I			0x200
+#define XFEATURE_ENABLED_X87	1
+#define X2APIC_DISABLED		0
+#define VIE_INST_SIZE		15
+#define DEFAULT_APIC_BASE	0xfee00000UL
+#define PAGE_SIZE		4096
+#define VIOAPIC_BASE		0xfec00000UL
+#define VIOAPIC_SIZE		4096
+#define VHPET_BASE		0xfed00000UL
+#define VHPET_SIZE		1024
+#define VM_OP_F_QEMU		(1 << 0)
+#define VM_OP_F_KIOAPIC		(1 << 1)
+
+static int kassert_fallite, sdt_latch, sdt_ritorno;
+static uint64_t sdt_r[5];
+
+enum vm_exitcode {
+	VM_EXITCODE_INOUT, VM_EXITCODE_VMX, VM_EXITCODE_BOGUS, VM_EXITCODE_RDMSR, VM_EXITCODE_WRMSR,
+	VM_EXITCODE_HLT, VM_EXITCODE_MTRAP, VM_EXITCODE_PAUSE, VM_EXITCODE_PAGING, VM_EXITCODE_INST_EMUL,
+	VM_EXITCODE_SPINUP_AP, VM_EXITCODE_DEPRECATED1, VM_EXITCODE_RENDEZVOUS, VM_EXITCODE_IOAPIC_EOI,
+	VM_EXITCODE_SUSPENDED, VM_EXITCODE_INOUT_STR, VM_EXITCODE_TASK_SWITCH, VM_EXITCODE_MONITOR,
+	VM_EXITCODE_MWAIT, VM_EXITCODE_SVM, VM_EXITCODE_REQIDLE, VM_EXITCODE_DEBUG, VM_EXITCODE_VMINSN,
+	VM_EXITCODE_BPT, VM_EXITCODE_IPI, VM_EXITCODE_DB, VM_EXITCODE_NESTED, VM_EXITCODE_MAX
+};
+enum vcpu_state { VCPU_IDLE, VCPU_FROZEN, VCPU_RUNNING, VCPU_SLEEPING };
+enum vm_cpu_mode { CPU_MODE_REAL, CPU_MODE_PROTECTED, CPU_MODE_COMPATIBILITY, CPU_MODE_64BIT };
+enum vm_reg_name { VM_REG_GUEST_RIP = 100 };
+enum { VCPU_TOTAL_RUNTIME, VMEXIT_USERSPACE };
+
+struct vie {
+	uint8_t inst[VIE_INST_SIZE];
+	uint8_t num_valid;
+	uint8_t num_processed;
+};
+struct vm_guest_paging {
+	enum vm_cpu_mode cpu_mode;
+};
+struct vm_exit {
+	enum vm_exitcode exitcode;
+	int inst_length;
+	uint64_t rip;
+	union {
+		struct {
+			uint64_t gpa, gla, cs_base;
+			int cs_d;
+			struct vie vie;
+			struct vm_guest_paging paging;
+		} inst_emul;
+		struct { uint64_t rflags; } hlt;
+		struct { int vector; } ioapic_eoi;
+	} u;
+};
+struct vm_fatal {
+	int errno_orig, stadio;
+	uint64_t rip, nextrip_old;
+	int inst_length;
+	uint64_t gpa, gla;
+	int ninst;
+	uint8_t inst[15];
+	int valide;
+};
+#define VM_FATAL_V_GPA		0x1
+#define VM_FATAL_V_GLA		0x2
+#define VM_FATAL_V_INST		0x4
+#define VIE_INVALID_GLA		(1UL << 63)
+#define VM_FATAL_FETCH		1
+#define VM_FATAL_EMUL		2
+#define VM_FATAL_NESTED_VEPT	3
+
+struct vm_eventinfo { void *rptr, *sptr, *iptr; };
+struct pcb { int f; };
+struct vm {
+	cpuset_t active_cpus, suspended_cpus, rendezvous_req_cpus;
+	int suspend, flags;
+	void *cookie;
+};
+struct vcpu {
+	struct vm *vm;
+	int vcpuid;
+	void *cookie, *vlapic, *guestfpu, *stats;
+	int reqidle, nmi_pending, extint_pending, exception_pending;
+	uint64_t exitintinfo, guest_xcr0, nextrip;
+	struct vm_exit exitinfo;
+	struct vm_fatal fatal;
+	bool gla2gpa_conteso;		/* stadio 11: VMM_VCPU_MD_FIELDS */
+};
+typedef struct pmap { cpuset_t pm_active; } *pmap_t;
+#define curcpu 0
+typedef int (*mem_region_read_t)(struct vcpu *, uint64_t, uint64_t *, int, void *);
+typedef int (*mem_region_write_t)(struct vcpu *, uint64_t, uint64_t, int, void *);
+
+/* contatori e scenario pilotati dal banco */
+static struct {
+	int entrate;			/* ingressi nel guest (vmmops_run) */
+	uint64_t rip_entrata[64];
+	int fetch_err, fetch_fault, decode_err, decode_len;
+	int emul_err;			/* errore restituito da vmm_emulate_instruction */
+	int emul_restart;		/* l'emulazione chiama vm_restart_instruction (REP, #PF, emu_viol) */
+	int emul_ipi;			/* l'emulazione trasforma l'uscita in IPI */
+	int emul_chiamate, effetti_mmio, emu_viol_registrate, emu_viol_consegnate, emu_viol_pendente;
+	int rcx;			/* REP: contatore, decrementato a ogni iterazione riuscita */
+	int rep_fallisce_a;		/* REP: l'iterazione (1-based) che fallisce, 0 = nessuna */
+	int hlt_err, ipi_gestiti, nested_bogus, nested_err;
+	int nested_resta;		/* #157 R1: l'uscita NESTED resta NESTED (istruzione VMX gestita, es. contesa) */
+	int cattura_panic, panici;	/* #157 R1: panic catturato (longjmp) invece di uscire */
+	long yield;			/* kern_yield chiamati */
+	int conteso_ogni;		/* stadio 11: l'uscita NESTED all'ingresso multiplo di N segnala CONTESO (1 = tutte) */
+	long conteso_segnalati;
+	int flag_vagante_a;		/* stadio 11: all'ingresso N (1-based) il flag si accende su un'uscita qualsiasi */
+	jmp_buf salto_panic;
+	enum vm_exitcode prossima[64];	/* uscita restituita all'ingresso i */
+	uint64_t gpa, gla;
+} sc;
+
+static uint64_t vm_rdtsc;
+static inline uint64_t rdtsc(void) { return (++vm_rdtsc); }
+static inline void critical_enter(void) {}
+static inline void critical_exit(void) {}
+static inline void set_pcb_flags(void *p, int f) { (void)p; (void)f; }
+static inline void restore_guest_fpustate(struct vcpu *v) { (void)v; }
+static inline void save_guest_fpustate(struct vcpu *v) { (void)v; }
+static enum vcpu_state stato = VCPU_FROZEN;
+static inline void vcpu_require_state(struct vcpu *v, enum vcpu_state s) { (void)v; stato = s; }
+static inline enum vcpu_state vcpu_get_state(struct vcpu *v, int *h) { (void)v; (void)h; return (stato); }
+static inline void vmm_stat_incr(struct vcpu *v, int s, uint64_t n) { (void)v; (void)s; (void)n; }
+static inline void kern_yield(int p) { (void)p; sc.yield++; }
+static inline void panic(const char *f, ...) { printf("PANIC %s\n", f); if (sc.cattura_panic) { sc.panici++; longjmp(sc.salto_panic, 1); } exit(9); }
+static inline void *vm_vmspace(struct vm *vm) { (void)vm; return (NULL); }
+static struct pmap pm;
+static inline pmap_t vmspace_pmap(void *v) { (void)v; return (&pm); }
+static inline const char *vm_name(struct vm *vm) { (void)vm; return ("banco"); }
+static inline int ppsratecheck(struct timeval *t, int *c, int m) { (void)t; (void)c; (void)m; return (0); }
+static inline void atomic_add_long(u_long *p, long v) { *p += v; }
+#define SYSCTL_ULONG(...)		struct sysctl_finto
+#define SDT_PROBE_DEFINE6(...)		struct sdt_finto
+#define SDT_PROBE_DEFINE5(...)		struct sdt_finto
+
+static inline int vm_get_register(struct vcpu *v, int r, uint64_t *val)
+{
+	(void)r;
+	*val = v->exitinfo.rip;		/* il registro RIP del guest e' quello dell'uscita */
+	return (0);
+}
+
+/* il "guest": a ogni ingresso registra il RIP di partenza e restituisce l'uscita dello scenario */
+static int vmmops_run(void *c, uint64_t rip, pmap_t p, struct vm_eventinfo *e)
+{
+	struct vcpu *v = c;
+	int i = sc.entrate;
+
+	(void)p; (void)e;
+	if (sc.emu_viol_pendente) {
+		sc.emu_viol_consegnate++;	/* L0 consegna l'evento all'L1 prima di rientrare */
+		sc.emu_viol_pendente = 0;
+	}
+	sc.rip_entrata[i < 64 ? i : 63] = rip;
+	sc.entrate++;
+	memset(&v->exitinfo, 0, sizeof(v->exitinfo));
+	v->exitinfo.rip = rip;
+	v->exitinfo.exitcode = sc.prossima[i < 64 ? i : 63];
+	if (v->exitinfo.exitcode == VM_EXITCODE_INST_EMUL || v->exitinfo.exitcode == VM_EXITCODE_NESTED) {
+		v->exitinfo.u.inst_emul.gpa = sc.gpa;
+		v->exitinfo.u.inst_emul.gla = sc.gla;
+	}
+	if (v->exitinfo.exitcode == VM_EXITCODE_HLT)
+		v->exitinfo.inst_length = 1;
+	if (v->exitinfo.exitcode == VM_EXITCODE_NESTED && sc.conteso_ogni)
+		v->exitinfo.inst_length = 3;	/* VMPTRLD & co.: senza ripartenza il RIP avanzerebbe */
+	if (sc.flag_vagante_a == sc.entrate)
+		v->gla2gpa_conteso = true;
+	return (0);
+}
+
+static int vmm_fetch_instruction(struct vcpu *v, struct vm_guest_paging *p, uint64_t rip, int n,
+    struct vie *vie, int *fault)
+{
+	(void)v; (void)p; (void)rip; (void)n;
+	*fault = sc.fetch_fault;
+	vie->num_valid = 3;
+	vie->inst[0] = 0x48; vie->inst[1] = 0xa5;
+	return (sc.fetch_err);
+}
+
+static int vmm_decode_instruction(struct vcpu *v, uint64_t gla, enum vm_cpu_mode m, int csd, struct vie *vie)
+{
+	(void)v; (void)gla; (void)m; (void)csd;
+	vie->num_processed = sc.decode_len;
+	return (sc.decode_err);
+}
+
+static int vm_restart_instruction(struct vcpu *vcpu);
+static void vm_segnala_conteso(struct vcpu *vcpu);
+static int vm_handle_ipi(struct vcpu *v, struct vm_exit *e, bool *retu) { (void)v; (void)e; sc.ipi_gestiti++; *retu = true; return (0); }
+
+static int vmm_emulate_instruction(struct vcpu *v, uint64_t gpa, struct vie *vie, struct vm_guest_paging *p,
+    mem_region_read_t mr, mem_region_write_t mw, bool *retu)
+{
+	(void)gpa; (void)vie; (void)p; (void)mr; (void)mw; (void)retu;
+	sc.emul_chiamate++;
+	if (sc.rep_fallisce_a) {		/* REP MOVS: un'iterazione per ingresso */
+		if (sc.emul_chiamate == sc.rep_fallisce_a) {
+			sc.effetti_mmio++;	/* lettura MMIO con effetti, poi la scrittura fallisce (R10d) */
+			return (EFAULT);
+		}
+		sc.effetti_mmio++;
+		sc.rcx--;			/* registri aggiornati solo dopo il successo */
+		if (sc.rcx != 0)
+			vm_restart_instruction(v);
+		return (0);
+	}
+	if (sc.emul_restart == 2) {		/* emu_viol (H2): evento per l'L1 e restart */
+		sc.emu_viol_registrate++;
+		sc.emu_viol_pendente = 1;
+		vm_restart_instruction(v);
+		return (sc.emul_err);		/* E18: errore insieme all'evento (impossibile nel codice vero) */
+	}
+	if (sc.emul_restart == 1) {		/* #PF iniettato: restart */
+		vm_restart_instruction(v);
+		return (0);
+	}
+	if (sc.emul_ipi) {
+		v->exitinfo.exitcode = VM_EXITCODE_IPI;
+		return (0);
+	}
+	if (sc.emul_err == 0)
+		sc.effetti_mmio++;		/* D scritta una volta */
+	else if (sc.emul_err == -EIO)
+		return (sc.effetti_mmio++, EIO);	/* effetto prodotto, poi errore (R10b/d) */
+	return (sc.emul_err);
+}
+
+static int lapic_mmio_read(struct vcpu *v, uint64_t g, uint64_t *r, int s, void *a) { (void)v; (void)g; (void)r; (void)s; (void)a; return (0); }
+static int lapic_mmio_write(struct vcpu *v, uint64_t g, uint64_t w, int s, void *a) { (void)v; (void)g; (void)w; (void)s; (void)a; return (0); }
+#define vioapic_mmio_read	lapic_mmio_read
+#define vioapic_mmio_write	lapic_mmio_write
+#define vhpet_mmio_read		lapic_mmio_read
+#define vhpet_mmio_write	lapic_mmio_write
+
+static int vm_handle_reqidle(struct vcpu *v, bool *r) { (void)v; *r = true; return (0); }
+static int vm_handle_suspend(struct vcpu *v, bool *r) { (void)v; *r = true; return (0); }
+static int vm_handle_rendezvous(struct vcpu *v) { (void)v; return (0); }
+static int vm_handle_hlt(struct vcpu *v, bool d, bool *r) { (void)v; (void)d; *r = true; return (sc.hlt_err); }
+static int vm_handle_paging(struct vcpu *v, bool *r) { (void)v; *r = true; return (0); }
+static int vm_handle_inout(struct vcpu *v, struct vm_exit *e, bool *r) { (void)v; (void)e; *r = true; return (0); }
+static int vm_handle_db(struct vcpu *v, struct vm_exit *e, bool *r) { (void)v; (void)e; *r = true; return (0); }
+static void vm_inject_ud(struct vcpu *v) { (void)v; }
+static void vioapic_process_eoi(struct vm *vm, int vec) { (void)vm; (void)vec; }
+static int vm_fatal_latch(struct vcpu *vcpu, int err, int stadio, uint64_t rip, uint64_t gpa, uint64_t gla,
+    const uint8_t *inst, int ninst, int valide);
+
+/* nested (solo il clone col nesting): modella il contratto della Fase C di nested_ept_slow */
+static int vmmops_nested_exit(void *c)
+{
+	struct vcpu *v = c;
+	struct vm_exit *e = &v->exitinfo;
+
+	if (sc.conteso_ogni && sc.entrate % sc.conteso_ogni == 0) {
+		sc.conteso_segnalati++;		/* nested_operand_conteso() dello stadio 11 */
+		vm_restart_instruction(v);
+		vm_segnala_conteso(v);
+		return (0);
+	}
+	if (sc.nested_resta)
+		return (0);			/* #157: istruzione VMX gestita, l'uscita resta NESTED */
+	if (sc.nested_err) {			/* VEPT_MMIO non emulabile */
+		if (!sc.nested_bogus) {
+			e->exitcode = VM_EXITCODE_BOGUS;
+			e->inst_length = 0;
+		}
+		return (vm_fatal_latch(v, EFAULT, VM_FATAL_NESTED_VEPT, e->rip, 0x40000000, 0, NULL, 0, VM_FATAL_V_GPA));
+	}
+	e->exitcode = VM_EXITCODE_INST_EMUL;	/* MMIO dell'L1 emulabile */
+	e->u.inst_emul.gpa = sc.gpa;
+	return (0);
+}
+
+static void *vmmops_vcpu_init(void *vm, struct vcpu *v, int id) { (void)vm; (void)id; return (v); }
+static void *vmmops_vlapic_init(void *c) { (void)c; return (NULL); }
+static void vm_set_x2apic_state(struct vcpu *v, int s) { (void)v; (void)s; }
+static void fpu_save_area_reset(void *f) { (void)f; }
+static void vmm_stat_init(void *s) { (void)s; }

@@ -1,0 +1,165 @@
+# opnd-manifest.sh -- Claude 31/10/2026, parere #168 par. 4. PRODUTTORE del manifest delle sessioni di
+# run-opnd-kut.sh, separato dall'orchestratore perche' il collaudo (test-opnd-manifest.sh) esegua QUESTO codice e dia
+# la sua uscita ai lettori veri (smoke-modulo.sh --continuita, vmm-residuo.sh --classifica-ritorno, opnd-verdetto.py).
+# Il file NON ha agganci di simulazione: il collaudo ridefinisce le o_* dopo averlo caricato; il runner no.
+#
+# Ciclo di vita di <out>/manifest.txt:
+#   om_apri       PRIMA dell'avvio: "sessione: APERTA", identita' (modulo caricato, hash, riga vm), "vm2 prima:",
+#                 "contatori prima:" (una lettura fallita = rc 1, nessun avvio), dmesg-prima, "avvio sessione: <T>"
+#   om_non_avviata <motivo>   l'avvio non e' avvenuto: "sessione: NON AVVIATA <motivo>", poi om_sigilla
+#   om_chiudi     DOPO la chiusura di driver e DTrace: una sola lettura dei tre contatori -> contatori.txt (3 righe) e
+#                 "contatori dopo:"; "vm2 dopo:"; dmesg-dopo/sessione; "sessione: CHIUSA"
+#   om_sigilla    per ULTIMO (dopo il VERDETTO): SHA256SUMS di tutti i file regolari; nulla si scrive dopo
+# Una sessione interrotta lascia "sessione: APERTA" senza "CHIUSA" e senza SHA256SUMS: riconoscibile, mai conclusa.
+# Ogni lettura fallita si scrive come "LETTURA FALLITA", mai come valore: i lettori la rifiutano.
+# Contatori, nell'ordine fisso del #168 par. 3: fatal_latches / nested_vept_mmio_unemulable / nested_operand_fatal
+
+OM_CONTATORI="hw.vmm.fatal_latches hw.vmm.vmx.nested_vept_mmio_unemulable hw.vmm.vmx.nested_operand_fatal"
+
+o_sysctl()     { /sbin/sysctl -n "$1" 2>/dev/null; }
+o_ora()        { /bin/date +%s; }
+o_sha()        { /sbin/sha256 -q "$1" 2>/dev/null; }
+o_nodi()       { /bin/ls /dev/vmm 2>/dev/null; }
+o_vm2_esiste() { [ -e /dev/vmm/vm2 ]; }
+o_vm2_ctime()  { /usr/bin/stat -f '%c' /dev/vmm/vm2 2>/dev/null; }
+o_vm2_memseg() { sudo -n /usr/sbin/bhyvectl --vm=vm2 --get-memseg 2>&1; }	# il rc conta
+o_dmesg()      { /sbin/dmesg 2>&1; }
+o_ppt()        { /usr/sbin/pciconf -l 2>&1 | /usr/bin/grep '^ppt'; }
+o_osrelease()  { /sbin/sysctl -n kern.osrelease 2>/dev/null; }
+o_figlio()     { /bin/pgrep -P "$1" -x "$2"; }		# il comando sotto sudo e' FIGLIO di sudo
+o_segnala()    { sudo -n /bin/kill -"$1" "$2"; }
+o_vivo()       { /bin/ps -p "$1" >/dev/null 2>&1; }	# kill -0 su un processo di root darebbe EPERM
+o_dormi()      { /bin/sleep "$1"; }
+OM_KLD_D=/mnt/linuxulator2/vm/nested-work/kld-loadcnt.d
+o_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s $OM_KLD_D vmm-restore.ko 2>&1; }
+
+# om_leggi_kld: OM_KLD="id=<n> loadcnt=<m>" del kld vmm-restore.ko (#168 par. 3: un ricaricamento dello STESSO file
+# cambia loadcnt, non per forza l'id). rc 1 se l'elenco non e' stato percorso per intero o la riga non e' unica.
+om_leggi_kld() {
+	om_t=$(o_kld_loadcnt)
+	OM_KLD=$(echo "$om_t" | sed -n 's/^KLD vmm-restore\.ko \(id=[0-9]* loadcnt=[0-9]*\)$/\1/p')
+	if [ "$(echo "$om_t" | grep -c '^KLD ')" = 1 ] && [ -n "$OM_KLD" ] && echo "$om_t" | grep -q '^FINE_ELENCO=si '; then return 0; fi
+	OM_KLD="LETTURA FALLITA: $(echo "$om_t" | tr '\n' ' ' | cut -c1-120)"; return 1
+}
+
+# om_leggi_contatori: una lettura dei tre; OM_K="a b c" e la riga nominativa in OM_KR. rc 1 se uno non e' numerico.
+om_leggi_contatori() {
+	OM_K=""; OM_KR=""; om_bad=""
+	for om_o in $OM_CONTATORI; do
+		om_v=$(o_sysctl $om_o)
+		case "$om_v" in ''|*[!0-9]*) om_bad="$om_bad ${om_o##*.}='$om_v'"; om_v=X;; esac
+		OM_K="${OM_K:+$OM_K }$om_v"; OM_KR="${OM_KR:+$OM_KR }${om_o##*.}=$om_v"
+	done
+	[ -z "$om_bad" ] && return 0
+	OM_KR="LETTURA FALLITA:$om_bad"; return 1
+}
+
+# om_apri <out>: le variabili d'identita' sono quelle del runner (PIANO MODO TMO MOD MOD_SHA MOD_BUILDID sig
+# OID_ATTESO CAR FLAT_SHA DRV_SHA VER_SHA OM_SCRIPT_SHA QEMU QEMU_SHA QEMU_VER MACCHINA LIBV LIBV_SHA VMCMD).
+# rc 0 = pronto all'avvio, T_AVVIO impostato; rc 1 = lettura iniziale fallita (chiamare om_non_avviata).
+om_apri() {
+	OM_OUT=$1; M=$1/manifest.txt
+	{
+		echo "sessione: APERTA"
+		echo "piano $PIANO modo $MODO timeout $TMO"
+		echo "modulo $MOD $MOD_SHA build-id $MOD_BUILDID oid $sig (atteso $OID_ATTESO)"
+		echo "modulo caricato: $CAR $(o_sha "$CAR")"
+		om_leggi_kld; echo "kld prima: $OM_KLD"
+		echo "flat $FLAT_SHA driver $DRV_SHA verdetto $VER_SHA script $OM_SCRIPT_SHA"
+		echo "qemu $QEMU $QEMU_SHA $QEMU_VER macchina $MACCHINA"
+		echo "libvmmapi risolta $LIBV $LIBV_SHA"
+		echo "vm: $VMCMD"
+		echo "kern.osrelease $(o_osrelease)"
+		echo "nested_shadow_vmcs $(o_sysctl hw.vmm.vmx.nested_shadow_vmcs)"	# parere Opus V1: deve essere 0
+		echo "nodi /dev/vmm: $(o_nodi | tr '\n' ' ')"
+		o_vm2_esiste && echo "vm2 prima: PRESENTE (ctime $(o_vm2_ctime))" || echo "vm2 prima: assente"
+		o_ppt
+	} > "$M"
+	grep -q '^kld prima: LETTURA FALLITA' "$M" && return 1
+	OM_KLD_PRIMA=$(sed -n 's/^kld prima: //p' "$M")
+	om_leggi_contatori; om_r=$?
+	echo "contatori prima: $OM_KR" >> "$M"
+	[ $om_r = 0 ] || return 1
+	OM_PRIMA=$OM_K
+	o_vm2_esiste && return 1		# il preflight esige /dev/vmm vuoto: qui si ricontrolla, mai una vm2 ereditata
+	o_dmesg > "$1/dmesg-prima.txt"
+	T_AVVIO=$(o_ora)
+	case "$T_AVVIO" in ''|*[!0-9]*) echo "avvio sessione: LETTURA FALLITA" >> "$M"; return 1;; esac
+	echo "avvio sessione: $T_AVVIO" >> "$M"
+	return 0
+}
+
+om_non_avviata() {	# <motivo>
+	echo "sessione: NON AVVIATA $1" >> "$OM_OUT/manifest.txt"
+	om_sigilla
+}
+
+# om_chiudi: da chiamare solo con driver e DTrace terminati. OM_VM2_ESTRANEA=1 se vm2 precede l'avvio;
+# OM_RICARICATO=1 se il kld non e' piu' l'istanza dell'apertura (o non si legge).
+om_chiudi() {
+	M=$OM_OUT/manifest.txt; OM_VM2_ESTRANEA=0; OM_RICARICATO=0
+	om_leggi_kld; echo "kld dopo: $OM_KLD" >> "$M"
+	[ "$OM_KLD" = "$OM_KLD_PRIMA" ] || { echo "ATTENZIONE: kld vmm-restore.ko non e' l'istanza dell'apertura ($OM_KLD_PRIMA -> $OM_KLD)" >> "$M"; OM_RICARICATO=1; }
+	if om_leggi_contatori; then
+		set -- $OM_PRIMA $OM_K
+		printf 'fatal_latches %s %s\nnested_vept_mmio_unemulable %s %s\nnested_operand_fatal %s %s\n' \
+		    "$1" "$4" "$2" "$5" "$3" "$6" > "$OM_OUT/contatori.txt"
+	fi
+	echo "contatori dopo: $OM_KR" >> "$M"
+	if o_vm2_esiste; then
+		om_c=$(o_vm2_ctime); om_m=$(o_vm2_memseg); om_mr=$?
+		case "$om_c" in ''|*[!0-9]*) om_mr=1;; esac
+		if [ $om_mr != 0 ]; then
+			echo "vm2 dopo: LETTURA FALLITA (ctime '$om_c', memseg rc $om_mr)" >> "$M"
+		else
+			echo "vm2 dopo: creata $om_c (avvio sessione $T_AVVIO) $(echo "$om_m" | tr -s ' \n' ' ')" >> "$M"
+			[ "$om_c" -ge "$T_AVVIO" ] || { echo "ATTENZIONE: vm2 NON creata da questa sessione ($om_c < $T_AVVIO)" >> "$M"; OM_VM2_ESTRANEA=1; }
+		fi
+	else
+		echo "vm2 dopo: assente" >> "$M"
+	fi
+	o_dmesg > "$OM_OUT/dmesg-dopo.txt"
+	/usr/local/bin/python3 - "$OM_OUT/dmesg-prima.txt" "$OM_OUT/dmesg-dopo.txt" > "$OM_OUT/dmesg-sessione.txt" <<'FINE_PY_DMESG_OM168'
+import sys, collections
+prima = collections.Counter(open(sys.argv[1], errors='replace').read().splitlines())
+for r in open(sys.argv[2], errors='replace').read().splitlines():
+	if prima[r] > 0:
+		prima[r] -= 1
+	else:
+		print(r)
+FINE_PY_DMESG_OM168
+	echo "dmesg della sessione: $(wc -l < "$OM_OUT/dmesg-sessione.txt" | tr -d ' ') righe nuove, $(grep -c 'istruzione non completabile' "$OM_OUT/dmesg-sessione.txt") del latch" >> "$M"
+	echo "sessione: CHIUSA" >> "$M"
+}
+
+# om_ferma_dtrace <pid di sudo> <secondi> [nome del figlio, default dtrace] (parere Opus H1).
+# `sudo kill -INT <pid di sudo>` NON ferma dtrace: sudo non inoltra i segnali del proprio gruppo di processi, e un job
+# asincrono di sh non interattivo ha SIGINT IGNORATO, che dtrace (installsighands, dtrace.c:1297) lascia ignorato. Si
+# segnala il FIGLIO con SIGTERM (non ignorato: dtrace vi installa intr -> END); attesa LIMITATA; poi SIGKILL,
+# ATTENZIONE nel manifest e OM_DT_FORZATO=1 (traccia incompleta: la sessione non vale). rc 1 se sudo resta vivo.
+om_ferma_dtrace() {
+	om_sp=$1; om_lim=$2; om_nome=${3:-dtrace}; OM_DT_FORZATO=0
+	om_fp=$(o_figlio "$om_sp" "$om_nome")
+	[ -n "$om_fp" ] && o_segnala TERM "$om_fp"
+	om_i=0
+	while o_vivo "$om_sp" && [ $om_i -lt $om_lim ]; do o_dormi 1; om_i=$((om_i + 1)); done
+	if o_vivo "$om_sp"; then
+		om_fp=$(o_figlio "$om_sp" "$om_nome")
+		[ -n "$om_fp" ] && o_segnala KILL "$om_fp"
+		echo "ATTENZIONE: $om_nome non terminato con SIGTERM in $om_lim s: SIGKILL (traccia incompleta)" >> "$OM_OUT/manifest.txt"
+		OM_DT_FORZATO=1
+		om_i=0
+		while o_vivo "$om_sp" && [ $om_i -lt 10 ]; do o_dormi 1; om_i=$((om_i + 1)); done
+		if o_vivo "$om_sp"; then
+			echo "ATTENZIONE: sudo $om_sp ancora vivo dopo SIGKILL a $om_nome" >> "$OM_OUT/manifest.txt"
+			return 1
+		fi
+	fi
+	wait "$om_sp" 2>/dev/null
+	return 0
+}
+
+om_sigilla() {	# ultimo atto: ogni file regolare (sonde, verdetto, drv/*), percorsi relativi e ordinati
+	(cd "$OM_OUT" && find . -type f ! -name 'SHA256SUMS*' | sed 's|^\./||' | sort | xargs sha256 -r > SHA256SUMS.n &&
+	    mv -f SHA256SUMS.n SHA256SUMS)
+}

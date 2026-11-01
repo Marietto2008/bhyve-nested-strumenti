@@ -1,0 +1,18 @@
+#!/bin/sh
+# run.sh -- Claude 31/10/2026, #169 R3. Estrae le funzioni VERE da <sorgente .inc> e compila/esegue il banco.
+# Uso: run.sh <opnd_test.c.inc> <cartella di uscita nuova>
+set -eu
+D=$(cd "$(dirname "$0")" && pwd); S=$1; O=$2
+[ -e "$O" ] && { echo "$O esiste"; exit 2; }
+mkdir -p "$O"
+{ echo "static bool opnd_fermo;"; /usr/local/bin/python3 "$D/estrai.py" "$S" opnd_prereq opnd_ferma opnd_carica opnd_stato | grep -v '^static bool opnd_fermo;'; } > "$O/estratte.c"
+cp "$D/stub.h" "$D/banco.c" "$O/"
+cc -Wall -Wno-unused-function -I "$O" -o "$O/banco" "$O/banco.c"
+"$O/banco" || exit 1
+# controlli statici sul sorgente (#169 R3): nessun caricamento preparatorio senza esito, nessun opnd_stato ignorato
+nk=$(grep -n 'make_vmcs_current(' "$S" | grep -vc 'if (make_vmcs_current(v))') || true
+ns=$(grep -n 'opnd_stato()' "$S" | grep -v 'if (!opnd_stato())' | grep -vc 'static bool opnd_stato(void)') || true
+st=0
+[ "$nk" = 0 ] && echo "  ok     statico: make_vmcs_current solo dentro opnd_carica" || { echo "  ERRATO statico: $nk make_vmcs_current senza esito"; st=1; }
+[ "$ns" = 0 ] && echo "  ok     statico: ogni opnd_stato() ha l'esito controllato" || { echo "  ERRATO statico: $ns opnd_stato() ignorati"; st=1; }
+exit $st

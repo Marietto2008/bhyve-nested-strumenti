@@ -1,0 +1,202 @@
+#!/bin/sh
+# run.sh (banco-opnd, rev. #161) -- Claude 30/10/2026, pareri #160-#161. Per ciascuno stadio salvato del clone r3
+# (0-r5, 1-R6, 2-R3, 3-R7, 4-m128, 5-wrap) estrae le funzioni VERE (vmx_nested_exit compresa), compila il banco e lo
+# esegue contro l'oracolo FINALE; verifica che gli errori di ogni stadio cadano solo su etichette corrette dalle patch
+# successive, o sui residui dichiarati R8 ed EPTP. Poi i mutanti sullo stadio 5, i sanitizer, la matrice vecchio->nuovo.
+# Uso: run.sh <cartella di uscita>
+W=/mnt/linuxulator2/vm/nested-work
+B=$W/banco-opnd
+ST=$W/logs/r6r3-160/stadi
+O=${1:?cartella}
+mkdir -p "$O" || exit 1
+CC="cc -std=gnu11 -Wall -Werror=switch -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
+FV="vm_segment_name vm_set_register vm_restart_instruction vm_fatal_latch vcpu_init vm_handle_inst_emul vm_copy_teardown vm_copy_setup vm_copyin vm_copyout vm_run"
+FN="--opzionali enum:nested_opnd nested_vmfail_invalid nested_advance_rip nested_canonical nested_operand_latch nested_operand_gpa_at nested_operand_gpa nested_operand_copy nested_read_operand_u64 nested_operand_fatale nested_fixed_ok nested_vmxon nested_vmclear nested_vmptrld nested_vmptrst nested_vmread nested_vmwrite nested_invvpid nested_invept vmx_nested_exit"
+nf=0
+
+# #161: vmx_nested_exit e' estratta ed ESEGUITA; il banco la chiama come la tabella delle operazioni di vmx.c
+grep -q '^[[:space:]]*\.nested_exit[[:space:]]*= vmx_nested_exit,' $W/freebsd-r3-nested/sys/amd64/vmm/intel/vmx.c || { echo "vmx.c: .nested_exit non e' vmx_nested_exit"; nf=$((nf+1)); }
+RES="R8 EPTP"	# residui dichiarati (fuori perimetro): ammessi a ogni stadio, contati
+
+prova() {	# prova <nome> <file funzioni>  -> esito in $O/<nome>/esito.txt, ritorno: 0 ok, 1 errati, 2 compilazione
+	mkdir -p "$O/$1"
+	cp "$B/stub.h" "$B/stub-nested.h" "$B/banco.c" "$O/$1/"; cp "$2" "$O/$1/funzioni.inc"
+	$CC -I"$O/$1" -o "$O/$1/banco" "$O/$1/banco.c" > "$O/$1/cc.txt" 2>&1 || return 2
+	"$O/$1/banco" "$1" > "$O/$1/esito.txt" 2>&1
+}
+for s in 0-r5 1-R6 2-R3 3-R7 4-m128 5-wrap; do
+	{ python3 $B/estrai.py $ST/$s/vmm.c $FV && python3 $B/estrai.py $ST/$s/vmx_nested.c $FN; } > "$O/fn-$s.inc" || { echo "estrazione $s fallita"; nf=$((nf+1)); continue; }
+	prova $s "$O/fn-$s.inc"; r=$?
+	[ $r = 2 ] && { echo "COMPILAZIONE FALLITA $s"; head -20 "$O/$s/cc.txt"; nf=$((nf+1)); continue; }
+	case $s in 0-r5) amm="R6 R3 R7 M128 WRAP";; 1-R6) amm="R3 R7 M128 WRAP";; 2-R3) amm="R7 M128 WRAP";; 3-R7) amm="M128 WRAP";; 4-m128) amm="WRAP";; 5-wrap) amm="";; esac
+	amm="$amm $RES"
+	# ogni riga ERRATO deve avere almeno un'etichetta ammessa a questo stadio
+	fuori=$(grep '  ERRATO ' "$O/$s/esito.txt" | while IFS= read -r l; do
+		t=$(echo "$l" | sed 's/.*ERRATO  \[\([^]]*\)\].*/\1/'); m=0
+		for x in $t; do case " $amm " in *" $x "*) m=1;; esac; done
+		[ $m = 1 ] || echo "$l"; done)
+	n=$(grep -c '  ERRATO ' "$O/$s/esito.txt")
+	echo "stadio $s: $(tail -1 $O/$s/esito.txt | sed 's/^[^:]*: //') -- etichette ammesse: ${amm:-nessuna}"
+	if [ -n "$fuori" ]; then echo "  ERRATO  stadio $s: errori fuori dalle etichette ammesse:"; echo "$fuori" | head -10; nf=$((nf+1)); fi
+	for x in $amm; do			# ogni patch successiva deve correggere QUALCOSA che qui e' visibile
+		case "$s:$x" in 0-r5:R6|0-r5:R3|1-R6:R3|2-R3:R7|3-R7:M128|4-m128:WRAP)
+			grep '  ERRATO ' "$O/$s/esito.txt" | grep -q "\[[^]]*$x" || { echo "  ERRATO  stadio $s: nessun errore $x (la patch $x non cambierebbe nulla?)"; nf=$((nf+1)); };;
+		esac
+	done
+	case $s in 0-r5) grep -q 'osservato PANIC_HOST' "$O/$s/esito.txt" && echo "  ok      stadio 0: PANIC_HOST visibile ($(grep -c 'osservato PANIC_HOST' $O/$s/esito.txt) casi)" || { echo "  ERRATO  stadio 0 senza PANIC_HOST"; nf=$((nf+1)); };; esac
+	case $s in 1-R6|2-R3|3-R7|4-m128|5-wrap) grep -q 'osservato PANIC_HOST' "$O/$s/esito.txt" && { echo "  ERRATO  stadio $s: PANIC_HOST"; nf=$((nf+1)); };; esac
+	case $s in 1-R6) grep -q 'osservato SALTO_SILENZIOSO' "$O/$s/esito.txt" || { echo "  ERRATO  stadio 1 senza SALTO"; nf=$((nf+1)); };; 2-R3|3-R7|4-m128|5-wrap) grep -q 'osservato SALTO_SILENZIOSO' "$O/$s/esito.txt" && { echo "  ERRATO  stadio $s: SALTO_SILENZIOSO"; nf=$((nf+1)); };; esac
+	if [ $s = 5-wrap ]; then		# lo stadio finale sbaglia SOLO sui residui dichiarati
+		nr=$(grep '  ERRATO ' "$O/$s/esito.txt" | grep -c '\[[^]]*\(R8\|EPTP\)')
+		echo "  info    stadio finale: $n errori, tutti sui residui dichiarati R8/EPTP: $nr"
+		[ "$n" = "$nr" ] || { echo "  ERRATO  stadio finale con errori fuori dai residui"; nf=$((nf+1)); }
+		grep '  ERRATO ' "$O/$s/esito.txt" | sed 's/^/          residuo: /'
+	fi
+done
+
+# mutanti sullo stadio 5: ognuno deve far fallire il banco con l'osservazione giusta (o la compilazione, se dichiarato);
+# "fallire" = una riga ERRATO in piu' rispetto ai residui, con l'osservazione attesa
+mut() {	# mut <nome> <atteso: testo nella riga ERRATO | COMPILAZIONE> <file: vmm|nested> <vecchio> <nuovo>
+	python3 - "$O/fn-5-wrap.inc" "$O/mut-$1.inc" "$4" "$5" <<'FINE_PY_MUTOPND'
+import sys
+s = open(sys.argv[1]).read()
+if s.count(sys.argv[3]) < 1:
+    sys.exit('testo del mutante assente: ' + sys.argv[3][:60])
+open(sys.argv[2], 'w').write(s.replace(sys.argv[3], sys.argv[4], 1))
+FINE_PY_MUTOPND
+	[ -s "$O/mut-$1.inc" ] || { echo "  ERRATO  mutante $1: non generato"; nf=$((nf+1)); return; }
+	prova "mut-$1" "$O/mut-$1.inc"; r=$?
+	if [ "$2" = COMPILAZIONE ]; then
+		if [ $r = 2 ] && grep -q 'Werror,-Wswitch\|-Werror=switch\|enumeration value' "$O/mut-$1/cc.txt"; then echo "  ok      mutante $1 preso dal compilatore (-Werror=switch)"
+		else echo "  ERRATO  mutante $1: atteso rifiuto del compilatore, uscita $r"; nf=$((nf+1)); fi; return
+	fi
+	if [ $r = 2 ]; then echo "  ERRATO  mutante $1: compilazione fallita"; head -5 "$O/mut-$1/cc.txt"; nf=$((nf+1))
+	elif [ $(grep -c '  ERRATO ' "$O/mut-$1/esito.txt") -le "$nr" ]; then echo "  ERRATO  mutante $1 NON preso"; nf=$((nf+1))
+	elif grep '  ERRATO ' "$O/mut-$1/esito.txt" | grep -q -- "$2"; then echo "  ok      mutante $1 preso ($(grep -c '  ERRATO ' $O/mut-$1/esito.txt) casi): $(grep '  ERRATO ' $O/mut-$1/esito.txt | grep -m1 -- "$2" | sed 's/.*: atteso/atteso/' | cut -c1-110)"
+	else echo "  ERRATO  mutante $1 preso ma non per \"$2\": $(grep -m1 '  ERRATO ' $O/mut-$1/esito.txt | cut -c1-140)"; nf=$((nf+1)); fi
+}
+mut ritorno_0_su_host_fatale 'FALSO_FAIL_STOP' n '	(void)vcpu;
+	return (ENOTRECOVERABLE);' '	(void)vcpu;
+	return (0);'
+mut gp_inventato_su_efault 'atteso FATALE/4, osservato ECCEZIONE#13' n '			(void)nested_operand_latch(vcpu, error,
+			    VM_FATAL_NESTED_OPERAND, gla[h], VM_FATAL_V_GLA);
+			return (NOPND_HOST_FATALE);' '			vm_inject_gp(vcpu->vcpu);
+			return (NOPND_INIETTATO);'
+mut ripartenza_su_efault 'GIRO_ILLIMITATO' n '			(void)nested_operand_latch(vcpu, error,
+			    VM_FATAL_NESTED_OPERAND, gla[h], VM_FATAL_V_GLA);
+			return (NOPND_HOST_FATALE);' '			vm_restart_instruction(vcpu->vcpu);
+			return (NOPND_INIETTATO);'
+mut latch_senza_rollback 'FATALE_SENZA_ROLLBACK' n '	vm_restart_instruction(vcpu->vcpu);	/* vCPU FROZEN: nextrip = RIP */' ''
+mut bogus_mancante 'KASSERT' n '	vme->exitcode = VM_EXITCODE_BOGUS;
+	vme->inst_length = 0;
+	atomic_add_long(&nested_operand_fatal, 1);' '	atomic_add_long(&nested_operand_fatal, 1);'
+mut latch_sul_pf_autentico 'atteso ECCEZIONE#14, osservato FALSO_HOST_FATALE' n '		if (fault) {			/* #PF iniettato da vm_gla2gpa */
+			vm_copy_teardown(ci, nitems(ci));
+			return (NOPND_INIETTATO);' '		if (fault) {			/* #PF iniettato da vm_gla2gpa */
+			vm_copy_teardown(ci, nitems(ci));
+			(void)nested_operand_latch(vcpu, EFAULT,
+			    VM_FATAL_NESTED_OPERAND, gla[h], VM_FATAL_V_GLA);
+			return (NOPND_HOST_FATALE);'
+mut senza_teardown 'RISORSE' n '	vm_copy_teardown(ci, nitems(ci));
+	return (NOPND_OK);' '	return (NOPND_OK);'
+mut seconda_pagina_non_tradotta 'EFFETTO_ERRATO' v '		gla += n;
+		nused++;' '		gla += 0;
+		nused++;'
+mut vmread32_otto_byte 'EFFETTO_ERRATO' n '	len = vcpu->nested->exit_paging.cpu_mode == CPU_MODE_64BIT ? 8 : 4;
+	if (len == 4)
+		val &= 0xffffffffULL;' '	len = 8;'
+mut esito_prima_della_copia 'EFFETTO_PARZIALE' n '	cur = n->current_vmcs12;		/* VMCS12_GPA_NONE se nessuno */' '	cur = n->current_vmcs12;		/* VMCS12_GPA_NONE se nessuno */
+	nested_vmx_result(vcpu, VMXR_SUCCEED);'
+mut k3_assente 'K3_BYPASS' v '	if (vcpu->fatal.errno_orig != 0)
+		return (ENOTRECOVERABLE);' ''
+mut sonda_doppia 'FATALE_SONDE' n '	SDT_PROBE5(vmm, vmx, nested, opndfatal, vcpu->vcpuid, stadio, err,' '	SDT_PROBE5(vmm, vmx, nested, opndfatal, vcpu->vcpuid, stadio, err,
+	    vme->rip, 0);
+	SDT_PROBE5(vmm, vmx, nested, opndfatal, vcpu->vcpuid, stadio, err,'
+mut getdesc_silenzioso 'atteso FATALE/5, osservato SALTO_SILENZIOSO' n '		(void)nested_operand_latch(vcpu, error, VM_FATAL_NESTED_SEGDESC, 0, 0);
+		return (NOPND_HOST_FATALE);' '		return (NOPND_INIETTATO);'
+mut m128_tipo_dopo_lettura 'M128' n '	if (type > 3 || (cap & (1ULL << (40 + type))) == 0) {
+		nested_vmx_result(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
+		nested_advance_rip(vcpu);
+		return (0);
+	}
+	switch (nested_operand_copy(vcpu, VM_PROT_READ, 0, q, sizeof(q))) {
+	case NOPND_OK:
+		break;
+	case NOPND_INIETTATO:
+		return (0);
+	case NOPND_HOST_FATALE:
+		return (nested_operand_fatale(vcpu));
+	}' '	switch (nested_operand_copy(vcpu, VM_PROT_READ, 0, q, sizeof(q))) {
+	case NOPND_OK:
+		break;
+	case NOPND_INIETTATO:
+		return (0);
+	case NOPND_HOST_FATALE:
+		return (nested_operand_fatale(vcpu));
+	}
+	if (type > 3 || (cap & (1ULL << (40 + type))) == 0) {
+		nested_vmx_result(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
+		nested_advance_rip(vcpu);
+		return (0);
+	}'
+mut gla_non_valida_dichiarata 'FATALE_DIAGNOSI' n '			    VM_FATAL_NESTED_OPERAND, gla[h], VM_FATAL_V_GLA);
+			return (NOPND_HOST_FATALE);' '			    VM_FATAL_NESTED_OPERAND, 0, VM_FATAL_V_GLA);
+			return (NOPND_HOST_FATALE);'
+mut vmread32_registro_non_troncato 'EFFETTO_ERRATO(VMREAD registro)' n '	if (len == 4)
+		val &= 0xffffffffULL;
+
+	if ((info >> 10) & 0x1) {' '
+	if ((info >> 10) & 0x1) {'
+mut vmwrite32_registro_non_troncato 'EFFETTO_ERRATO(VMWRITE registro)' n '		val = vmx_get_guest_reg(vcpu, (info >> 3) & 0xf);
+		if (len == 4)
+			val &= 0xffffffffULL;' '		val = vmx_get_guest_reg(vcpu, (info >> 3) & 0xf);'
+mut nessuna_pretraduzione 'atteso ECCEZIONE#14, osservato FATALE/4' n '	for (h = 0; nh == 2 && h < nh; h++) {' '	for (h = 0; 0 && h < nh; h++) {'
+mut dispatch_vmptrst_ritorna_0 'FALSO_FAIL_STOP' n '	case EXIT_REASON_VMPTRST:	return (nested_vmptrst(vcpu));' '	case EXIT_REASON_VMPTRST:	(void)nested_vmptrst(vcpu); return (0);'
+mut prefisso_senza_statistiche 'PREFISSO' n '	if (vcpu->nested != NULL)
+		nested_stats_flush(vcpu);' ''
+mut caso_host_fatale_dimenticato COMPILAZIONE n '	switch (nested_operand_copy(vcpu, VM_PROT_WRITE, 0, &cur, sizeof(cur))) {
+	case NOPND_OK:
+		break;
+	case NOPND_INIETTATO:
+		return (0);
+	case NOPND_HOST_FATALE:
+		return (nested_operand_fatale(vcpu));
+	}' '	switch (nested_operand_copy(vcpu, VM_PROT_WRITE, 0, &cur, sizeof(cur))) {
+	case NOPND_OK:
+		break;
+	case NOPND_INIETTATO:
+		return (0);
+	}'
+# sanitizer (indirizzi e comportamento indefinito) sullo stadio finale: stesso esito, nessun rapporto
+mkdir -p "$O/asan"; cp "$B/stub.h" "$B/stub-nested.h" "$B/banco.c" "$O/asan/"; cp "$O/fn-5-wrap.inc" "$O/asan/funzioni.inc"
+if $CC -g -fsanitize=address,undefined -fno-omit-frame-pointer -I"$O/asan" -o "$O/asan/banco" "$O/asan/banco.c" > "$O/asan/cc.txt" 2>&1; then
+	ASAN_OPTIONS=detect_leaks=0 "$O/asan/banco" asan > "$O/asan/esito.txt" 2>&1
+	if grep -q 'AddressSanitizer\|runtime error' "$O/asan/esito.txt"; then echo "  ERRATO  sanitizer:"; grep -m5 'AddressSanitizer\|runtime error' "$O/asan/esito.txt"; nf=$((nf+1))
+	elif [ "$(tail -1 $O/asan/esito.txt | sed 's/^[^:]*://')" != "$(tail -1 $O/5-wrap/esito.txt | sed 's/^[^:]*://')" ]; then echo "  ERRATO  sanitizer: esito diverso"; nf=$((nf+1))
+	else echo "  ok      sanitizer address+undefined: nessun rapporto, stesso esito ($(tail -1 $O/asan/esito.txt | sed 's/^[^:]*: //'))"; fi
+else echo "  ERRATO  sanitizer: compilazione fallita"; head -5 "$O/asan/cc.txt"; nf=$((nf+1)); fi
+
+# matrice vecchio (r5, il modulo caricato) -> nuovo (stadio 5), per istruzione
+"$O/0-r5/banco" r5 -v > "$O/v-0.txt" 2>&1; "$O/5-wrap/banco" nuovo -v > "$O/v-5.txt" 2>&1
+python3 - "$O/v-0.txt" "$O/v-5.txt" > "$O/matrice-vecchio-nuovo.txt" <<'FINE_PY_MATRICE'
+import sys, re, collections
+def leggi(f):
+    d = []
+    for l in open(f):
+        m = re.match(r'  (?:ok     |ERRATO ) \[[^]]*\] (\S+)\s+(\S+)( reg)? (.*): atteso (.*), osservato (.*)$', l)
+        if m: d.append(((m.group(1), m.group(2) + (m.group(3) or '')), m.group(4), re.sub(r'[ (].*', '', m.group(6))))
+    return d
+v, n = leggi(sys.argv[1]), leggi(sys.argv[2])
+assert len(v) == len(n) and all(a[1] == b[1] for a, b in zip(v, n)), 'casi non allineati'
+t = collections.OrderedDict()
+for a, b in zip(v, n):
+    t.setdefault(a[0], collections.Counter())[(a[2], b[2])] += 1
+print('matrice vecchio (r5 = modulo caricato) -> nuovo (stadio 5), %d casi; "=" = invariato' % len(v))
+for k, c in t.items():
+    print('%s %s:' % k)
+    for (x, y), q in sorted(c.items(), key=lambda e: -e[1]):
+        print('   %4d  %-22s -> %s' % (q, x, '=' if x == y else y))
+FINE_PY_MATRICE
+[ -s "$O/matrice-vecchio-nuovo.txt" ] && echo "  ok      matrice vecchio->nuovo: $O/matrice-vecchio-nuovo.txt ($(head -1 $O/matrice-vecchio-nuovo.txt | grep -o '[0-9]* casi'))" || { echo "  ERRATO  matrice non prodotta"; nf=$((nf+1)); }
+echo "banco-opnd: errori $nf"
+[ $nf = 0 ]

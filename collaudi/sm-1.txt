@@ -1,0 +1,121 @@
+A: C1 (primo caricamento)
+  ok      a1 rc=2
+  ok      a1: 'firma OID 11011'
+  ok      a1: 'le 4 sonde del latch, ESATTAMENTE'
+  ok      a1: 'hw.vmm.vmx.nested_operand_fatal = 0 (C1'
+  ok      a1: 'SMOKE stadio9: COERENTE SIMULATO'
+  ok      a1: 0 controlli falliti
+  ok      a2 rc=4
+  ok      a2: 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko''
+  ok      a3 rc=4
+  ok      a3: 'firma OID 11010 non e' quella di stadio9'
+  ok      a3: 2 controlli falliti
+  ok      a4 rc=4
+  ok      a4: 'hw.vmm.vmx.nested_operand_fatal = '1' (C1 esige 0'
+  ok      a4: 1 controlli falliti
+  ok      a5 rc=4
+  ok      a5: 'sonde del latch'
+  ok      a5: 1 controlli falliti
+  ok      a6 rc=4
+  ok      a6: 1 controlli falliti
+  ok      a7 rc=4
+  ok      a7: 'NON compila'
+  ok      a7: 1 controlli falliti
+  ok      a8 rc=4
+  ok      a8: 'sha del file /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko diverso'
+  ok      a9 rc=4
+  ok      a9: 'dtrace in esecuzione'
+  ok      a9: 1 controlli falliti
+B: non regressione delle altre identita'
+  ok      b1 rc=2
+  ok      b1: 'firma OID 11010'
+  ok      b1: 'le 3 sonde del latch, ESATTAMENTE'
+  ok      b1: nessun 'nested_operand_fatal'
+  ok      b1: 0 controlli falliti
+  ok      b2 rc=4
+  ok      b2: 'sonde del latch'
+  ok      b2: 1 controlli falliti
+  ok      b3 rc=2
+  ok      b3: 'firma OID 00000'
+  ok      b3: 'nessuna sonda del latch'
+  ok      b3: 0 controlli falliti
+  ok      b4 rc=4
+  ok      b4: 'sonde del latch col modulo originale'
+  ok      b4: 1 controlli falliti
+C: --continuita (sessione SINTETICA nel formato di run-opnd-kut.sh)
+  ok      k1 rc=2
+  ok      k1: 'sessione di riferimento integra (3 file conformi), modulo stadio9 nel manifest'
+  ok      k1: 'hw.vmm.fatal_latches = 1 (= valore finale'
+  ok      k1: 'hw.vmm.vmx.nested_operand_fatal = 1 (= valore finale'
+  ok      k1: 'hw.vmm.vmx.nested_vept_mmio_unemulable = 0 (= valore finale'
+  ok      k1: 0 controlli falliti
+  ok      k2 rc=4
+  ok      k2: 'la sessione di riferimento chiudeva a 1: cambiato'
+  ok      k2: 1 controlli falliti
+  ok      k3 rc=4
+  ok      k3: 'non registra i contatori finali'
+  ok      k4 rc=4
+  ok      k4: 'non registra l'avvio della sessione'
+  ok      k5 rc=4
+  ok      k5: 'diverso dal suo SHA256SUMS'
+  ok      k6 rc=4
+  ok      k6: 'dopo l'avvio della sessione'
+  ok      k7 rc=4
+  ok      k7: 'l'ultimo scambio del diario non porta a /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok      k8 rc=4
+  ok      k8: 'il manifest non registra il modulo'
+  ok      k9 rc=2
+  ok      k9: 'sessione di riferimento integra (2 file conformi), modulo ripfix-nested nel manifest'
+  ok      k9: 'hw.vmm.fatal_latches = 1 (= valore finale'
+  ok      k9: 'hw.vmm.vmx.nested_vept_mmio_unemulable = 0 (= valore finale'
+  ok      k9: nessun 'nested_operand_fatal'
+  ok      k9: 0 controlli falliti
+  ok      k10 rc=4
+  ok      k10: 'hw.vmm.vmx.nested_vept_mmio_unemulable = '3', la sessione di riferimento chiudeva a 0'
+  ok      k10: 1 controlli falliti
+  ok      k11 rc=4
+  ok      k11: 'il manifest non registra il modulo'
+D: #168 -- sessione non conclusa o manifest non sigillato
+  ok      k12 rc=4
+  ok      k12: 'sessione non conclusa'
+  ok      k13 rc=4
+  ok      k13: 'sessione non conclusa'
+  ok      k14 rc=4
+  ok      k14: 'il manifest non e' fra i file sigillati'
+D2: #168 par. 3 -- istanza del kld (loadcnt)
+  ok      k15 rc=4
+  ok      k15: 'modulo RICARICATO dopo la sessione'
+  ok      k16 rc=4
+  ok      k16: 'non registra un'unica istanza del kld'
+D3: #169 -- il sigillo deve coprire TUTTI i file della sessione
+  ok      k17 rc=4
+  ok      k17: 'sigillo incompleto: file non sigillati ['aggiunto.txt']'
+  ok      k18 rc=4
+  ok      k18: 'sigillo incompleto: file non sigillati'
+F: stadio 10 (stessi oid, sonde e contatori dello stadio 9; identita' per percorso e sha)
+  ok      f1 rc=2
+  ok      f1: 'firma OID 11011'
+  ok      f1: 'le 4 sonde del latch, ESATTAMENTE'
+  ok      f1: 'nested_operand_fatal = 0 (C1'
+  ok      f1: 0 controlli falliti
+  ok      f2 rc=4
+  ok      f2: 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko''
+  ok      f3 rc=2
+  ok      f3: 'modulo stadio10 nel manifest'
+  ok      f3: 0 controlli falliti
+  ok      f4 rc=4
+  ok      f4: 'il manifest non registra il modulo'
+G: l'ombra deve essere tornata a 0 (passata A-shadow)
+  ok      g1 rc=4
+  ok      g1: 'nested_shadow_vmcs = '1' (atteso 0'
+  ok      g1: 1 controlli falliti
+  ok      g2 rc=2
+  ok      g2: 'nested_shadow_vmcs = 0'
+E: l'esito simulato non vale mai 0
+  ok      e1 rc=2
+  ok      e1: 'SIMULATO (SM_FINTO: non vale come evidenza)'
+  ok      u1 rc=4
+  ok      u1: 'uso:'
+  ok      u2 rc=4
+  ok      u2: 'uso:'
+SUMMARY: 111 ok, 0 errati

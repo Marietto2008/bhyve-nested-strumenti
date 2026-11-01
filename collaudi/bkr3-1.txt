@@ -1,0 +1,32 @@
+  ok     percorso completo: esito 1, diario 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST LOAD PTRST '
+OPND PREREQ VMCLEAR del VMCS di lavoro prima del riuso -> ERRATO
+  ok     fallisce 1 (CLEAR): esito 0 fermo 1 PREREQ 1 diario 'CLEAR ' atteso 'CLEAR '
+OPND PREREQ VMCLEAR del VMCS di lavoro nuovo -> ERRATO
+  ok     fallisce 3 (CLEAR): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR ' atteso 'CLEAR MEMSET CLEAR '
+OPND PREREQ VMPTRLD del VMCS di lavoro -> ERRATO
+  ok     fallisce 4 (LOAD): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD ' atteso 'CLEAR MEMSET CLEAR LOAD '
+OPND PREREQ GUEST_RIP sentinella nel VMCS di lavoro -> ERRATO
+  ok     fallisce 5 (WRITE): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE '
+OPND PREREQ GUEST_RIP sentinella nel VMCS di lavoro -> ERRATO
+  ok     fallisce 6 (READ): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE READ ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE READ '
+OPND PREREQ VMCLEAR del VMCS corrente: VMPTRST non da' 'nessun VMCS corrente' -> ERRATO
+  ok     fallisce 7 (CLEAR): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR '
+OPND PREREQ VMCLEAR del VMCS corrente: VMPTRST non da' 'nessun VMCS corrente' -> ERRATO
+  ok     fallisce 8 (PTRST): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST '
+OPND PREREQ VMCS del framework di nuovo corrente -> ERRATO
+  ok     fallisce 9 (LOAD): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST LOAD ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST LOAD '
+OPND PREREQ VMCS del framework di nuovo corrente: VMPTRST diverso -> ERRATO
+  ok     fallisce 10 (PTRST): esito 0 fermo 1 PREREQ 1 diario 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST LOAD PTRST ' atteso 'CLEAR MEMSET CLEAR LOAD WRITE READ CLEAR PTRST LOAD PTRST '
+OPND PREREQ VMCLEAR del VMCS di lavoro prima del riuso -> ERRATO
+  ok     CLEAR prima del riuso fallito: nessun memset del VMCS di lavoro
+OPND PREREQ VMPTRLD del VMCS di lavoro -> ERRATO
+  ok     VMPTRLD fallito: nessuna VMWRITE
+OPND PREREQ VMCLEAR del VMCS di lavoro prima del riuso -> ERRATO
+  ok     dopo il fermo: esito falso e nessuna operazione
+  ok     primo uso: niente CLEAR di riuso
+OPND PREREQ prova -> ERRATO
+  ok     opnd_carica fallita: esito falso, fermo, PREREQ
+  ok     opnd_carica riuscita
+SUMMARY: 16 ok, 0 errati
+  ok     statico: make_vmcs_current solo dentro opnd_carica
+  ok     statico: ogni opnd_stato() ha l'esito controllato

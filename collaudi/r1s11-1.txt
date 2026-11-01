@@ -1,0 +1,13 @@
+banco R1 stadio 11 (s11-vero)
+PANIC nested: loop su VM_EXITCODE_NESTED (vcpu%d rip=%#lx count=%u)
+  info    R1c: contesa persistente -> nessun panic, BOGUS a userland dopo 4096 ingressi (kern_yield 63), istruzione mai avanzata
+PANIC nested: loop su VM_EXITCODE_NESTED (vcpu%d rip=%#lx count=%u)
+  info    R1d: 2002 contese intercalate non azzerano il conteggio: panic dopo 2002002 ingressi (2.000.000 veri)
+PANIC nested: loop su VM_EXITCODE_NESTED (vcpu%d rip=%#lx count=%u)
+s11-vero: 6 ok, 0 errati
+  ok      mutante senza_conversione preso da R1c
+  ok      mutante segnale_ignorato preso da R1c
+  ok      mutante conteso_azzera_i_cicli preso da R1d
+  ok      mutante flag_non_spento preso da R1e
+  ok      mutante conversione_di_ogni_uscita preso da R1f
+banco R1 stadio 11: errori 0

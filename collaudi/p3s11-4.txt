@@ -1,0 +1,13 @@
+banco P3 stadio 11 (s11-vero)
+  info    L: i chiamanti legacy (vm_gla2gpa) non vedono il limite: 1000 corse perse finiscono, la contesa persistente non torna
+  info    B1: contesa persistente -> CONTESO dopo 64 ripartenze: ret 0, fault 0, nessuna pagina tenuta, nessuna eccezione
+s11-vero: 19 ok, 0 errati
+  ok      mutante senza_limite preso da B1
+  ok      mutante limite_anche_legacy preso da L1
+  ok      mutante codifica_respinta preso da B1
+  ok      mutante contatore_fermo preso da B1
+  ok      mutante fuori_di_uno preso da B3
+  ok      mutante fuori_di_uno_largo preso da B4
+  ok      mutante limite_zero_attivo preso da B7
+  ok      mutante copia_tiene_pagine preso da C1
+banco P3 stadio 11: errori 0

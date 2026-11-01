@@ -1,0 +1,83 @@
+#!/bin/sh
+# Claude 23/10/2026 -- parere #33 §3: i buchi dell'orologio di WSL2 durante l'I/O.
+# Una sessione di Windows a 4 VP (1 socket x 4 core, vept_keep=1, retry 1, verifica HPA),
+# tre prove da D secondi: A = I/O su ext4, B = I/O su /mnt/c, C = solo il campionatore
+# in WSL e I/O NTFS fatto da Windows. Timeline su tre orologi:
+#  - Linux: gapmon (buchi, stato del thread, schedstat, PSI) + sched_switch/wakeup;
+#  - FreeBSD: gaphost.d (vCPU senza ingressi in L2 > 200 ms, thread vCPU fuori CPU),
+#    win-lat.d (rinvii degli interrupt dell'L1);
+#  - Windows: perf.ps1 (contatori ogni secondo), iogen.log (prova C).
+# Allineamento: SYNC UDP Linux<->FreeBSD (tsecho.py) e scarto di Windows misurato via
+# SSH all'inizio e alla fine di ogni prova (WINOFF, incertezza = mezzo RTT).
+D=${1:-480}
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+O=$B/logs/gap9p-$(date +%Y%m%d-%H%M); mkdir -p "$O"
+H=IP-HOST
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+ms() { python3 -c 'import time; print(time.time_ns() // 1000000)'; }
+woff() {	# scarto dell'orologio di Windows rispetto all'host
+	a=$(ms); x=$(w "powershell -NoProfile -Command [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()" | tr -dc '0-9'); b=$(ms)
+	echo "WINOFF $1 host_prima=$a windows=$x host_dopo=$b scarto_ms=$(( x - (a + b) / 2 )) incertezza_ms=$(( (b - a) / 2 ))" | tee -a "$O/winoff.txt"
+}
+task() {	# task <nome> <comando powershell>: lanciato nella sessione dell'utente
+	w "schtasks /create /tn $1 /tr \"$2\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn $1 >nul"
+}
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 hw.vmm.vmx.vept_test_race=0 >/dev/null
+python3 "$C/tsecho.py" 7123 "$O/tsecho.txt" &
+TS=$!
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s "$T/gaphost.d" -o "$O/gaphost.txt" 2>"$O/gaphost.err" &
+sudo -n dtrace -s "$T/win-lat.d" -o "$O/lat.txt" 2>"$O/lat.err" &
+sleep 4
+sudo -n sh "$N/${VMS:-12-Windows-11-vm12-senza-gpu-4core}" > "$O/script.log" 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; kill $TS; exit 1; }
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; done
+echo "ssh pronto dopo circa $i s"
+w "schtasks /delete /tn claude-vita /f & schtasks /delete /tn claude-clk /f" > /dev/null 2>&1
+sleep 90
+w "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors | Format-List | Out-String).Trim()\"" | tee "$O/topologia.txt"
+for f in gapmon.c gapdiag.sh iogen.ps1 perf.ps1; do cpw "$C/$f" marietto@win11:"C:/claude/faseA/$f"; done
+# PRE=1: prima delle prove, nella stessa sessione, una compilazione -j4 (i buchi sono
+# comparsi finora solo dopo un carico pesante)
+if [ "${PRE:-0}" = 1 ]; then
+	echo "######## carico prima delle prove $(date +%T)"
+	sh "$C/kb-ab.sh" GAPPRE kbuild4.sh 2>&1 | /usr/bin/grep -E "^real|kernel rc|bhyve CPU"
+	sleep 30
+fi
+for M in A B C; do
+	echo "######## prova $M $(date +%T)"
+	woff "$M-inizio"
+	task claude-perf "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\perf.ps1 -M $M -Sec $D"
+	if [ "$M" = C ]; then
+		task claude-iogen "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\iogen.ps1 -Sec $((D - 60))"
+	fi
+	printf '%s' "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/gapdiag.sh > /root/gapdiag.sh; bash /root/gapdiag.sh $M $D $H'" > "$O/args-$M.txt"
+	cpw "$O/args-$M.txt" marietto@win11:'C:/claude/wsl-args.txt'
+	w "del C:\\claude\\faseA\\gap-$M.log 2>nul & del C:\\claude\\wsl-log.txt 2>nul" > /dev/null
+	task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+	k=0
+	until cpw marietto@win11:"C:/claude/faseA/gap-$M.log" "$O/gap-$M.log" 2>/dev/null && /usr/bin/grep -q GAP-FINE "$O/gap-$M.log"; do
+		pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+		sleep 20; k=$((k+1)); [ $k -gt $((D / 20 + 60)) ] && { echo "prova $M non finita"; break; }
+	done
+	woff "$M-fine"
+	for f in "gapmon-$M.txt" "gap-$M-trace.txt" "perf-$M.csv"; do cpw marietto@win11:"C:/claude/faseA/$f" "$O/$f" 2>/dev/null; done
+	[ "$M" = C ] && cpw marietto@win11:'C:/claude/faseA/iogen.log' "$O/iogen.log" 2>/dev/null
+	echo "prova $M: buchi $(/usr/bin/grep -c '^BUCO' "$O/gapmon-$M.txt" 2>/dev/null), errori io $(/usr/bin/grep -c 'ERRORE' "$O/gap-$M.log")"
+	/usr/bin/grep -E "^BUCO" "$O/gapmon-$M.txt" 2>/dev/null | sort -t' ' -k2 -n -r | head -5
+	sleep 30
+done
+w "schtasks /delete /tn claude-perf /f & schtasks /delete /tn claude-iogen /f" > /dev/null 2>&1
+w "shutdown /s /t 0" >/dev/null 2>&1
+i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+sleep 3
+sudo -n pkill -TERM -f "gaphost.d|win-lat.d"; kill $TS
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+echo "shadow dopo: $(sysctl -n hw.vmm.vmx.vept_shadow_pages)"
+sudo -n sysctl hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 >/dev/null
+echo "OUTPUT $O"

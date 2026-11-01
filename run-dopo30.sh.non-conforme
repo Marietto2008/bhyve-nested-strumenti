@@ -1,0 +1,23 @@
+#!/bin/sh
+# Claude 22/10/2026 -- parere #30: controllo kut rapido, retry 2 contro retry 1 su
+# Windows, poi la serie di stabilita' (12 avvii, retry 1, verifica HPA).
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+O=$B/logs/dopo30-$(date +%Y%m%d-%H%M); mkdir -p $O
+echo "######## kut rapido $(date +%T)"
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_test_race=0 >/dev/null
+/usr/bin/grep -E '^b1_casi' $N/kut-b1.list > $O/rapido.list
+cat $N/kut-invept.list $N/kut-immexit.list | /usr/bin/grep -v '^#' >> $O/rapido.list
+sudo -n sh $N/kut-run.sh --nested $O/rapido.list 2>&1 | /usr/bin/grep -E "PASS|FAIL|TIMEOUT|ERR"
+/usr/bin/grep -E '^b1_race' $N/kut-b1.list > $O/race.list
+sudo -n sysctl hw.vmm.vmx.vept_test_race=1 >/dev/null
+sudo -n sh $N/kut-run.sh --nested $O/race.list 2>&1 | /usr/bin/grep -E "PASS|FAIL|TIMEOUT|ERR"
+sudo -n sysctl hw.vmm.vmx.vept_test_race=0 hw.vmm.vmx.vept_keep=0 >/dev/null
+for c in "R2 2" "R1 1"; do
+	set -- $c
+	echo "######## Windows $1 (vept_scan_retries=$2) $(date +%T)"
+	sh $B/run-b1win.sh 1 0 $1 $2 2>&1 | /usr/bin/grep -E "^real|kernel rc|bhyve CPU|cumulativo|spegnimento|OUTPUT|NON|USCITO|^   "
+	sleep 30
+done
+echo "######## serie di stabilita' $(date +%T)"
+sh $B/run-serie-b1.sh 12 2>&1 | tail -16
+echo "######## FINE $(date +%T)"

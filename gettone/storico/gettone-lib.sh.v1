@@ -1,0 +1,39 @@
+# gettone-lib.sh -- Claude 31/10/2026, parere Opus sull'incidente, par. 3.2. PREPARATO OFFLINE, NON INSTALLATO.
+# Il consenso dell'utente come CAPACITA' verificata dal sistema. Il gettone e' un file di root (/var/run/claude-gettone,
+# root:wheel 0644) creato SOLO da vmm-gettone, che sudo concede con la PASSWORD dell'utente. Il wrapper root vmm-azione
+# esegue un'operazione d'host solo se gettone_valido dice si'. Formato (una chiave per riga, nessun'altra riga):
+#   gettone 1
+#   creato <epoch>            scade <epoch>          (durata massima 12 ore)
+#   elenco <sha256 di APPROVATI-sequenza.sha256>
+#   passi <op>[,<op>...]      fra: scambio distruggi ombra avvio-vm
+#   sequenza <descrizione libera>
+GETTONE_DURATA_MAX=43200
+GETTONE_OPS="scambio distruggi ombra avvio-vm"
+# gettone_valido <file> <operazione> <sha dell'elenco attuale> <ora epoch> <uid proprietario atteso: 0 in produzione>
+# stampa il motivo del rifiuto; ritorna 0 solo se TUTTO torna
+gettone_valido() {
+	gf=$1; gop=$2; gsha=$3; gora=$4; guid=$5
+	[ -f "$gf" ] && [ ! -L "$gf" ] || { echo "gettone assente"; return 1; }
+	set -- $(/usr/bin/stat -f '%u %Lp' "$gf")
+	[ "$1" = "$guid" ] || { echo "gettone di uid $1, atteso $guid"; return 1; }
+	case "$2" in 644|640|600|444|440|400) ;; *) echo "permessi del gettone $2: scrivibile da altri"; return 1;; esac
+	[ "$(/usr/bin/grep -c '' "$gf")" = 6 ] || { echo "gettone di $(/usr/bin/grep -c '' "$gf") righe, attese 6"; return 1; }
+	for k in gettone creato scade elenco passi sequenza; do
+		[ "$(/usr/bin/grep -c "^$k " "$gf")" = 1 ] || { echo "chiave '$k' assente o ripetuta"; return 1; }
+	done
+	gv=$(/usr/bin/sed -n 's/^gettone //p' "$gf"); gc=$(/usr/bin/sed -n 's/^creato //p' "$gf"); gs=$(/usr/bin/sed -n 's/^scade //p' "$gf")
+	ge=$(/usr/bin/sed -n 's/^elenco //p' "$gf"); gp=$(/usr/bin/sed -n 's/^passi //p' "$gf")
+	[ "$gv" = 1 ] || { echo "versione del gettone '$gv'"; return 1; }
+	case "$gc$gs" in *[!0-9]*|'') echo "date non numeriche"; return 1;; esac
+	[ "$gc" -le "$gora" ] || { echo "gettone creato nel futuro"; return 1; }
+	[ "$gora" -lt "$gs" ] || { echo "gettone SCADUTO"; return 1; }
+	[ $((gs - gc)) -le $GETTONE_DURATA_MAX ] || { echo "durata oltre il massimo"; return 1; }
+	echo "$ge" | /usr/bin/grep -qx '[0-9a-f]\{64\}' || { echo "sha dell'elenco malformato"; return 1; }
+	[ "$ge" = "$gsha" ] || { echo "l'elenco degli strumenti e' cambiato dopo il gettone ($gsha, gettone $ge)"; return 1; }
+	for o in $(echo "$gp" | /usr/bin/tr ',' ' '); do
+		case " $GETTONE_OPS " in *" $o "*) ;; *) echo "operazione sconosciuta nel gettone: $o"; return 1;; esac
+	done
+	case ",$gp," in *",$gop,"*) ;; *) echo "operazione '$gop' non autorizzata dal gettone ($gp)"; return 1;; esac
+	echo "gettone valido per '$gop' fino a $gs"
+	return 0
+}

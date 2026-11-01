@@ -1,0 +1,298 @@
+/*
+ * stub-nested.h -- Claude 30/10/2026, parere #160. Il lato nested del banco-opnd: lo stato VMX dell'L1, la MMU
+ * dell'L1 (due pagine P0/P1 su GPA NON contigui, esito per pagina), la memoria del guest con hold/release contati e
+ * il controllo incondizionato di _vm_gpa_hold (sys/dev/vmm/vmm_mem.c:489-491), e il dispatch di vmx_nested_exit
+ * (riprodotto: run.sh verifica nel sorgente che ogni caso sia "return (nested_xxx(vcpu));").
+ */
+#define nitems(a)		(sizeof(a) / sizeof((a)[0]))
+#define min(a, b)		((a) < (b) ? (a) : (b))
+#define bzero(p, n)		memset((p), 0, (n))
+#define bcopy(s, d, n)		memmove((d), (s), (n))
+#define PAGE_MASK		(PAGE_SIZE - 1)
+#define VM_PROT_READ		1
+#define VM_PROT_WRITE		2
+#define PROT_READ		VM_PROT_READ
+#define PROT_WRITE		VM_PROT_WRITE
+#define ENOTRECOVERABLE_BANCO	ENOTRECOVERABLE
+#define PSL_C	0x001
+#define PSL_PF	0x004
+#define PSL_AF	0x010
+#define PSL_Z	0x040
+#define PSL_N	0x080
+#define PSL_V	0x800
+#define CR4_VMXE	0x2000
+#define IA32_FEATURE_CONTROL_LOCK	0x1
+#define IA32_FEATURE_CONTROL_VMX_EN	0x4
+#define VMCS_CR0_MASK		0x6000
+#define VMCS_CR0_SHADOW		0x6004
+#define VMCS_CR4_MASK		0x6002
+#define VMCS_CR4_SHADOW		0x6006
+#define VMX_NESTED_MAX_VMCS12	4
+#define VMCS12_GPA_NONE		(~0ULL)
+#define VMXR_SUCCEED		0
+#define VMXERR_VMCLEAR_INVALID_ADDRESS		2
+#define VMXERR_VMCLEAR_VMXON_POINTER		3
+#define VMXERR_VMPTRLD_INVALID_ADDRESS		9
+#define VMXERR_VMPTRLD_VMXON_POINTER		10
+#define VMXERR_VMPTRLD_INCORRECT_REVISION	11
+#define VMXERR_UNSUPPORTED_VMCS_COMPONENT	12
+#define VMXERR_VMXON_IN_VMX_ROOT		15
+#define VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID 28
+#define VMCS12_OP_SAVE_EVICT	1
+#define VMCS12_OP_SAVE_VMCLEAR	2
+#define INVVPID_TYPE_SINGLE_CONTEXT	1
+#define NESTED_FIELD_HIGH(f)	(((f) & 1) != 0)
+enum { VMX_NESTED_VMFAIL, VMX_NESTED_VMFAIL_INVALID, VMX_NESTED_INVEPT_SINGLE, VMX_NESTED_INVEPT_ALL,
+	VMX_NESTED_VEPT_WIPED };
+enum { EXIT_REASON_VMCLEAR = 19, EXIT_REASON_VMPTRLD = 21, EXIT_REASON_VMPTRST = 22, EXIT_REASON_VMREAD = 23,
+	EXIT_REASON_VMWRITE = 25, EXIT_REASON_VMXON = 27, EXIT_REASON_INVEPT = 50, EXIT_REASON_INVVPID = 53 };
+/* sbintime_t e sbttons vengono da <sys/time.h> (userland); sbinuptime e' solo del kernel */
+static inline sbintime_t sbinuptime(void) { return (0); }
+
+struct seg_desc { uint64_t base; uint32_t limit; uint32_t access; };
+struct vm_copyinfo { uint64_t gpa; size_t len; void *hva; void *cookie; };
+struct invvpid_desc { uint16_t vpid; uint16_t _res1; uint32_t _res2; uint64_t linear_addr; };
+struct vmcs12_cache { uint64_t vmcs12_gpa; int launched, nfields; bool control_dirty, host_dirty; uint64_t campo; };
+struct vmx_nested {
+	bool vmxon, last_vpid12_ok;
+	uint64_t exit_qual, exit_insn_info, exit_insn_length;
+	struct vm_guest_paging exit_paging;
+	uint64_t vmxon_ptr, current_vmcs12, feature_control;
+	struct vmcs12_cache cache[VMX_NESTED_MAX_VMCS12];
+	int evict_next;
+	uint64_t vmx_msr[0x20];
+	uint16_t vpid2;
+	int vpid02_off, vpid_track;
+};
+struct vmx_vcpu { struct vcpu *vcpu; struct vmx_nested *nested; int vcpuid; uint64_t gpr[16]; };
+
+static u_long nested_operand_fatal, nested_invept_ns_sum, nested_invept_ns_max, vpid02_invvpid_l1insn;
+static int cpu_maxphyaddr = 39;
+
+/* --- la scena dell'operando, pilotata dal banco */
+enum { PG_OK, PG_PF, PG_EFAULT, PG_NOBACK, PG_RO };	/* esito della traduzione di una pagina dell'L1 */
+#define MEMSZ		0x20000
+#define GPA_P0		0x5000		/* P0 -> 0x5000, P1 -> 0x9000: NON contigui */
+#define GPA_P1		0x9000
+#define GPA_NOBACK	0x40000		/* oltre la memoria: vm_gpa_hold -> NULL */
+static uint8_t mem[MEMSZ] __attribute__((aligned(4096)));
+static struct {
+	int motivo;			/* EXIT_REASON_* dell'istruzione VMX */
+	uint64_t gla;			/* indirizzo lineare dell'operando */
+	uint64_t pag[2];		/* pagine dell'L1: P0 = trunc(gla), P1 = P0 + 4K */
+	int esito[2];			/* PG_* per pagina */
+	int getdesc_err;
+	uint32_t limite;		/* limite di segmento (0 = nessuno) */
+	int seg;			/* registro di segmento dell'operando (3 = DS, 2 = SS) */
+	int holds, hold_max_len_fuori;	/* hold aperti; hold oltre la pagina (= panic) */
+	int tradotte[2];		/* traduzioni per pagina */
+	int eccezioni, vettore;		/* eccezioni iniettate e l'ultima */
+	int risultati, vmfail;		/* nested_vmx_result chiamate; VMfail dati */
+	int invvpid_hw, invept_chiamate;
+	uint64_t invept_eptp;
+	int panici;
+	char panic_msg[128];
+	jmp_buf salto;			/* panic dell'host o giro illimitato */
+	int giro_illimitato;
+	int ecc_ingresso;		/* eccezioni gia' viste all'ultimo ingresso */
+} op;
+static struct vmx_vcpu xv;
+static struct vmx_nested nn;
+
+/* --- la memoria del guest */
+static void *vm_gpa_hold(struct vcpu *v, uint64_t gpa, size_t len, int prot, void **cookie)
+{
+	(void)v; (void)prot;
+	/* lo stesso controllo, incondizionato, di _vm_gpa_hold (sys/dev/vmm/vmm_mem.c:489-491) */
+	if (len > PAGE_SIZE - (gpa & PAGE_MASK)) {
+		op.panici++;
+		snprintf(op.panic_msg, sizeof(op.panic_msg), "vm_gpa_hold: invalid gpa/len: 0x%016lx/%lu",
+		    (u_long)gpa, (u_long)len);
+		longjmp(op.salto, 1);
+	}
+	if (gpa + len > MEMSZ)
+		return (NULL);
+	op.holds++;
+	*cookie = (void *)(mem + gpa);
+	return (mem + gpa);
+}
+static void vm_gpa_release(void *cookie) { (void)cookie; op.holds--; }
+
+/* --- iniezioni: come vm_inject_exception con restart_instruction=1 (vmm.c:1816) */
+static void inietta(struct vcpu *v, int vec) { op.eccezioni++; op.vettore = vec; vm_restart_instruction(v); }
+static void vm_inject_ud(struct vcpu *v) { inietta(v, 6); }
+static void vm_inject_gp(struct vcpu *v) { inietta(v, 13); }
+static void vm_inject_ss(struct vcpu *v, int e) { (void)e; inietta(v, 12); }
+static void vm_inject_pf(struct vcpu *v, int e, uint64_t cr2) { (void)e; v->regs[VM_REG_GUEST_CR2] = cr2; inietta(v, 14); }
+
+/* --- la MMU dell'L1: contratto di vm_gla2gpa (0/0 tradotto, 0/1 eccezione iniettata, EFAULT errore dell'host) */
+static int vm_gla2gpa(struct vcpu *v, struct vm_guest_paging *p, uint64_t gla, int prot, uint64_t *gpa, int *fault)
+{
+	uint64_t pg = gla & ~(uint64_t)PAGE_MASK;
+	int i = pg == op.pag[0] ? 0 : pg == op.pag[1] ? 1 : -1;
+
+	(void)p;
+	*fault = 0;
+	if (i < 0) {
+		printf("  BANCO: traduzione di una pagina fuori scena %#lx\n", (u_long)gla);
+		return (EFAULT);
+	}
+	op.tradotte[i]++;
+	switch (op.esito[i]) {
+	case PG_RO:
+		if ((prot & VM_PROT_WRITE) == 0)
+			goto ok;
+		/* FALLTHROUGH: scrittura su pagina di sola lettura */
+	case PG_PF:
+		vm_inject_pf(v, 0, gla);
+		*fault = 1;
+		return (0);
+	case PG_EFAULT:
+		return (EFAULT);	/* es. una tabella dell'L1 su un GPA senza memoria (ptp_hold NULL) */
+	case PG_NOBACK:
+		*gpa = GPA_NOBACK + (gla & PAGE_MASK);
+		return (0);
+	}
+ok:
+	*gpa = (i == 0 ? GPA_P0 : GPA_P1) + (gla & PAGE_MASK);
+	return (0);
+}
+/* scrittura/lettura dell'L1 per indirizzo lineare, attraverso la stessa mappa (solo il banco) */
+static uint8_t *l1byte(uint64_t gla)
+{
+	uint64_t pg = gla & ~(uint64_t)PAGE_MASK;
+
+	return (mem + (pg == op.pag[0] ? GPA_P0 : GPA_P1) + (gla & PAGE_MASK));
+}
+
+/* --- segmenti */
+static enum vm_reg_name vm_segment_name(int s);
+static int vmx_getdesc(void *x, int reg, struct seg_desc *d)
+{
+	(void)x; (void)reg;
+	memset(d, 0, sizeof(*d));
+	return (op.getdesc_err);
+}
+/*
+ * vie_calculate_gla: come il vero per cio' che conta qui (KASSERT sulla lunghezza 1/2/4/8, limite di segmento,
+ * troncamento a addrsize); base 0, nessun controllo di canonicita' (il vero non lo fa in modo 64 bit).
+ */
+static int vie_calculate_gla(enum vm_cpu_mode m, enum vm_reg_name seg, struct seg_desc *d, uint64_t off, int len,
+    int asz, int prot, uint64_t *gla)
+{
+	(void)m; (void)seg; (void)d; (void)prot;
+	KASSERT(len == 1 || len == 2 || len == 4 || len == 8, ("vie_calculate_gla: invalid operand size"));
+	if (op.limite != 0 && off + len - 1 > op.limite)
+		return (-1);
+	*gla = asz == 8 ? off : asz == 4 ? (off & 0xffffffffULL) : (off & 0xffff);
+	return (0);
+}
+
+/* --- registri generali e stato VMX */
+static uint64_t vmx_get_guest_reg(struct vmx_vcpu *x, int ident) { return (x->gpr[ident]); }
+static void vmx_set_guest_reg(struct vmx_vcpu *x, int ident, uint64_t v) { x->gpr[ident] = v; }
+static struct vm_exit *vm_exitinfo(struct vcpu *v) { return (&v->exitinfo); }
+static struct vmcs12_cache *nested_current_cache(struct vmx_nested *n)
+{
+	for (int i = 0; i < VMX_NESTED_MAX_VMCS12; i++)
+		if (n->current_vmcs12 != VMCS12_GPA_NONE && n->cache[i].vmcs12_gpa == n->current_vmcs12)
+			return (&n->cache[i]);
+	return (NULL);
+}
+/* semplificata (fuori perimetro): VMsucceed spegne i flag aritmetici, VMfailValid accende ZF, VMfailInvalid CF */
+static void nested_vmx_result(struct vmx_vcpu *x, int errnum)
+{
+	uint64_t r;
+
+	op.risultati++;
+	vm_get_register(x->vcpu, VM_REG_GUEST_RFLAGS, &r);
+	r &= ~(uint64_t)(PSL_C | PSL_PF | PSL_AF | PSL_Z | PSL_N | PSL_V);
+	if (errnum != VMXR_SUCCEED) {
+		op.vmfail++;
+		r |= nested_current_cache(x->nested) != NULL ? PSL_Z : PSL_C;
+	}
+	vm_set_register(x->vcpu, VM_REG_GUEST_RFLAGS, r);
+}
+static uint64_t nested_guest_cr(struct vmx_vcpu *x, int reg, uint32_t m, uint32_t s)
+{
+	(void)x; (void)m; (void)s;
+	return (reg == VM_REG_GUEST_CR4 ? CR4_VMXE : 0x80000021);
+}
+static void shvmcs_set_current(struct vmx_nested *n, struct vmcs12_cache *c) { (void)n; (void)c; }
+static void shvmcs_mark(struct vmx_nested *n, struct vmcs12_cache *c, uint32_t f) { (void)n; (void)c; (void)f; }
+static int vmcs12_mem_save(struct vmx_vcpu *x, struct vmcs12_cache *c, int l, int o) { (void)x; (void)c; (void)l; (void)o; return (0); }
+static int vmcs12_mem_clear(struct vmx_vcpu *x, uint64_t g) { (void)x; (void)g; return (0); }
+static int vmcs12_mem_load(struct vmx_vcpu *x, struct vmcs12_cache *c) { (void)x; (void)c; return (0); }
+static void vmcs12_slot_reset(struct vmcs12_cache *c, uint64_t g) { memset(c, 0, sizeof(*c)); c->vmcs12_gpa = g; }
+static void nested_bitmaps_unmap(struct vmcs12_cache *c) { (void)c; }
+static void invvpid(uint64_t t, struct invvpid_desc d) { (void)t; (void)d; op.invvpid_hw++; }
+static void nested_vpid02_request(struct vmx_nested *n) { (void)n; }
+#define CAMPO_BANCO	0x6800u			/* il solo campo VMCS12 del banco (naturale, 64 bit) */
+static bool nested_field_ok(struct vmx_vcpu *x, uint32_t f) { (void)x; return (f == CAMPO_BANCO); }
+static uint64_t nested_field_mask(uint32_t f) { (void)f; return (~0ULL); }
+static uint64_t vmcs12_read_field(struct vmcs12_cache *c, uint32_t f) { (void)f; return (c->campo); }
+static int vmcs12_write_field(struct vmcs12_cache *c, uint32_t f, uint64_t v) { (void)f; c->campo = v; return (0); }
+static int vmx_vept_invept(struct vmx_vcpu *x, uint64_t t, uint64_t eptp, int *kept)
+{
+	(void)x; (void)t;
+	op.invept_chiamate++;
+	op.invept_eptp = eptp;
+	*kept = 0;
+	return (0);
+}
+
+/* prototipi delle funzioni estratte (l'ordine nel .inc e' quello dell'estrazione) */
+int vm_set_register(struct vcpu *vcpu, int reg, uint64_t val);
+static int vmmops_setreg(void *c, int reg, uint64_t val) { ((struct vmx_vcpu *)c)->vcpu->regs[reg] = val; return (0); }
+static int nested_operand_gpa_at(struct vmx_vcpu *vcpu, int prot, uint64_t add, uint64_t *gpa);
+static int nested_vmxon(struct vmx_vcpu *), nested_vmclear(struct vmx_vcpu *), nested_vmptrld(struct vmx_vcpu *),
+    nested_vmptrst(struct vmx_vcpu *), nested_vmread(struct vmx_vcpu *), nested_vmwrite(struct vmx_vcpu *),
+    nested_invvpid(struct vmx_vcpu *), nested_invept(struct vmx_vcpu *);
+
+/* --- il guest: ingresso 0 = l'istruzione VMX (uscita NESTED); dopo, un'uscita che torna a userland (INOUT) */
+#define RIP0	0x1000
+#define LEN	5
+static void *vmmops_vcpu_init(void *vm, struct vcpu *v, int id) { (void)vm; (void)id; xv.vcpu = v; xv.nested = &nn; return (&xv); }
+static int vmmops_run(void *c, uint64_t rip, pmap_t p, struct vm_eventinfo *e)
+{
+	struct vcpu *v = ((struct vmx_vcpu *)c)->vcpu;
+	int i = sc.entrate;
+
+	(void)p; (void)e;
+	sc.rip_entrata[i < 64 ? i : 63] = rip;
+	if (++sc.entrate > 5000) {		/* il kernel vero arriverebbe al panic di nested_loops (2.000.000) */
+		op.giro_illimitato = 1;
+		longjmp(op.salto, 2);
+	}
+	memset(&v->exitinfo, 0, sizeof(v->exitinfo));
+	v->exitinfo.rip = rip;
+	v->regs[VM_REG_GUEST_RIP] = rip;	/* RIP del VMCS all'uscita */
+	/*
+	 * Un'eccezione iniettata dall'ultimo ingresso viene CONSEGNATA: l'L1 va al suo gestore (che qui esce verso
+	 * userland). Senza eccezione, a RIP0 l'istruzione VMX si riesegue (una ripartenza senza causa gira).
+	 */
+	if (rip == RIP0 && op.eccezioni == op.ecc_ingresso) {	/* l'istruzione VMX: esce NESTED (vmx.c:4267) */
+		v->exitinfo.exitcode = VM_EXITCODE_NESTED;
+		v->exitinfo.inst_length = LEN;
+	} else
+		v->exitinfo.exitcode = VM_EXITCODE_INOUT;
+	op.ecc_ingresso = op.eccezioni;
+	return (0);
+}
+/* il dispatch di vmx_nested_exit (run.sh verifica che nel sorgente sia lo stesso, caso per caso) */
+static int vmmops_nested_exit(void *c)
+{
+	struct vmx_vcpu *vcpu = c;
+
+	switch (op.motivo) {
+	case EXIT_REASON_VMXON:		return (nested_vmxon(vcpu));
+	case EXIT_REASON_VMCLEAR:	return (nested_vmclear(vcpu));
+	case EXIT_REASON_VMPTRLD:	return (nested_vmptrld(vcpu));
+	case EXIT_REASON_VMPTRST:	return (nested_vmptrst(vcpu));
+	case EXIT_REASON_VMREAD:	return (nested_vmread(vcpu));
+	case EXIT_REASON_VMWRITE:	return (nested_vmwrite(vcpu));
+	case EXIT_REASON_INVVPID:	return (nested_invvpid(vcpu));
+	case EXIT_REASON_INVEPT:	return (nested_invept(vcpu));
+	}
+	return (EINVAL);
+}

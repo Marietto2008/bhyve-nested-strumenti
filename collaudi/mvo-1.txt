@@ -1,0 +1,11 @@
+  ok      mutante ombra_apertura preso: opnd f123_errore_senza_riga opnd ombra_apertura_0 
+  ok      mutante ombra_chiusura preso: opnd f123_errore_senza_riga opnd ombra_chiusura_1 
+  ok      mutante ombra_ingressi preso: opnd f123_errore_senza_riga opnd ombra_senza_ingressi opnd ombra_sonda_assente 
+  ok      mutante ombra_spento preso: opnd f123_errore_senza_riga opnd ombra_lasciata_spenta opnd ombra_vmclear_fallito 
+  ok      mutante ombra_guasto preso: opnd f123_errore_senza_riga opnd ombra_guasto_vm_fermata 
+  ok      mutante normale_valori preso: opnd f123_errore_senza_riga opnd normale_apertura_1 opnd normale_chiusura_1 
+  ok      mutante normale_ingressi preso: opnd f123_errore_senza_riga opnd normale_con_ingressi opnd f4_con_ingressi_ombra 
+  ok      mutante normale_messaggi preso: opnd f123_errore_senza_riga opnd normale_messaggio_ombra 
+  ok      mutante modo_piano preso: opnd f123_errore_senza_riga opnd f4_con_modo_esegui opnd f123_con_modo_d 
+  ok      mutante manifest_righe preso: opnd f123_errore_senza_riga opnd ombra_chiusura_illeggibile opnd manifest_senza_riga_chiusura 
+mutanti del verdetto: errori 0

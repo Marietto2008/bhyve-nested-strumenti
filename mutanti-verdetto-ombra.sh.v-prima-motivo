@@ -1,0 +1,34 @@
+#!/bin/sh
+# mutanti-verdetto-ombra.sh -- Claude 31/10/2026, parere Opus C1. Un mutante per ogni regola del contratto dell'ombra e
+# del modo in opnd-verdetto.py; test-verdetti.py, puntato sul verdetto mutato, deve FALLIRE. Uso: <cartella nuova>
+set -u
+. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+B=/mnt/linuxulator2/vm/nested-work; O=${1:?cartella}
+[ -e "$O" ] && { echo "$O esiste"; exit 2; }
+mkdir -p "$O"; nf=0
+mut() {	# mut <nome> <vecchio> <nuovo>
+	/usr/local/bin/python3 - "$B/opnd-verdetto.py" "$O/$1.py" "$2" "$3" <<'FINE_PY_MV'
+import sys
+s = open(sys.argv[1]).read()
+if s.count(sys.argv[3]) != 1: sys.exit('testo assente o non unico: ' + sys.argv[3][:60])
+open(sys.argv[2], 'w').write(s.replace(sys.argv[3], sys.argv[4]))
+FINE_PY_MV
+	[ -s "$O/$1.py" ] || { echo "  ERRATO  mutante $1 non generato"; nf=$((nf+1)); return; }
+	sed "s|B + '/opnd-verdetto.py'|'$O/$1.py'|" "$B/test-verdetti.py" > "$O/tv-$1.py"
+	if /usr/local/bin/python3 "$O/tv-$1.py" "$O/out-$1" > "$O/$1.txt" 2>&1; then echo "  ERRATO  mutante $1 NON preso"; nf=$((nf+1))
+	else echo "  ok      mutante $1 preso: $(grep 'ERRATO ' $O/$1.txt | grep -o 'opnd [a-z0-9_]*' | head -3 | tr '\n' ' ')"; fi
+}
+mut ombra_apertura "		if ap[0] != '1':" "		if 0:"
+mut ombra_chiusura "		if ch[0] != '0':" "		if 0:"
+mut ombra_ingressi "		if shv <= 0:" "		if 0:"
+mut ombra_spento "		if spento:
+			inc.append" "		if 0:
+			inc.append"
+mut ombra_guasto "		if guasto:" "		if 0:"
+mut normale_valori "		if ap[0] != '0' or ch[0] != '0':" "		if 0:"
+mut normale_ingressi "		if shv != 0:" "		if 0:"
+mut normale_messaggi "		if spento or guasto:" "		if 0:"
+mut modo_piano "	elif (piano == 'F4') != (modo == '--esegui-d') or" "	elif 0 and"
+mut manifest_righe "	if len(ap) != 1 or len(ch) != 1:" "	if 0:"
+echo "mutanti del verdetto: errori $nf"
+[ $nf = 0 ]

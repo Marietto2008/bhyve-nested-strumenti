@@ -1,0 +1,14 @@
+# PROPOSTA (non installata) -- Claude 31/10/2026, parere Opus par. 3.2. Da decidere dall'utente.
+# Oggi: [regola sudoers omessa]  -> qualunque codice che gira come marietto agisce senza chiedere.
+# Proposta: togliere [omesso] e lasciare [omesso] solo per il wrapper e per le LETTURE usate dagli strumenti.
+Defaults!/usr/local/sbin/vmm-gettone timestamp_timeout=0
+marietto ALL=(root) PASSWD: /usr/local/sbin/vmm-gettone
+marietto ALL=(root) [omesso] /usr/local/sbin/vmm-azione
+marietto ALL=(root) [omesso] /usr/sbin/dtrace, /usr/bin/fstat, /usr/bin/ldd, /usr/sbin/bhyvectl --vm=* --get-memseg, /bin/kill
+[regola sudoers omessa]
+# ATTENZIONE, da risolvere prima: in sudoers `*` negli argomenti copre anche gli spazi (`--vm=vm2 --destroy
+# --get-memseg` combacia), e `/bin/kill` come root non e' una lettura. Le letture vanno portate anch'esse dietro
+# un wrapper con elenco chiuso (vmm-lettura), come vmm-azione.
+# NB: il driver della KUT (sudo python3 kut-drive.py) e le VM della campagna vanno portati sotto vmm-azione (avvio-vm)
+# prima di togliere [omesso]; anche i lavori di Claude Code che oggi usano sudo per altro (build, zfs, Cubie)
+# chiederebbero la password. E' il prezzo della separazione.

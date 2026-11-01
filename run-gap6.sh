@@ -1,0 +1,170 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-gap6.sh.non-conforme
+echo "INERTE: run-gap6.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-gap6.sh.non-conforme" >&2; exit 4
+# Claude 24/10/2026 -- parere #43 §3 e §6: misure PASSIVE prima dello shadow VMCS, a 2 VP, modulo
+# 0572294 (baseline), una sola sessione WSL con la configurazione di sempre (nessun .wslconfig):
+#  - fieldrw.d: VMREAD/VMWRITE dell'L1 per campo VMCS, e tempo CPU di vmx_nested_exit per motivo;
+#  - l1ept.d: EPT violation dell'L1 per regione GPA, tipo d'accesso, ripetizione, MMIO.
+# Le sonde RUOTANO per ciclo della prova ext4 (gapmem.sh): ciclo k con k%3 = 0 nessuna sonda,
+# 1 fieldrw.d, 2 l1ept.d (contando anche il riscaldamento): i cicli puliti misurano il costo
+# di ciascuna (parere #42 §9, #43 §4). Niente exitrsn.d. In C0 (Windows senza WSL, 60 s)
+# fieldrw.d accesa: i campi usati dalla sola radice.
+# Come gap5: partsamp.d, rootcall5.d, hvperf.ps1 -Tag, memwin.ps1 -Tag, guardia in pausa.
+D=${1:-480}; W=${2:-3}
+B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+O=$B/logs/gap6-$(date +%Y%m%d-%H%M); mkdir -p "$O"
+H=IP-HOST
+w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }
+cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
+task() {	# task <nome> <comando>: lanciato nella sessione dell'utente
+	w "schtasks /create /tn $1 /tr \"$2\" /sc once /st 00:00 /sd 01/01/2030 /ru marietto /it /rl highest /f >nul & schtasks /run /tn $1 >nul"
+}
+attendi_wsl() {	# aspetta che il task claude-wsl sia finito
+	k=0; while w "schtasks /query /tn claude-wsl /fo csv /nh" | /usr/bin/grep -qiE "esecuzione|running"; do sleep 5; k=$((k+1)); [ $k -gt 60 ] && break; done
+}
+wslrun() {	# wslrun <argomenti di wsl.exe>: nella sessione dell'utente, senza attendere
+	printf '%s' "$1" > "$O/wsl-args.txt"
+	cpw "$O/wsl-args.txt" marietto@win11:'C:/claude/wsl-args.txt'
+	task claude-wsl "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\wsl-passo.ps1" > /dev/null
+}
+fase() { echo "FASE $1 $(date +%s.%N) $(date +%T)" | tee -a "$O/fasi.txt"; }
+calib() {	# calib <etichetta>: ora, contatori, tempo CPU dei thread vCPU
+	{
+		echo "CALIB $1 $(date +%s.%N)"
+		sysctl hw.vmm.vmx.nested_l1_tsc hw.vmm.vmx.nested_l2_tsc
+		sysctl hw.vmm.vmx | /usr/bin/grep -E "\.vst_"
+		ps -H -o lwp,time,comm -p "$(pgrep -x bhyve | head -1)" | /usr/bin/grep vcpu
+	} >> "$O/calib.txt"
+}
+SONDA=""; SPID=""
+sonda() {	# sonda <nome|nessuna> <fase> <ciclo>: accende la sonda indicata, spegne le altre
+	[ "$1" = "$SONDA" ] && return
+	if [ -n "$SPID" ]; then
+		sudo -n pkill -TERM -f "$SONDA.d"; wait "$SPID" 2>/dev/null; SPID=""
+		echo "$(date +%s.%N) OFF $SONDA $2 $3" >> "$O/sonde-commutazioni.txt"
+	fi
+	SONDA="$1"
+	[ "$1" = nessuna ] && return
+	sudo -n dtrace -s "$T/$1.d" -o "$O/$1-$2-$3.txt" 2>>"$O/sonde.err" &
+	SPID=$!
+	echo "$(date +%s.%N) ON $1 $2 $3" >> "$O/sonde-commutazioni.txt"
+}
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+echo "== host prima: $(swapinfo -h | tail -1)"
+vmstat -w 1 > "$O/vmstat.txt" &
+VS=$!
+( while :; do echo "$(date +%T) $(swapinfo -k | tail -1)"; sleep 30; done ) > "$O/swap.txt" &
+SW=$!
+mount | /usr/bin/grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_verify_hpa=1 hw.vmm.vmx.vept_test_race=0 >/dev/null
+sysctl hw.vmm.vmx.vept_scan_hold_keep > "$O/modulo.txt"; md5 /boot/kernel/vmm-restore.ko >> "$O/modulo.txt"
+python3 "$C/tsecho.py" 7123 "$O/tsecho.txt" &
+TS=$!
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s "$T/partsamp.d" -o "$O/samp.txt" 2>"$O/samp.err" &
+sleep 4
+sudo -n sh "$N/${VMS:-12-Windows-11-vm12-senza-gpu}" > "$O/script.log" 2>&1 &
+i=0; while [ $i -lt 60 ] && [ ! -e /dev/vmm/vm0:12 ]; do sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; kill $TS $VS $SW; sudo -n pkill -TERM -f "partsamp.d"; exit 1; }
+i=0; until w "echo pronto" | /usr/bin/grep -q pronto; do sleep 10; i=$((i+10)); [ $i -gt 900 ] && break; done
+echo "ssh pronto dopo circa $i s"
+w "schtasks /delete /tn claude-vita /f & schtasks /delete /tn claude-clk /f" > /dev/null 2>&1
+sleep 90
+w "powershell -NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors | Format-List | Out-String).Trim()\"" | tee "$O/topologia.txt"
+for f in gapmon.c memmon.c gapmem.sh hvperf.ps1 memwin.ps1; do cpw "$C/$f" marietto@win11:"C:/claude/faseA/$f"; done
+sh "$B/guardia-win.sh" aggiorna > "$O/guardia.txt" 2>&1
+sleep 30	# la guardia, quando parte, cancella il file di pausa: lo si crea DOPO
+pausa() {	# pausa: la guardia non deve rilanciare WSL fra un --shutdown e l'altro
+	w "if exist C:\\claude\\guardia-pausa (echo GIA) else (echo pausa > C:\\claude\\guardia-pausa & echo CREATA)" | tail -1
+}
+echo "guardia in pausa dalle $(date +%T) (tutta la corsa): $(pausa)" >> "$O/guardia.txt"
+UP=$(w "echo %USERPROFILE%" | tail -1)
+echo "USERPROFILE=$UP" > "$O/wslinfo.txt"
+# il .wslconfig dell'utente NON deve esistere: la fase A1 e' "come e' sempre stato"
+if w "if exist \"$UP\\.wslconfig\" (echo ESISTE) else (echo ASSENTE)" | /usr/bin/grep -q ESISTE; then
+	echo "!!! esiste gia' un .wslconfig: prova annullata per non toccarlo" | tee -a "$O/wslinfo.txt"
+	w "type \"$UP\\.wslconfig\"" >> "$O/wslinfo.txt"
+	ANNULLA=1
+fi
+w "ver" >> "$O/wslinfo.txt"
+echo "######## C0: Windows senza WSL, per i contesti della radice $(date +%T)"
+wslrun "--shutdown"; sleep 20; attendi_wsl
+sonda fieldrw C0 0
+fase C0-windows-inattivo; calib C0-inizio; sleep 60; calib C0-fine
+fase C0-fine
+sonda nessuna C0 0
+R=$(python3 - "$O" <<'EOF'
+import re, sys
+d = sys.argv[1]
+f = {l.split()[1]: float(l.split()[2]) for l in open(f"{d}/fasi.txt")}
+a, b = f["C0-windows-inattivo"], f["C0-fine"]
+g = {}; t = None
+for l in open(f"{d}/samp.txt", errors="replace"):
+    if l.startswith("T "): t = int(l.split()[1]) / 1e9; continue
+    m = re.match(r"\s+v\d+ (0x[0-9a-f]+) guest (\d+)", l)
+    if m and t and a <= t <= b: g[m.group(1)] = g.get(m.group(1), 0) + int(m.group(2))
+r = sorted(g, key=lambda c: -g[c])[:2] + ["0x1", "0x1"]
+print(r[0], r[1])
+EOF
+)
+set -- $R; RA=$1; RB=$2
+echo "contesti della radice: $RA $RB" | tee "$O/radice.txt"
+sudo -n dtrace -C -D ROOTA=$RA -D ROOTB=$RB -s "$T/rootcall5.d" -o "$O/rc.txt" 2>"$O/rc.err" &
+sleep 3
+for F in A; do
+	[ -n "$ANNULLA" ] && break
+	pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+	echo "######## fase $F $(date +%T)"
+	echo "fase $F, pausa della guardia: $(pausa)" >> "$O/guardia.txt"
+	{ echo "== $F $(date +%T)"; w "if exist \"$UP\\.wslconfig\" (type \"$UP\\.wslconfig\") else (echo NESSUN .wslconfig)"; } >> "$O/wslconfig-fasi.txt"
+	wslrun "--shutdown"; sleep 15; attendi_wsl
+	{ echo "== $F dopo --shutdown: processi vmmem"; w "powershell -NoProfile -Command \"Get-Process -Name vmmem* -ErrorAction SilentlyContinue | Format-Table -AutoSize | Out-String\""; } >> "$O/wslconfig-fasi.txt"
+	fase "$F-inizio"; calib "$F-inizio"
+	w "del C:\\claude\\faseA\\gapmem-$F.log 2>nul & del C:\\claude\\wsl-log.txt 2>nul" > /dev/null
+	wslrun "-d Debian -u root -- bash -c 'tr -d \"\\\\r\" < /mnt/c/claude/faseA/gapmem.sh > /root/gapmem.sh; bash /root/gapmem.sh $D $H $F $W'"
+	cp "$O/wsl-args.txt" "$O/args-$F.txt"
+	# contatori di Windows: con WSL gia' vivo (typeperf con (*) non vede istanze nate dopo)
+	k=0; until cpw marietto@win11:"C:/claude/faseA/gapmem-$F.log" "$O/gapmem-$F.log" 2>/dev/null && /usr/bin/grep -q RISCALDAMENTO-INIZIO "$O/gapmem-$F.log"; do sleep 5; k=$((k+1)); [ $k -gt 120 ] && break; done
+	task claude-hvperf "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\hvperf.ps1 -Sec 3000 -Tag $F" > /dev/null
+	task claude-memwin "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\claude\\faseA\\memwin.ps1 -Sec 3000 -Tag $F" > /dev/null
+	fase "$F-contatori-windows"
+	# rotazione delle sonde per ciclo (contando anche il riscaldamento)
+	kv=0; k=0; MAXK=$(( (W * 150 + D + 900) / 5 ))
+	until /usr/bin/grep -q GAP-FINE "$O/gapmem-$F.log"; do
+		pgrep -x bhyve >/dev/null || { echo "BHYVE USCITO"; break; }
+		sleep 5; k=$((k+1)); [ $k -gt $MAXK ] && { echo "fase $F non finita"; break; }
+		cpw marietto@win11:"C:/claude/faseA/gapmem-$F.log" "$O/gapmem-$F.log" 2>/dev/null || continue
+		kn=$(/usr/bin/grep -c "^CICLO .* dd " "$O/gapmem-$F.log")
+		if [ "$kn" != "$kv" ]; then
+			kv=$kn; cn=$(/usr/bin/grep "^CICLO .* dd " "$O/gapmem-$F.log" | tail -1 | awk '{print $2}')
+			case $((kn % 3)) in
+			0) sonda nessuna "$F" "$cn" ;;
+			1) sonda fieldrw "$F" "$cn" ;;
+			2) sonda l1ept "$F" "$cn" ;;
+			esac
+		fi
+	done
+	sonda nessuna "$F" fine
+	fase "$F-fine"; calib "$F-fine"
+	w "taskkill /im typeperf.exe /f & echo stop > C:\\claude\\faseA\\memwin-stop" > /dev/null
+	sleep 25	# hvperf scambia i marcatori "dopo", memwin si ferma
+	for f in gapmem-$F.log gapmem-pre-$F.txt gapmem-post-$F.txt gapmem-dmesg-pre-$F.txt gapmem-dmesg-post-$F.txt gapmem-gapmon-$F.txt gapmem-memmon-$F.txt hvperf$F.csv hvperf-sync$F.txt memwin$F.txt; do
+		cpw marietto@win11:"C:/claude/faseA/$f" "$O/$f" 2>/dev/null || echo "manca $f" >> "$O/mancanti.txt"
+	done
+	cpw marietto@win11:'C:/claude/wsl-log.txt' "$O/wsl-log-$F.txt" 2>/dev/null
+	echo "fase $F: buchi $(/usr/bin/grep -c '^BUCO' "$O/gapmem-gapmon-$F.txt" 2>/dev/null)"
+done
+w "if exist \"$UP\\.wslconfig\" (echo .wslconfig ANCORA PRESENTE) else (echo nessun .wslconfig)" | tee -a "$O/wslconfig-fasi.txt"
+fase fine-prova; calib fine-prova
+sh "$B/guardia-win.sh" riprendi >> "$O/guardia.txt" 2>&1
+w "schtasks /delete /tn claude-wsl /f & schtasks /delete /tn claude-hvperf /f & schtasks /delete /tn claude-memwin /f" > /dev/null 2>&1
+w "shutdown /s /t 0" >/dev/null 2>&1
+i=0; while [ $i -lt 300 ] && pgrep -x bhyve >/dev/null; do sleep 2; i=$((i+2)); done
+pgrep -x bhyve >/dev/null && echo "bhyve ANCORA VIVO" || echo "spegnimento ordinato dopo $i s"
+sleep 3
+sudo -n pkill -TERM -f "partsamp.d|rootcall5.d|fieldrw.d|l1ept.d"; kill $TS $VS $SW
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n sysctl hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 >/dev/null
+sysctl hw.vmm.vmx | /usr/bin/grep -E "\.vst_h_" > "$O/hold-quiescenza.txt"
+echo "== host dopo: $(swapinfo -h | tail -1)"
+echo "OUTPUT $O"

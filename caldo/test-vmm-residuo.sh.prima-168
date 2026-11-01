@@ -1,0 +1,120 @@
+#!/bin/sh
+# test-vmm-residuo.sh -- Claude 30/10/2026, parere #142. Collaudo di vmm-residuo.sh su un sistema SIMULATO (stato in
+# file, funzioni r_* sovrascritte via VR_FINTO). Nessun sudo, nessun bhyvectl. Uso: test-vmm-residuo.sh <cartella su ZFS>
+set -u
+D=$(cd "$(dirname "$0")" && pwd)
+O=${1:?cartella}
+case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+[ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
+mkdir -p "$O" || exit 2
+nf=0; nok=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }
+no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
+cat > "$O/finto.sh" <<'FINE_FINTO_VR_142'
+r_nodi()    { cat "$VS/nodi"; }
+r_ctime()   { cat "$VS/ctime.$1" 2>/dev/null; }
+r_memseg()  { cat "$VS/memseg.$1" 2>/dev/null; }
+r_aperto()  { [ -e "$VS/aperto.$1" ]; }
+r_vm_vive() { cat "$VS/vive" 2>/dev/null; }
+r_modulo()  { [ ! -e "$VS/nessun_modulo" ]; }
+r_distruggi() { echo "destroy $1" >> "$VS/eventi"; [ -e "$VS/destroy_inefficace" ] && return 1; grep -vx "$1" "$VS/nodi" > "$VS/nodi.n"; cat "$VS/nodi.n" >| "$VS/nodi"; }
+r_ora()     { echo "2026-10-30 00:00:00"; }
+r_memseg_testo() { cat "$VS/memsegt.$1" 2>/dev/null; }
+r_dtrace_vivo()  { cat "$VS/dtrace" 2>/dev/null; }
+r_fase_caldo()   { cat "$VS/fase" 2>/dev/null; }
+r_modulo_id()    { cat "$VS/modid" 2>/dev/null || echo ripfix-nested; }
+FINE_FINTO_VR_142
+# caso <nome> <rc atteso> <argomenti...>; iniezioni in $INI (file da creare in VS)
+caso() {
+	N=$1; A=$2; shift 2
+	VS=$O/$N; mkdir -p "$VS"; printf 'vm2\nvm0:12\n' >| "$VS/nodi"; echo 1793362388 >| "$VS/ctime.vm2"; echo aaaa >| "$VS/memseg.vm2"
+	echo 'ID Length Name 1 256MB sysmem ' >| "$VS/memsegt.vm2"
+	mkdir -p "$VS/sess"; echo 'vm2 dopo: creata 1793362388 (avvio sessione 1793362387) ID Length Name 1 256MB sysmem ' >| "$VS/sess/manifest.txt"
+	echo 1700000000 >| "$VS/ctime.vm0:12"; echo bbbb >| "$VS/memseg.vm0:12"; : >| "$VS/eventi"
+	for i in ${INI:-}; do : >| "$VS/$i"; done
+	[ -n "${VIVE:-}" ] && echo "$VIVE" >| "$VS/vive"
+	VS=$VS VR_FINTO=$O/finto.sh VR_DIARIO=$VS/diario sh "$D/vmm-residuo.sh" "$@" > "$VS/out" 2>&1; r=$?
+	[ $r = $A ] && ok "$N rc=$r" || no "$N rc=$r, atteso $A ($(head -2 $VS/out))"
+}
+distrutto() { grep -qx "destroy vm2" "$VS/eventi" && ok "$N vm2 distrutto" || no "$N vm2 NON distrutto"; }
+intatto()   { [ -s "$VS/eventi" ] && no "$N azioni: $(cat $VS/eventi)" || ok "$N nessuna azione"; }
+vm0_vivo()  { grep -qx 'vm0:12' "$VS/nodi" && ok "$N vm0:12 intatta" || no "$N vm0:12 toccata"; }
+
+echo "V1: percorsi"
+caso v1-verifica 0 --verifica;                      intatto; grep -q 'vm2 ctime=1793362388 memseg=aaaa aperto=no' "$VS/out" && ok "v1 identita' di vm2 stampata" || no "v1 identita': $(cat $VS/out)"
+caso v2-autorizzato 0 --distruggi vm2 1793362388 aaaa; distrutto; vm0_vivo; grep -q 'ESITO 0' "$VS/diario" && ok "v2 diario" || no "v2 diario"
+echo "V2: rifiuti (nulla fatto)"
+caso v3-ctime-diverso 4 --distruggi vm2 1793357072 aaaa; intatto; grep -q "NON e' il nodo autorizzato" "$VS/out" && ok "v3 motivo" || no "v3 motivo"
+caso v4-memseg-diverso 4 --distruggi vm2 1793362388 cccc; intatto
+caso v5-altro-nome 4 --distruggi vm0:12 1700000000 bbbb; intatto; vm0_vivo
+INI=aperto.vm2 caso v6-aperto 4 --distruggi vm2 1793362388 aaaa; intatto
+VIVE="4242 qemu-system-x86_64" caso v7-vm-viva 4 --distruggi vm2 1793362388 aaaa; intatto
+INI=nessun_modulo caso v8-senza-modulo 4 --distruggi vm2 1793362388 aaaa; intatto
+caso v9-argomenti 4 --distruggi vm2 1793362388; intatto
+# ogni rifiuto per il SUO motivo (un'iniezione rimasta dal caso precedente non deve far passare il caso)
+for x in "v4-memseg-diverso:memseg di vm2" "v5-altro-nome:solo vm2" "v6-aperto:e' aperto" "v7-vm-viva:VM viva" "v8-senza-modulo:nessun modulo" "v9-argomenti:uso:"; do
+	grep -q -- "${x#*:}" "$O/${x%%:*}/out" && ok "${x%%:*}: motivo '${x#*:}'" || no "${x%%:*}: motivo diverso: $(head -1 $O/${x%%:*}/out)"
+done
+echo "V3: distruzione inefficace"
+INI=destroy_inefficace caso v12-inefficace 6 --distruggi vm2 1793362388 aaaa; grep -q 'ESITO 6' "$VS/diario" && ok "v12 operatore dichiarato" || no "v12"
+echo "V4: classificazione del ritorno (#143 §5), sola lettura"
+# solo vm2 (nessun vm0:12): togliere vm0:12 con un'iniezione di nodi
+cr() {	# cr <nome> <ramo atteso> [sessione] -- iniezioni in INI/VIVE, nodi in NODI
+	N=$1; A=$2; VS=$O/$N; mkdir -p "$VS"
+	if [ -n "${NODI-vm2}" ]; then printf '%s\n' ${NODI-vm2} >| "$VS/nodi"; else : >| "$VS/nodi"; fi; echo 1793362388 >| "$VS/ctime.vm2"; echo aaaa >| "$VS/memseg.vm2"; : >| "$VS/eventi"
+	echo 'ID Length Name 1 256MB sysmem ' >| "$VS/memsegt.vm2"
+	mkdir -p "$VS/sess"; echo 'vm2 dopo: creata 1793362388 (avvio sessione 1793362387) ID Length Name 1 256MB sysmem ' >| "$VS/sess/manifest.txt"
+	for i in ${INI:-}; do : >| "$VS/$i"; done
+	[ -n "${VIVE:-}" ] && echo "$VIVE" >| "$VS/vive"
+	[ -n "${DT:-}" ] && echo "$DT" >| "$VS/dtrace"
+	[ -n "${FASE:-}" ] && echo "$FASE" >| "$VS/fase"
+	[ -n "${MAN:-}" ] && echo "$MAN" >| "$VS/sess/manifest.txt"
+	[ -n "${MID:-}" ] && echo "$MID" >| "$VS/modid"
+	VS=$VS VR_FINTO=$O/finto.sh sh "$D/vmm-residuo.sh" --classifica-ritorno "${3:-$VS/sess}" > "$VS/out" 2>&1; r=$?
+	g=$(sed -n 's/^RAMO=\([A-Z_]*\) .*/\1/p' "$VS/out")
+	[ $r = 0 ] && [ "$g" = "$A" ] && ok "$N RAMO=$A" || no "$N rc=$r ramo '$g', atteso $A ($(head -1 $VS/out))"
+	intatto
+}
+NODI=vm2 cr c1-sessione NODO_DELLA_SESSIONE; grep -q -- '--distruggi vm2 1793362388 aaaa' "$VS/out" && ok "c1: comando da autorizzare stampato" || no "c1: comando"
+NODI= cr c2-nessun-nodo NESSUN_NODO
+grep -q 'modulo ripfix-nested' "$VS/out" && ok "c2: NESSUN_NODO solo col modulo RIPFIX dichiarato" || no "c2: modulo non dichiarato"
+NODI="vm2 vm0:12" cr c3-altro-nodo OPERATORE
+NODI=vm2 INI=aperto.vm2 cr c4-aperto OPERATORE
+NODI=vm2 VIVE="77 qemu-system-x86_64" cr c5-qemu-viva OPERATORE
+NODI=vm2 DT="88" cr c6-dtrace-vivo OPERATORE
+NODI=vm2 cr c7-senza-sessione OPERATORE nessuna
+NODI=vm2 MAN="piano B,HM_RAM,DM_PTP" cr c8-manifest-senza-vm2 OPERATORE
+NODI=vm2 MAN='vm2 dopo: creata 1793360000 (avvio sessione 1793362387) ID Length Name 1 256MB sysmem ' cr c9-ctime-diverso OPERATORE
+NODI=vm2 MAN='vm2 dopo: creata 1793362388 (avvio sessione 1793362387) ID Length Name 1 512MB sysmem ' cr c10-memseg-diversa OPERATORE
+NODI=vm2 MAN='vm2 dopo: creata 1793362388 (avvio sessione 1793369999) ID Length Name 1 256MB sysmem ' cr c11-creata-prima OPERATORE
+NODI=vm2 INI=nessun_modulo cr c12-senza-modulo EMERGENZA
+NODI=vm2 FASE=nessun-modulo-congelato cr c13-caldo-a-meta EMERGENZA
+NODI=vm2 FASE=fine cr c14-caldo-finito NODO_DELLA_SESSIONE
+echo "V5: #144 §2 -- precedenze fail-closed col /dev/vmm VUOTO e identita' del modulo"
+NODI= DT=99 cr c15-vuoto-dtrace-vivo OPERATORE
+NODI= VIVE="66 qemu-system-x86_64" cr c16-vuoto-qemu-viva OPERATORE
+NODI= VIVE="67 bhyve" cr c17-vuoto-bhyve-vivo OPERATORE
+NODI= MID=originale cr c18-vuoto-gia-originale GIA_RIPRISTINATO
+grep -q 'nessuno scambio' "$VS/out" && ok "c18: dopo rc=5 nessun ritorno ripfix->originale" || no "c18: testo"
+NODI= FASE=scarico cr c19-vuoto-caldo-intermedio EMERGENZA
+NODI= MID='incompleto:parziale /x/vmm-restore.ko' cr c20-vuoto-modulo-incompleto EMERGENZA
+NODI= MID=h2ad2 cr c21-vuoto-modulo-h2ad2 OPERATORE
+NODI= MID='sconosciuto:/tmp/vmm-restore.ko' cr c22-vuoto-modulo-sconosciuto OPERATORE
+NODI=vm2 DT=99 cr c23-vm2-giusta-dtrace-vivo OPERATORE
+NODI=vm2 VIVE="68 qemu-system-x86_64" cr c24-vm2-giusta-qemu-viva OPERATORE
+NODI=vm2 MID=h2ad2 cr c25-vm2-giusta-modulo-h2ad2 OPERATORE
+NODI=vm2 MID=originale cr c26-vm2-giusta-modulo-originale NODO_DELLA_SESSIONE
+grep -q 'RICLASSIFICARE' "$VS/out" && ok "c26: dopo la distruzione si riclassifica" || no "c26: manca la riclassificazione"
+NODI=vm2 cr c27-vm2-manifest-assente OPERATORE "$O/non-esiste"
+echo "V6: #167R1 par. 9.5 -- lo stadio 9 e' un modulo della campagna"
+NODI= MID=stadio9 cr c30-vuoto-stadio9 NESSUN_NODO
+grep -q 'modulo-caldo.sh --esegui stadio9 originale' "$VS/out" && ok "c30: ritorno indicato DALLO STADIO 9, non dal RIPFIX" || no "c30: $(head -1 $VS/out)"
+NODI=vm2 MID=stadio9 cr c31-vm2-giusta-stadio9 NODO_DELLA_SESSIONE
+grep -q 'modulo caricato: stadio9' "$VS/out" && ok "c31: modulo dichiarato" || no "c31: modulo"
+NODI=vm2 MID=stadio9 DT=99 cr c32-stadio9-dtrace-vivo OPERATORE
+NODI= MID=stadio8 cr c33-vuoto-identita-ignota OPERATORE
+# precedenza: con PIU' condizioni insieme vince la piu' grave (EMERGENZA su OPERATORE su NESSUN_NODO)
+NODI= DT=99 FASE=carico cr c28-intermedio-e-dtrace EMERGENZA
+NODI= DT=99 MID=originale cr c29-originale-e-dtrace OPERATORE
+echo "SUMMARY: $nok ok, $nf errati"
+[ $nf = 0 ]

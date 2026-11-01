@@ -1,0 +1,43 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-abba.sh.non-conforme
+echo "INERTE: run-abba.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-abba.sh.non-conforme" >&2; exit 4
+# Claude 24/10/2026 -- parere #47: benchmark ABBA sul modulo 19fc4ebf6189, ordine palindromico
+# A B C D D C B A (A baseline, B solo S0, C solo shadow, D S0 + shadow), verifica dello shadow
+# SPENTA, nessuna sonda DTrace. Ogni prova e' una VM nuova (run-abba-prova.sh): avvio, Windows
+# fermo 120 s, avvio di WSL, prova ext4 (480 s, 2 cicli di riscaldamento), compilazione pulita
+# del kernel (kbuild4.sh: mrproper + defconfig + drop_caches, -j4), spegnimento.
+# Prima di ogni prova: processi piu' attivi dell'host (attivita' esterna). Ci si ferma alla prima
+# prova non COMPLETA (errore nuovo dello shadow, WSL che non risponde, VM uscita).
+B=/mnt/linuxulator2/vm/nested-work
+BASE=$B/logs/abba-$(date +%Y%m%d-%H%M); mkdir -p "$BASE"
+i=0
+for M in A B C D D C B A; do
+	i=$((i + 1))
+	case $M in
+	A) S0=0; SH=0 ;;
+	B) S0=1; SH=0 ;;
+	C) S0=0; SH=1 ;;
+	D) S0=1; SH=1 ;;
+	esac
+	O=$BASE/$i-$M
+	mkdir -p "$O"
+	# 25/10/2026, su richiesta dell'utente: ogni prova parte con lo swap VUOTO (nella prima corsa
+	# lo swap era salito dal 40% al 100% e aveva inquinato la seconda meta'). VM spenta qui.
+	if [ "$(swapinfo -k | tail -1 | awk '{print $3}')" -gt 0 ]; then
+		sudo -n swapoff -a && sudo -n swapon -a > /dev/null
+	fi
+	{ echo "== prova $i ($M) $(date +%T)"; swapinfo -h | tail -1; ps -axo pcpu,rss,comm -r | head -8; } >> "$BASE/attivita.txt"
+	echo "######## prova $i: modalita' $M (S0=$S0 shadow=$SH) $(date +%T)"
+	env O="$O" MOD="$M" S0=$S0 SH=$SH VF=0 sh "$B/run-abba-prova.sh" 480 2 > "$O/run.out" 2>&1
+	esito=$(tail -1 "$O/run.out")
+	echo "   prova $i ($M): $esito ($(date +%T))"
+	/usr/bin/grep -E "CHECKPOINT 05|^real|kernel rc|ext4:" "$O/run.out" | sed 's/^/   /'
+	case "$esito" in
+	*COMPLETA*) ;;
+	*) echo "!!! prova $i ($M) non completa: ABBA FERMATO"; break ;;
+	esac
+	sleep 60
+done
+sudo -n sysctl hw.vmm.vmx.nested_shadow_vmcs=0 hw.vmm.vmx.nested_shadow_verify=0 \
+    hw.vmm.vmx.nested_fast_field_validate=0 hw.vmm.vmx.vept_keep=0 hw.vmm.vmx.vept_verify_hpa=0 > /dev/null
+echo "ABBA-FINE $BASE"

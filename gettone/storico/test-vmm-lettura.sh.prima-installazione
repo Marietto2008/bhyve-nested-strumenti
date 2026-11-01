@@ -1,0 +1,65 @@
+#!/bin/sh
+# test-vmm-lettura.sh -- Claude 01/11/2026, parere Opus «letture chiuse» par. 4. Le decisioni di vmm-lettura
+# (vmm_lettura_decidi), come utente collaudo: elenchi di prova con i file VERI (e varianti con sha cambiato o voce
+# mancante); i fatti di ferma-sonde sono dati del collaudo. Uso: sudo -u collaudo sh test-vmm-lettura.sh <cartella>
+set -u
+. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
+. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
+W=/mnt/linuxulator2/vm/nested-work
+O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
+nok=0; nko=0
+ok() { nok=$((nok+1)); echo "  ok      $*"; }; no() { nko=$((nko+1)); echo "  ERRATO  $*"; }
+KLD=$W/kld-loadcnt.d; SD=$W/sonde-opnd-v1.d; FBT=$W/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d; QEMU=$W/build-qemu-gate-nested-sr/qemu-system-x86_64
+for f in $KLD $SD $FBT $QEMU; do echo "$(sha256 -q $f) $f"; done > $O/elenco
+grep -v ' '"$KLD"'$' $O/elenco > $O/elenco-senza-kld
+sed "s|^[0-9a-f]* $SD\$|$(printf 'b%.0s' $(seq 64)) $SD|" $O/elenco > $O/elenco-sonde-cambiato
+grep -v ' '"$QEMU"'$' $O/elenco > $O/elenco-senza-qemu
+grep -v ' '"$FBT"'$' $O/elenco > $O/elenco-senza-fbt
+VC=dtrace; VU=0; VA="/usr/sbin/dtrace -s $SD 360"
+vl_comm() { echo "$VC"; }; vl_uid() { echo "$VU"; }; vl_args() { echo "$VA"; }
+si() {	# si <nome> <argv atteso con |> <elenco> <primitiva...>
+	n=$1; a=$2; e=$3; shift 3
+	v=$(vmm_lettura_decidi $O/$e "$@"); r=$?
+	x=$(echo "$v" | sed 1d | tr '\n' '|' | sed 's/|$//')
+	[ $r = 0 ] && [ "$x" = "$a" ] && ok "$n: $x" || no "$n: rc=$r '$x' atteso '$a' ($(echo "$v" | head -1))"
+}
+rifiuto() {	# rifiuto <nome> <testo atteso> <elenco> <primitiva...>
+	n=$1; a=$2; e=$3; shift 3
+	v=$(vmm_lettura_decidi $O/$e "$@"); r=$?
+	[ $r = 1 ] && echo "$v" | grep -q -- "$a" && ok "$n: $v" || no "$n: rc=$r '$v' (atteso '$a')"
+}
+si ping "/usr/bin/true" elenco ping
+rifiuto ping-argomento "uso" elenco ping -c
+si memseg "/usr/sbin/bhyvectl|--vm=vm2|--get-memseg" elenco memseg vm2
+rifiuto memseg-altra-vm "solo vm2" elenco memseg vm0:12
+rifiuto memseg-con-destroy "solo vm2" elenco memseg "vm2 --destroy"
+si fstat "/usr/bin/fstat|/dev/vmm/vm2" elenco fstat-vmm vm2
+rifiuto fstat-altro "solo vm2" elenco fstat-vmm /etc/master.passwd
+si kld-loadcnt "/usr/sbin/dtrace|-s|$KLD|vmm-restore.ko" elenco kld-loadcnt
+rifiuto kld-loadcnt-fuori "non approvato" elenco-senza-kld kld-loadcnt
+si sonde-lista "/usr/sbin/dtrace|-l|-n|vmm:::fatal-latch|-n|vmm:::fatal-ritorno|-n|vmm:vmx:nested:veptunemul|-n|vmm:vmx:nested:opndfatal|-n|:::fatal-latch|-n|:::fatal-ritorno|-n|:::veptunemul|-n|:::opndfatal" elenco sonde-lista
+rifiuto sonde-lista-argomento "uso" elenco sonde-lista -c
+si fbt-compila "/usr/sbin/dtrace|-e|-s|$FBT|1" elenco fbt-compila
+rifiuto fbt-fuori "non approvato" elenco-senza-fbt fbt-compila
+si sonde "/usr/sbin/dtrace|-s|$SD|360" elenco sonde 360
+rifiuto sonde-breve "60..7200" elenco sonde 30
+rifiuto sonde-lunga "60..7200" elenco sonde 99999
+rifiuto sonde-non-intero "non intero" elenco sonde "360 -c /bin/sh"
+rifiuto sonde-cambiate "non approvato o cambiato" elenco-sonde-cambiato sonde 360
+rifiuto sonde-senza-limite "uso" elenco sonde
+si ferma-term "/bin/kill|-TERM|4242" elenco ferma-sonde 4242 TERM 360
+si ferma-kill "/bin/kill|-KILL|4242" elenco ferma-sonde 4242 KILL 360
+rifiuto ferma-hup "solo TERM o KILL" elenco ferma-sonde 4242 HUP 360
+rifiuto ferma-pid "non numerico" elenco ferma-sonde 1-2 TERM 360
+VC=sh; rifiuto ferma-non-dtrace "non e' un processo dtrace" elenco ferma-sonde 4242 TERM 360; VC=dtrace
+VU=1001; rifiuto ferma-non-root "non e' di root" elenco ferma-sonde 4242 TERM 360; VU=0
+VA="/usr/sbin/dtrace -c /bin/sh -s $SD 360"; rifiuto ferma-argv-diverso "non e' il dtrace delle sonde" elenco ferma-sonde 4242 TERM 360
+VA="/usr/sbin/dtrace -s $SD 360"; rifiuto ferma-limite-diverso "non e' il dtrace delle sonde" elenco ferma-sonde 4242 TERM 600
+si ldd-qemu "/usr/bin/ldd|$QEMU" elenco ldd-qemu
+rifiuto ldd-qemu-fuori "non approvata" elenco-senza-qemu ldd-qemu
+rifiuto ldd-altro "uso" elenco ldd-qemu /tmp/x
+rifiuto sconosciuta "sconosciuta" elenco dtrace -c /bin/sh
+m=$(sh $W/gettone/vmm-lettura ping 2>&1); r=$?
+[ $r = 4 ] && echo "$m" | grep -q 'non sono root' && ok "vmm-lettura come collaudo: $m" || no "vmm-lettura: rc=$r $m"
+echo "SUMMARY: $nok ok, $nko errati"
+[ $nko = 0 ]

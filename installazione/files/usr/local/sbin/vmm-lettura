@@ -1,0 +1,24 @@
+#!/bin/sh
+# vmm-lettura -- Claude 01/11/2026, pareri Opus «letture chiuse» par. 4 e «wrapper di root» par. 1.1, 2.
+# COPIA INSTALLATA: /usr/local/sbin/vmm-lettura, root:wheel 0555 (write_files). PREPARATA OFFLINE, NON INSTALLATA.
+# Wrapper ROOT delle LETTURE, a elenco chiuso (vmm_lettura_decidi, nella libreria INSTALLATA). Nessun gettone: non
+# cambia lo stato dell'host. I programmi eseguiti stanno in /usr/local/libexec/claude-vmm con lo sha scritto nella
+# libreria installata. Root NON scrive file: l'uscita va su stdout/stderr, il chiamante (marietto) la redirige.
+# Fa solo: controllo root, decisione, exec (il pid e' quello di dtrace, per ferma-sonde).
+# RESIDUO DICHIARATO (ferma-sonde): fra la verifica d'identita' e il kill il processo puo' finire e il suo pid essere
+# riusato da un altro processo di root; la finestra e' minima (due comandi consecutivi).
+set -u
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+[ "$(id -u)" = 0 ] || { echo "vmm-lettura: RIFIUTO: non sono root" >&2; exit 4; }
+# la libreria si carica solo DOPO il controllo di root, e solo dalla copia installata
+VL_DIR=/usr/local/libexec/claude-vmm
+. /usr/local/libexec/claude-vmm/gettone-lib.sh
+vl_comm() { ps -o comm= -p "$1" 2>/dev/null; }
+vl_uid()  { ps -o uid= -p "$1" 2>/dev/null | tr -d ' '; }
+vl_args() { ps -o args= -p "$1" 2>/dev/null; }
+v=$(vmm_lettura_decidi "$@") || { echo "vmm-lettura: $v" >&2; exit 4; }
+IFS='
+'
+set -f; set -- $(echo "$v" | sed 1d); set +f
+unset IFS
+exec "$@"

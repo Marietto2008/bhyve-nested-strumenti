@@ -1,0 +1,14 @@
+=== preflight (sola lettura): da originale a originale ===
+le 6 funzioni:
+  pci0:3:0:0 -> pci0:3:0:0 ppt 0 0x1002 0x73ff
+  pci0:3:0:1 -> pci0:3:0:1 ppt 1 0x1002 0xab28
+  pci0:4:0:0 -> pci0:4:0:0 ppt 2 0x10de 0x1e04
+  pci0:4:0:1 -> pci0:4:0:1 ppt 3 0x10de 0x10f7
+  pci0:4:0:2 -> pci0:4:0:2 ppt 4 0x10de 0x1ad6
+  pci0:4:0:3 -> pci0:4:0:3 ppt 5 0x10de 0x1ad7
+ok: caricato /boot/kernel/vmm-restore.ko; nodi: nessuno; ppt: pci0:3:0:0=ppt0 pci0:3:0:1=ppt1 pci0:4:0:0=ppt2 pci0:4:0:1=ppt3 pci0:4:0:2=ppt4 pci0:4:0:3=ppt5 ; kenv: boot_safe=(assente) devmatch_blocklist=(assente) 
+PROVA, nessuna azione. Sequenza: kenv boot_safe=YES e devmatch_blocklist='<lista attuale> amdgpu' (con rilettura);
+  barriera: attesa (max 15s) che non resti nessun devmatch avviato prima; seconda rilettura kenv;
+  devctl freeze; kldunload -n vmm-restore.ko; kldload /boot/kernel/vmm-restore.ko
+  (se fallisce: /boot/kernel/vmm-restore.ko, sempre sotto freeze); verifica modulo completo; devctl thaw (solo se nostro);
+  verifica 6 BDF+ID/sha/oid/amdgpu/loader.conf; ripristino ESATTO del kenv (con rilettura)

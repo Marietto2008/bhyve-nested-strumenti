@@ -1,0 +1,143 @@
+#!/usr/local/bin/python3
+# opnd-verdetto.py -- Claude 31/10/2026, parere #167R1 §6. Verdetto della sessione B (vmx-opnd.flat) dalla cartella
+# della sessione (drv/stato.json, drv/seriale.txt, drv/qemu-stderr.txt, sonde.txt, contatori.txt).
+#   opnd-verdetto.py <cartella della sessione> <piano>
+# contatori.txt (scritto da opnd-manifest.sh, #168 par. 3): TRE righe "<nome> <prima> <dopo>", nell'ordine
+# fatal_latches / nested_vept_mmio_unemulable / nested_operand_fatal. Delta attesi: F1-F3 0/0/0, F4 +1/0/+1.
+# Uscita: 0 PASS; 1 FAIL (sessione completa, esito sbagliato); 5 INCONCLUSIVO (incompleta o non verificabile).
+# F4: l'errno del latch (14, EFAULT: la causa) e il 95 di VM_RUN (la traduzione terminale del progetto) si
+# controllano ciascuno nel suo punto (sonde, contatori, stderr della QEMU), MAI col codice d'uscita della QEMU.
+import json, os, re, sys
+
+def leggi(p):
+	try:
+		return open(p).read()
+	except Exception:
+		return None
+
+def main():
+	d, piano = sys.argv[1], sys.argv[2]
+	inc, fail = [], []
+	st = None
+	try:
+		st = json.load(open(os.path.join(d, 'drv', 'stato.json')))
+	except Exception as e:
+		print('INCONCLUSIVO: stato.json illeggibile (%r)' % e)
+		return 5
+	ser = leggi(os.path.join(d, 'drv', 'seriale.txt'))
+	if ser is None:
+		print('INCONCLUSIVO: seriale assente')
+		return 5
+	righe = [l.split(' ', 1)[1] if ' ' in l else '' for l in ser.split('\n') if l]
+	cont = {}
+	for l in (leggi(os.path.join(d, 'contatori.txt')) or '').split('\n'):
+		p = l.split()
+		if len(p) == 3 and p[1].isdigit() and p[2].isdigit() and p[0] not in cont:
+			cont[p[0]] = (int(p[1]), int(p[2]))
+		elif l.strip():
+			inc.append('riga dei contatori malformata o doppia: %r' % l[:60])
+	NOMI = ('fatal_latches', 'nested_vept_mmio_unemulable', 'nested_operand_fatal')
+	if set(cont) != set(NOMI):
+		inc.append('contatori prima/dopo assenti o malformati (attesi i tre %s)' % '/'.join(NOMI))
+		cont = {}
+	delta = tuple(cont[n][1] - cont[n][0] for n in NOMI) if cont else None
+	if st.get('timeout'):
+		inc.append('TIMEOUT')
+	if sum(1 for r in righe if r.startswith('OPND PIANO "%s" ' % piano)) != 1:
+		inc.append('la .flat non ha ricevuto (una volta) il piano %r' % piano)
+	if any(r.startswith('OPND PREREQ') for r in righe):
+		fail.append('prerequisito fallito: %s' % [r for r in righe if r.startswith('OPND PREREQ')][:2])
+	rc = st.get('qemu_rc')
+	if piano != 'F4':
+		if not st.get('valida'):
+			inc.append('sessione del driver NON valida: %s' % '; '.join(st.get('errori', [])))
+		att = [r for r in righe if r.startswith('OPND ATTESI ')]
+		m = re.match(r'OPND ATTESI casi=(\d+) controlli=(\d+) ', att[0] + ' ') if len(att) == 1 else None
+		if not m:
+			inc.append('riga ATTESI assente, doppia o malformata')
+		else:
+			na, nca = int(m.group(1)), int(m.group(2))
+			casi, ctr = {}, {}
+			for r in righe:
+				mc = re.match(r'OPND CASO \S+ (\d+) .* -> (OK|ERRATO)$', r)
+				mk = re.match(r'OPND CONTROLLO \S+ (\d+) .* -> (OK|ERRATO)$', r)
+				for mm, dd, nome in ((mc, casi, 'caso'), (mk, ctr, 'controllo')):
+					if mm:
+						n = int(mm.group(1))
+						if n in dd:
+							inc.append('%s %d duplicato' % (nome, n))
+						dd[n] = mm.group(2)
+				if (r.startswith('OPND CASO') and not mc) or (r.startswith('OPND CONTROLLO') and not mk):
+					inc.append('riga malformata: %r' % r[:80])
+			if sorted(casi) != list(range(1, na + 1)):
+				inc.append('casi %d, attesi 1..%d univoci' % (len(casi), na))
+			if sorted(ctr) != list(range(1, nca + 1)):
+				inc.append('controlli %d, attesi 1..%d univoci' % (len(ctr), nca))
+			err_righe = sum(1 for r in righe if r.endswith('-> ERRATO'))
+			fine = [r for r in righe if r.startswith('OPND FINE ')]
+			mf = re.match(r'OPND FINE casi=(\d+) controlli=(\d+) errati=(\d+)$', fine[0]) if len(fine) == 1 else None
+			if not mf:
+				inc.append('record finale assente, doppio o malformato')
+			else:
+				x, xc, e = map(int, mf.groups())
+				if x != na or xc != nca or x != len(casi) or xc != len(ctr):
+					inc.append('record finale incoerente: %r' % fine[0])
+				if e != err_righe:
+					inc.append('errati=%d ma righe ERRATO %d: un errore senza la sua riga' % (e, err_righe))
+				if e:
+					fail.append('%d errati' % e)
+			if rc not in (1, 3):
+				inc.append('codice QEMU %r: non e\' un\'uscita KUT' % rc)
+			elif rc == 3 and not fail:
+				inc.append('KUT fallito (rc 3) senza errati: incoerente')
+		if delta is not None and delta != (0, 0, 0):
+			fail.append('contatori mossi in F1-F3: delta %d/%d/%d (attesi 0/0/0)' % delta)
+	else:
+		if not any(r.startswith('OPND F4 INIZIO') for r in righe):
+			inc.append('F4 non raggiunta (manca OPND F4 INIZIO)')
+		if any(r.startswith('OPND F4 RITORNATO') for r in righe):
+			fail.append('l\'istruzione e\' TORNATA nel guest')
+		if any(r.startswith('OPND FINE ') for r in righe):
+			fail.append('il guest e\' arrivato alla fine: nessun arresto terminale')
+		for r in st.get('regole', []):
+			if r['testo'] in ('OPND INIZIO', 'OPND PIANO?') and r.get('stato') != 'fatta':
+				inc.append('regola %r non conclusa' % r['testo'])
+		if delta is not None and delta != (1, 0, 1):
+			fail.append('contatori: delta %d/%d/%d (attesi 1/0/1)' % delta)
+		so = leggi(os.path.join(d, 'sonde.txt'))
+		if so is None or 'DTRACE_ATTIVO' not in so:
+			inc.append('traccia DTrace assente o non attivata')
+		else:
+			if 'drop' in so.lower():
+				inc.append('DTrace segnala perdite')
+			o = re.findall(r'OPNDFATAL vcpu=\d+ stadio=(\d+) err=(\d+) rip=(0x[0-9a-f]+)', so)
+			fl = re.findall(r'FATAL_LATCH vcpu=\d+ errno=(\d+) stadio=(\d+) rip=(0x[0-9a-f]+)', so)
+			fr = re.findall(r'FATAL_RITORNO vcpu=\d+ nextrip=(0x[0-9a-f]+) rip=(0x[0-9a-f]+) len=(\d+) '
+			    r'fatal_rip=(0x[0-9a-f]+)', so)
+			if len(o) != 1 or len(fl) != 1 or len(fr) != 1:
+				inc.append('sonde: OPNDFATAL %d, FATAL_LATCH %d, FATAL_RITORNO %d (attese 1, 1, 1)' %
+				    (len(o), len(fl), len(fr)))
+			else:
+				if o[0][0] != '4' or o[0][1] != '14':
+					fail.append('OPNDFATAL stadio %s err %s (attesi 4, 14)' % o[0][:2])
+				if fl[0][0] != '14' or fl[0][1] != '4':
+					fail.append('FATAL_LATCH errno %s stadio %s (attesi 14, 4)' % fl[0][:2])
+				nr, ri, ln, frip = fr[0]
+				if nr != ri or ln != '0' or frip != ri or o[0][2] != ri:
+					fail.append('ritorno: nextrip %s rip %s len %s fatal_rip %s (attesi uguali, len 0)' % fr[0])
+		er = leggi(os.path.join(d, 'drv', 'qemu-stderr.txt')) or ''
+		if 'porta della VM chiusa dal vCPU' not in er and 'Error running vm' not in er:
+			inc.append('la QEMU protetta non dichiara l\'arresto (stderr)')
+		if rc in (1, 3):
+			fail.append('la QEMU e\' uscita come un KUT concluso (rc %d)' % rc)
+	if fail and not inc:
+		print('FAIL: ' + ' | '.join(fail))
+		return 1
+	if inc:
+		print('INCONCLUSIVO: ' + ' | '.join(inc + fail))
+		return 5
+	print('PASS: piano %s' % piano)
+	return 0
+
+if __name__ == '__main__':
+	sys.exit(main())

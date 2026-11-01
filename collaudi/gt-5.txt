@@ -1,0 +1,21 @@
+  ok      buono (scambio): gettone valido per 'scambio' fino a 1793503600
+  ok      buono (distruggi): gettone valido per 'distruggi' fino a 1793503600
+  ok      buono (ombra): operazione 'ombra' non autorizzata dal gettone (scambio,distruggi)
+  ok      buono (avvio-vm): operazione 'avvio-vm' non autorizzata dal gettone (scambio,distruggi)
+  ok      buono (scambio): gettone SCADUTO
+  ok      buono (scambio): gettone creato nel futuro
+  ok      buono (scambio): l'elenco degli strumenti e' cambiato dopo il gettone (bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, gettone aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+  ok      buono (scambio): gettone di uid 1003, atteso 0
+  ok      assente (scambio): gettone assente
+  ok      link (scambio): gettone assente
+  ok      scrivibile (scambio): permessi del gettone 666: scrivibile da altri
+  ok      gruppo (scambio): permessi del gettone 664: scrivibile da altri
+  ok      riga_in_piu (scambio): gettone di 7 righe, attese 6
+  ok      chiave_ripetuta (ombra): chiave 'passi' assente o ripetuta
+  ok      lungo (scambio): durata oltre il massimo
+  ok      versione (scambio): versione del gettone '2'
+  ok      data (scambio): date non numeriche
+  ok      sha_corto (scambio): sha dell'elenco malformato
+  ok      op_ignota (scambio): operazione sconosciuta nel gettone: tutto
+  ok      sottostringa (scambio): operazione sconosciuta nel gettone: scambiox
+SUMMARY: 20 ok, 0 errati

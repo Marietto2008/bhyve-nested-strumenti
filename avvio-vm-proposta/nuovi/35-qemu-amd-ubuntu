@@ -1,0 +1,297 @@
+#!/bin/sh
+# QEMU accelerato da bhyve + passthrough della Radeon RX 6600, guest Ubuntu.
+#                                                       [claude 15/10/2026]
+#
+# Scritto dopo che la causa degli otto "congelamenti" e' stata trovata e
+# corretta: erano panic invisibili dentro devmem_mmap_single(), perche' in
+# modalita' QEMU un segmento con nome viene registrato come memoria di
+# SISTEMA (serve all'IOMMU) ma gli si crea comunque il cdev devmem, e la
+# KASSERT pretendeva l'invariante di bhyve originale.  Vedi la memoria
+# project_host_causa_trovata_devmem_sysmem.
+#
+# COSA CAMBIA RISPETTO AGLI SCRIPT VECCHI
+# =======================================
+# 1. ★ NIENTE devctl A CALDO.  Le due funzioni della Radeon sono gia'
+#    su ppt dall'avvio grazie a pptdevs in /boot/loader.conf (ppt2..ppt5).
+#    Riassegnarle a caldo e' la via che aveva congelato l'host il 14/10.
+#
+# 2. ★ -L sui dati di QEMU.  QEMU 10.2 IGNORA QEMU_DATADIR: cerca nel suo
+#    bundle, che e' senza keymap, e muore con
+#        -vnc ...: could not find keymap file for language 'en-us'
+#    E' il motivo per cui tutte le corse del 14/10 non arrivavano nemmeno a
+#    creare la VM.
+#
+# 3. Il binario giusto e' quello del 20/9 in qemu-old/build-gpu: e' l'unico
+#    che ha il dispositivo "bhyve-passthru" (si verifica con -device help).
+#
+# LA SCHEDA
+# =========
+#   ppt0  pci0:3:0:0  VGA        1002:73ff   Radeon RX 6600 (Navi 23)
+#   ppt1  pci0:3:0:1  audio HDMI 1002:ab28
+#
+# DUE funzioni, non quattro come la 2080 Ti (che ha anche USB-C e UCSI).
+# Vanno allo slot 0x08 del guest: 0000:00:08.0 e 0000:00:08.1.
+#
+# ★ NIENTE RATTOPPO MSI-X, e non perche' sia "gia' a posto": questa scheda
+#   la MSI-X NON CE L'HA PROPRIO.  Verificato il 15/10 con pciconf -lc:
+#       cap 09[48] vendor - cap 01[50] powerspec - cap 10[64] PCI-Express
+#       cap 05[a0] MSI supports 1 message, 64 bit
+#   Usa MSI.  Il rattoppo del byte 0x79 serve solo alla 2080 Ti, dove la
+#   MSI-X esiste ma resta fuori dalla catena.  Qui non si tocca niente.
+#
+# ⚠ SERVE INVECE reset-radeon.  Dopo una sessione grafica che usa davvero
+#   la scheda, un riavvio a caldo non la ripulisce: amdgpu trova un GART
+#   assurdo e muore (BUG_ON in gmc_v10_0_get_vm_pde).  FLR e PM reset non
+#   bastano (il PMCSR ha No_Soft_Reset): serve il secondary bus reset, che
+#   reset-radeon fa salvando e rimettendo lo spazio di configurazione.
+#
+# USO
+#   35-qemu-amd-ubuntu               avvia
+#   PASSTHRU=no  35-...              senza GPU (per provare il resto)
+#   SMP=4 MEM=8G 35-...              cambia processori e memoria
+#   PORTA=5907   35-...              porta VNC (predefinita 5906)
+#   RESET=no     35-...              salta reset-radeon
+#
+# ⚠⚠ USA LO STESSO FILE IMMAGINE di 33-qemu-nvidia-ubuntu.  Due macchine
+#    che ci scrivono sopra insieme lo ROVINANO, e il danno si vede molto
+#    dopo.  Il controllo piu' sotto rifiuta di partire se c'e' gia' un QEMU
+#    con -accel bhyve in funzione.
+#
+# DOPO UN EVENTUALE PANIC
+#   Adesso un panic NON blocca piu' la macchina: debug.debugger_on_panic=0
+#   in /etc/sysctl.conf, quindi stampa, scrive il minidump e riavvia.
+#       cat /var/log/claude-amd-traccia.txt     i passi raggiunti
+#       ls -lt /var/crash/                         il dump
+#       grep panic /var/crash/core.txt.last
+set -u
+
+DISCO=${DISCO:-/mnt/da0p2/bhyve/img/Linux/Ubuntu-2404-KDE6-Wayland.img}
+# ★★ claude 15/10 -- QUALE BINARIO DI QEMU.
+#
+#   qemu-old/build-gpu/...   quello del 20/9, COLLAUDATO (predefinito).
+#   qemu-new/build-gpu/...   albero nuovo, con la diagnostica sullo
+#                            smontaggio della memoria (bhyve-munmap), che
+#                            serve a capire perche' la seconda passata di
+#                            mappature fallisce con EEXIST/ENOMEM.
+#
+#   QEMU=/mnt/linuxulator2/vm/qemu-vmm-build/qemu-new/build-gpu/qemu-system-x86_64 ./33-...
+#
+# ⚠ Il predefinito resta il vecchio: e' quello che ha gia' fatto agganciare
+#   la GPU e la MSI-X.  Il nuovo si usa per DIAGNOSTICARE, non al posto suo.
+QEMU=${QEMU:-/mnt/linuxulator2/vm/qemu-vmm-build/qemu-old/build-gpu/qemu-system-x86_64}
+OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
+OVMF_VARS=/mnt/linuxulator2/vm/qemu-vmm-build/amd-ovmf-vars.fd
+IPC=/mnt/linuxulator2/vm/qemu-vmm-build/uppt_ipc
+TRACCIA=/var/log/claude-amd-traccia.txt
+# ⚠ claude 15/10 -- DIAG mancava e con `set -u` lo script moriva con
+#   "DIAG: parameter not set": il file era scritto a mano nella riga finale,
+#   ma il diario sul terminale lo nominava come variabile.  Ora e' una sola.
+DIAG=/var/log/claude-amd-diag.txt
+
+PASSTHRU=${PASSTHRU:-si}
+SMP=${SMP:-8}
+MEM=${MEM:-8G}
+PORTA=${PORTA:-5906}
+SYNCER=${SYNCER:-si}
+# ★★ claude 15/10 -- VEDERE COSA SUCCEDE.
+#   VISUALIZZATORE=si  apre vncviewer da solo appena la VM serve lo schermo
+#   DIARIO=si          mostra sul terminale lo stesso file che va su disco
+# Il file resta scritto DIRETTAMENTE (non attraverso una pipe), cosi' se la
+# macchina panica il contenuto c'e' lo stesso: il `tail -f` e' solo per gli
+# occhi, non e' la via di scrittura.
+RESET=${RESET:-si}
+VISUALIZZATORE=${VISUALIZZATORE:-si}
+DIARIO=${DIARIO:-si}
+
+# Ogni passo va su disco E si sincronizza: e' l'unica cosa che ha retto a
+# tutti e otto i panic del 14-15/10.
+segna() {
+	echo "$(date '+%F %H:%M:%S')  $*" >> "$TRACCIA"
+	sync
+}
+
+segna "================ AVVIO: Ubuntu + Radeon RX 6600 ================"
+segna "00 disco=$DISCO"
+segna "00b passthru=$PASSTHRU smp=$SMP mem=$MEM vnc=:$((PORTA-5900))"
+
+# --------------------------------------------------------------------------
+# Controlli che costano nulla e salvano la serata
+# --------------------------------------------------------------------------
+[ -f "$DISCO" ] || { segna "01 ★ DISCO ASSENTE"; echo "disco assente: $DISCO" >&2; exit 1; }
+segna "01 disco presente: $(ls -lh "$DISCO" | awk '{print $5}')"
+
+[ -x "$QEMU" ] || { segna "02 ★ QEMU ASSENTE"; echo "qemu assente: $QEMU" >&2; exit 1; }
+# ⚠ I dati di QEMU non stanno sempre accanto al binario.
+#   qemu-old: build-gpu/pc-bios (completa, coi keymap)
+#   qemu-new: build-gpu/pc-bios ha solo 6 file; quella buona e' la pc-bios
+#             dell'albero dei SORGENTI, un livello piu' su.
+#   Si cerca nell'una e poi nell'altra, e si pretende il keymap.
+DATI=""
+for _d in "$(dirname "$QEMU")/pc-bios" "$(dirname "$(dirname "$QEMU")")/pc-bios"; do
+	if [ -f "$_d/keymaps/en-us" ]; then DATI="$_d"; break; fi
+done
+[ -n "$DATI" ] || { segna "02 ★ keymap en-us non trovato accanto a $QEMU"; \
+	echo "keymap en-us non trovato per $QEMU" >&2; exit 1; }
+segna "02 QEMU ok, dati in $DATI (keymap presente)"
+
+if ! "$QEMU" -device help 2>/dev/null | grep -q 'bhyve-passthru'; then
+	segna "02b ★ questo QEMU NON ha bhyve-passthru"
+	echo "questo binario di QEMU non ha bhyve-passthru" >&2; exit 1
+fi
+segna "02c il binario ha bhyve-passthru: $QEMU"
+	segna "02d diagnostica bhyve-munmap: $(strings -a \"$QEMU\" 2>/dev/null | grep -c bhyve-munmap)"
+
+in_corso=$(pgrep -f "qemu-system-x86_64 .*-accel bhyve" | head -1)
+if [ -n "$in_corso" ]; then
+	segna "03 ★ c'e' gia' un QEMU (pid $in_corso)"
+	echo "c'e' gia' una VM QEMU in funzione (pid $in_corso)" >&2; exit 1
+fi
+
+# VM rimaste registrate da una corsa uccisa: ripulirle, altrimenti la
+# creazione fallisce o si riusa uno stato sporco.
+# claude 29/10: QEMU usa SEMPRE il nome vm2 (bhyve-all.c r.338). Si pulisce solo vm2, e solo se e' un residuo:
+# il ciclo di prima distruggeva OGNI VM in /dev/vmm, anche una VM bhyve viva (es. Windows vm0:12).
+segna "03b pulizia del solo vm2"
+sh /mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/vm-propria.sh vm2 || { echo "vm2 e' in uso" >&2; exit 1; }
+
+# --------------------------------------------------------------------------
+# La scheda
+# --------------------------------------------------------------------------
+if [ "$PASSTHRU" = si ]; then
+	manca=""
+	for f in 0 1; do
+		pciconf -l | grep -q "^ppt[0-9]*@pci0:3:0:$f:" || manca="$manca 3/0/$f"
+	done
+	if [ -n "$manca" ]; then
+		segna "04 ★ NON su ppt:$manca -- controlla pptdevs in /boot/loader.conf"
+		echo "funzioni non su ppt:$manca" >&2; exit 1
+	fi
+	segna "04 le 2 funzioni sono su ppt: $(pciconf -l | awk -F@ '/^ppt.*pci0:3:0:/{printf "%s ", $1}')"
+
+	segna "05 comando+stato 3/0/0 = $(pciconf -r pci0:3:0:0 0x04 2>/dev/null) (i 16 bit bassi sono il comando: 0000 = MEMEN spenta)"
+
+	# ★ Niente rattoppo MSI-X: questa scheda non ha la capability (usa MSI).
+	segna "06 capability: $(pciconf -lc pci0:3:0:0 2>/dev/null | grep -c 'cap ') nella catena, MSI-X: $(pciconf -lc pci0:3:0:0 2>/dev/null | grep -c 'MSI-X') (0 = usa MSI, giusto)"
+
+	# ⚠ Il secondary bus reset, che la 2080 Ti non richiede.
+	if [ "$RESET" = si ] && command -v reset-radeon >/dev/null 2>&1; then
+		if reset-radeon >/dev/null 2>&1; then
+			segna "07 reset-radeon OK, comando dopo = $(pciconf -r pci0:3:0:0 0x04 2>/dev/null)"
+		else
+			segna "07 ⚠ reset-radeon ha protestato: amdgpu potrebbe non agganciarsi"
+		fi
+	else
+		segna "07 reset-radeon saltato (RESET=$RESET)"
+	fi
+else
+	segna "04 PASSTHRU=no: nessuna GPU passata"
+fi
+
+# --------------------------------------------------------------------------
+# Contorno: firmware, memoria condivisa, rete
+# --------------------------------------------------------------------------
+cp /usr/local/share/qemu/edk2-i386-vars.fd "$OVMF_VARS"
+segna "08 variabili OVMF fresche in $OVMF_VARS"
+
+[ -f "$IPC" ] || truncate -s 128M "$IPC"
+ifconfig tap11 destroy 2>/dev/null
+ifconfig tap11 create >/dev/null && ifconfig bridge0 addm tap11 2>/dev/null
+ifconfig tap11 up
+segna "09 rete: tap11 su bridge0"
+
+AIUTANTI=""
+trap 'for _p in $AIUTANTI; do kill "$_p" 2>/dev/null; done' EXIT INT TERM
+
+if [ "$SYNCER" = si ]; then
+	( while :; do sync; sleep 0.05; done ) &
+	AIUTANTI="$AIUTANTI $!"
+	segna "10 sincronizzatore attivo (pid $!)"
+fi
+
+# --------------------------------------------------------------------------
+# La riga di QEMU
+# --------------------------------------------------------------------------
+set -- \
+  -L "$DATI" \
+  -accel bhyve \
+  -machine q35,hpet=off,i8042=off \
+  -cpu Skylake-Client-v4 \
+  -m "$MEM" \
+  -smp "$SMP",sockets=1,cores="$SMP",threads=1 \
+  -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+  -drive if=pflash,format=raw,file="$OVMF_VARS" \
+  -drive file="$DISCO",format=raw,if=none,id=disk0,cache=none \
+  -device VGA,id=schermo,xres=1600,yres=950,vgamem_mb=32 \
+  -device virtio-blk-pci,drive=disk0,bootindex=1 \
+  -device virtio-net-pci,netdev=net0 \
+  -netdev tap,id=net0,ifname=tap11,script=no,downscript=no \
+  -device qemu-xhci,id=usb \
+  -device usb-kbd,bus=usb.0 \
+  -device usb-tablet,bus=usb.0
+
+# ⚠ La VGA emulata va messa PRIMA della scheda vera e su uno slot piu'
+#   basso: se il VGA primario e' la RTX (slot 0x08), il guest disattiva la
+#   console vgaarb e non si vede piu' niente finche' amdgpu non parte.
+if [ "$PASSTHRU" = si ]; then
+	set -- "$@" \
+	  -device bhyve-passthru,host=3/0/0,multifunction=on,addr=0x08.0 \
+	  -device bhyve-passthru,host=3/0/1,addr=0x08.1
+	segna "11 le 2 funzioni vanno allo slot 0x08 del guest (0000:00:08.0 e .1)"
+fi
+
+set -- "$@" \
+  -object memory-backend-file,id=shm0,share=on,mem-path="$IPC",size=128M \
+  -device ivshmem-plain,memdev=shm0,master=on \
+  -vga none \
+  -display none \
+  -vnc "0.0.0.0:$((PORTA-5900))" \
+  -serial "file:/var/log/claude-amd-seriale.txt" \
+  -monitor none
+
+# ----------------------------------------------------------------------
+# Il visualizzatore: aspetta che la porta VNC risponda e poi si apre.
+# ----------------------------------------------------------------------
+if [ "$VISUALIZZATORE" = si ] && command -v vncviewer >/dev/null 2>&1; then
+	UTENTE=${SUDO_USER:-$(id -un)}
+	CASA=$(getent passwd "$UTENTE" | cut -d: -f6)
+	SCHERMO=${SCHERMO:-:0}
+	(
+		i=0
+		while ! nc -z -w 1 127.0.0.1 "$PORTA" 2>/dev/null; do
+			i=$((i + 1))
+			[ "$i" -gt 120 ] && { segna "14 ★ la porta $PORTA non ha mai risposto"; exit 1; }
+			sleep 1
+		done
+		sleep 1
+		segna "14 la porta $PORTA risponde: apro vncviewer per $UTENTE su $SCHERMO"
+		if [ "$UTENTE" != "$(id -un)" ]; then
+			su -m "$UTENTE" -c "DISPLAY=$SCHERMO XAUTHORITY=$CASA/.Xauthority vncviewer 127.0.0.1:$((PORTA-5900))" >/dev/null 2>&1
+		else
+			DISPLAY=$SCHERMO XAUTHORITY=$CASA/.Xauthority vncviewer "127.0.0.1:$((PORTA-5900))" >/dev/null 2>&1
+		fi
+	) &
+	AIUTANTI="$AIUTANTI $!"
+	segna "11b visualizzatore in attesa della porta $PORTA"
+elif [ "$VISUALIZZATORE" = si ]; then
+	segna "11b vncviewer non installato: collegati a mano a <host>:$((PORTA-5900))"
+fi
+
+# ----------------------------------------------------------------------
+# Il diario sul terminale: mostra il file, NON lo sostituisce.
+# ----------------------------------------------------------------------
+# ⚠ NON si tronca $DIAG: ci sta la diagnostica delle corse precedenti, che
+#   dopo un panic e' l'unica cosa rimasta.  Si segna un separatore e il
+#   `tail` mostra solo le righe NUOVE (-n 0).
+{ echo; echo "======== $(date '+%F %H:%M:%S') corsa nuova ========"; } >> "$DIAG"
+if [ "$DIARIO" = si ]; then
+	echo "---- uscita di QEMU (in diretta; finisce anche in $DIAG) ----"
+	tail -n 0 -f "$DIAG" &
+	AIUTANTI="$AIUTANTI $!"
+fi
+
+segna "12 LANCIO QEMU. Se la traccia finisce qui, muore nell'avvio."
+segna "    schermo: vncviewer <host>:$((PORTA-5900))"
+"$QEMU" "$@" >> "$DIAG" 2>&1
+ESITO=$?
+segna "13 QEMU e' uscito da solo, codice $ESITO"
+exit $ESITO

@@ -1,0 +1,71 @@
+#!/bin/sh
+# test-conformita-wrapper.sh -- Claude 01/11/2026, parere Opus «letture chiuse» par. 4.2. Le azioni che gli STRUMENTI
+# chiedono, in tutti gli scenari simulati di test-modulo-caldo (537), passano per vmm_azione_decidi con l'elenco
+# approvato vero: ogni rifiuto per un modulo DELLA CAMPAGNA (originale, stadio 10) e' un difetto, dello strumento o del
+# wrapper. Copia degli script in collaudi/, il finto (mc-finto.sh) REGISTRA ogni azione con i fatti del momento.
+# Come utente collaudo. Uso: sudo -u collaudo sh test-conformita-wrapper.sh <cartella in collaudi>
+set -u
+. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/nested-work
+O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O/script" || exit 2
+cp $W/caldo/mc-logica.sh $W/caldo/mc-sistema.sh $W/caldo/test-modulo-caldo.sh $W/caldo/guardia.sh "$O/script/" || exit 2
+REG=$O/azioni.txt; : > "$REG"; export REG
+# il finto, con una riga di registro in testa a ogni azione: AZIONE<TAB>caso<TAB>primitiva e argomenti<TAB>fatti
+python3 - "$W/caldo/mc-finto.sh" "$O/script/mc-finto.sh" <<'FINE_PY_REGISTRA'
+import sys
+t = open(sys.argv[1]).read()
+FATTI = ('ctime=$(cat "$FS/vm2_ctime" 2>/dev/null || echo 1793362388)\tmemseg=$(cat "$FS/vm2_memseg" 2>/dev/null || echo '
+         'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)\tbl=$(for u in $(awk \'$2 == "ppt" {print $3}\' '
+         '"$FS/pci"); do s_devmatch_candidati $u; done | sort -u | tr "\\n" " " | sed "s/ $//")\t'
+         'k_boot_safe=$(k_esiste boot_safe && cat "$FS/kenv_boot_safe" || echo "<assente>")\t'
+         'k_devmatch_blocklist=$(k_esiste devmatch_blocklist && cat "$FS/kenv_devmatch_blocklist" || echo "<assente>")')
+for fn, prim in [('s_freeze() {', 'devctl freeze'), ('s_thaw() {', 'devctl thaw'), ('s_kldunload() {', 'kldunload'),
+                 ('s_kldload() {', 'kldload $1'), ('s_kenv_set() {', 'kenv-set $1 $2'), ('s_kenv_unset() {', 'kenv-unset $1'),
+                 ('s_vm_destroy() {', 'distruggi $*')]:
+	i = t.index(fn); j = t.index('\n', i) + 1
+	riga = '\tprintf \'AZIONE\\t%%s\\t%%s\\t%%s\\n\' "${FS##*/}" "%s" "%s" >> "$REG"\n' % (prim, FATTI)
+	t = t[:j] + riga + t[j:]
+open(sys.argv[2], 'w').write(t)
+FINE_PY_REGISTRA
+sh "$O/script/test-modulo-caldo.sh" "$O/scenari" "$O/script" > "$O/scenari.txt" 2>&1
+echo "scenari: $(tail -1 $O/scenari.txt); azioni registrate: $(grep -c '^AZIONE' $REG)"
+# ogni azione registrata -> vmm_azione_decidi (elenco approvato vero; fatti dal registro)
+python3 - "$REG" "$W/APPROVATI-sequenza.sha256" "$O" <<'FINE_PY_DECIDI'
+import collections, subprocess, sys
+reg, elenco, O = sys.argv[1:4]
+campagna = {l.split()[1] for l in open(elenco) if l.strip() and not l.startswith('#') and l.split()[1].endswith('vmm-restore.ko')}
+orig = collections.defaultdict(dict)       # per caso: valore kenv alla PRIMA azione kenv (gli originali del wrapper)
+esiti = collections.Counter(); difetti = collections.defaultdict(list); fuori = collections.Counter()
+for r in open(reg):
+	r = r.rstrip('\n').split('\t')
+	if r[0] != 'AZIONE' or len(r) < 4: continue
+	caso, prim = r[1], r[2].split(' ')
+	f = dict(x.split('=', 1) for x in r[3:] if '=' in x)
+	if prim[0].startswith('kenv'):
+		for k in ('boot_safe', 'devmatch_blocklist'):
+			orig[caso].setdefault(k, f['k_' + k])
+	if prim[0] == 'kenv-set':
+		prim = ['kenv-set', prim[1], ' '.join(prim[2:])]
+	if prim[0] == 'kldload' and prim[1] not in campagna:
+		fuori[prim[1].split('/')[-3] if prim[1].count('/') > 3 else prim[1]] += 1
+		continue                           # moduli non della campagna: il rifiuto e' atteso
+	ko = orig[caso]
+	prog = ('VL_DIR=/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm; . $VL_DIR/gettone-lib.sh\n'
+	        'va_ctime() { echo "%s"; }\nva_memseg() { echo "%s"; }\nva_blocklist() { echo "%s"; }\n'
+	        'va_kenv_originale() { case "$1" in boot_safe) echo "%s";; devmatch_blocklist) echo "%s";; esac; }\n'
+	        'vmm_azione_decidi "$@"\n') % (f.get('ctime', ''), f.get('memseg', ''), f.get('bl', ''),
+	                                       ko.get('boot_safe', '<assente>'), ko.get('devmatch_blocklist', '<assente>'))
+	p = subprocess.run(['/bin/sh', '-c', prog, 'decidi', elenco] + prim, capture_output=True, text=True)
+	if p.returncode == 0:
+		esiti['ammessa'] += 1
+	else:
+		esiti['RIFIUTATA'] += 1
+		chiave = '%s -> %s' % (prim[0] if prim[0] != 'kenv-set' else 'kenv-set ' + prim[1], p.stdout.strip()[:150])
+		difetti[chiave].append(caso)
+print('azioni della campagna: %d ammesse, %d RIFIUTATE' % (esiti['ammessa'], esiti['RIFIUTATA']))
+print('kldload di moduli non della campagna (rifiuto atteso, non contato): %s' % dict(fuori))
+for k, v in sorted(difetti.items(), key=lambda x: -len(x[1])):
+	print('  DIFETTO %4d volte, %d scenari: %s (es. %s)' % (len(v), len(set(v)), k, ', '.join(sorted(set(v))[:3])))
+print('SUMMARY: %d tipi di rifiuto' % len(difetti))
+sys.exit(1 if difetti else 0)
+FINE_PY_DECIDI

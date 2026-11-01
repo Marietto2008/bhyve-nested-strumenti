@@ -1,0 +1,43 @@
+#!/bin/sh
+O=/mnt/linuxulator2/vm/nested-work/logs/fetch-$(date +%Y%m%d-%H%M); mkdir -p $O
+SP=/tmp/claude-1001/-mnt-linuxulator2-freebsd-radxa-src/b3d0f7b6-b200-4070-a188-1436b7dd0836/scratchpad
+N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/nested-work/dtrace
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n dtrace -s $D/win-fetch.d -o $O/fetch.txt 2>/dev/null &
+DT=$!
+sleep 4
+sudo -n sh $N/12-Windows-11-vm12-senza-gpu > $O/script.log 2>&1 &
+i=0; while [ $i -lt 60 ]; do [ -e /dev/vmm/vm0:12 ] && break; sleep 1; i=$((i+1)); done
+[ -e /dev/vmm/vm0:12 ] || { echo "VM NON creata"; exit 1; }
+echo "VM su; attendo una riga FETCH e leggo subito il GPA (VM viva)"
+got=""
+for t in $(seq 1 240); do
+  line=$(grep -m1 "^FETCH " $O/fetch.txt 2>/dev/null)
+  if [ -n "$line" ]; then
+    gpa=$(echo "$line" | grep -oE 'gpa=0x[0-9a-f]+' | head -1 | cut -d= -f2)
+    rip=$(echo "$line" | grep -oE 'rip=0x[0-9a-f]+' | head -1 | cut -d= -f2)
+    off=$(printf '0x%x' $(( $gpa & 0xfff )))
+    pbase=$(printf '0x%x' $(( $gpa & ~0xfff )))
+    echo "FETCH visto: $line"
+    echo "=== leggo la pagina di codice al GPA $pbase (EPT12 identity) ==="
+    sudo -n python3 -c "
+import mmap,os
+fd=os.open('/dev/vmm/vm0:12',os.O_RDONLY)
+m=mmap.mmap(fd,0x1000,mmap.MAP_SHARED,mmap.PROT_READ,offset=$pbase)
+open('$O/page.bin','wb').write(m[:]); m.close()
+print('scritti 4096 byte; offset dell\'istruzione in pagina:', hex($gpa & 0xfff))
+" && got="$gpa $rip $off"
+    break
+  fi
+  sleep 0.2
+done
+[ -z "$got" ] && echo "nessun FETCH catturato in tempo"
+b=$(pgrep -x bhyve); [ -n "$b" ] && { sudo -n kill -KILL $b; sleep 2; }
+sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+sudo -n pkill -KILL -f "win-fetch|vncviewer" 2>/dev/null
+echo "=== cronologia EPT violation nella zona utente (prime/ultime):"; grep "^EV " $O/fetch.txt | head -6; echo "..."; grep "^EV " $O/fetch.txt | tail -4
+echo "GOT: $got"; echo "OUTPUT: $O"
+ls /dev/vmm 2>/dev/null || echo "/dev/vmm pulito"

@@ -1,0 +1,42 @@
+#!/bin/sh
+# vmm-azione -- Claude 31/10/2026, parere Opus par. 3.2. PREPARATO OFFLINE, NON INSTALLATO.
+# Wrapper ROOT: l'UNICA via per le operazioni d'host che cambiano stato. Esegue solo primitive in elenco chiuso e solo
+# con un gettone valido per l'operazione. sudoers: [omesso] solo per questo e per le letture.
+#   vmm-azione kldload <percorso>        (scambio)   il file deve stare nell'elenco approvato
+#   vmm-azione kldunload                 (scambio)   solo vmm-restore.ko
+#   vmm-azione devctl freeze|thaw        (scambio)
+#   vmm-azione kenv-set boot_safe|devmatch_blocklist <valore> ; vmm-azione kenv-unset <nome>   (scambio)
+#   vmm-azione distruggi <nome VM>       (distruggi) solo vm2 (estensione per la VM della campagna: da decidere)
+#   vmm-azione ombra 0|1                 (ombra)     solo hw.vmm.vmx.nested_shadow_vmcs
+# (avvio-vm: il driver della KUT; da definire nel dettaglio con la campagna, oggi NON implementato -> rifiuto)
+set -u
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
+L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+G=/var/run/claude-gettone
+D=/var/log/claude-vmm-azione.log
+rifiuta() { echo "$(date '+%F %T') RIFIUTO $*" >> $D; echo "vmm-azione: RIFIUTO: $*" >&2; exit 4; }
+[ "$(id -u)" = 0 ] || rifiuta "non sono root"
+[ $# -ge 1 ] || rifiuta "nessuna operazione"
+case "$1" in
+kldload|kldunload|devctl|kenv-set|kenv-unset) op=scambio;;
+distruggi) op=distruggi;;
+ombra) op=ombra;;
+*) rifiuta "primitiva sconosciuta: $1";;
+esac
+m=$(gettone_valido "$G" $op "$(sha256 -q "$L" 2>/dev/null)" "$(date +%s)" 0) || rifiuta "$*: $m"
+case "$1" in
+kldload)   [ $# = 2 ] || rifiuta "uso"; awk -v f="$2" '$2 == f {t=1} END {exit !t}' "$L" || rifiuta "kldload $2: non nell'elenco approvato"
+           [ "$(sha256 -q "$2")" = "$(awk -v f="$2" '$2 == f {print $1}' "$L")" ] || rifiuta "kldload $2: sha diverso dall'approvato"
+           set -- kldload "$2";;
+kldunload) [ $# = 1 ] || rifiuta "uso"; set -- kldunload -n vmm-restore.ko;;
+devctl)    [ $# = 2 ] && { [ "$2" = freeze ] || [ "$2" = thaw ]; } || rifiuta "uso"; set -- devctl "$2";;
+kenv-set)  [ $# = 3 ] && { [ "$2" = boot_safe ] || [ "$2" = devmatch_blocklist ]; } || rifiuta "kenv-set: nome non ammesso"; set -- kenv "$2=$3";;
+kenv-unset) [ $# = 2 ] && { [ "$2" = boot_safe ] || [ "$2" = devmatch_blocklist ]; } || rifiuta "kenv-unset: nome non ammesso"; set -- kenv -u "$2";;
+distruggi) [ $# = 2 ] && [ "$2" = vm2 ] || rifiuta "distruggi: solo vm2"; set -- bhyvectl --vm=vm2 --destroy;;
+ombra)     [ $# = 2 ] && { [ "$2" = 0 ] || [ "$2" = 1 ]; } || rifiuta "ombra: 0 o 1"; set -- sysctl hw.vmm.vmx.nested_shadow_vmcs="$2";;
+esac
+echo "$(date '+%F %T') ESEGUO ($op, $m): $*" >> $D
+"$@"; r=$?
+echo "$(date '+%F %T') FINE rc=$r: $*" >> $D
+exit $r

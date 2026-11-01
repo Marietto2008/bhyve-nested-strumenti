@@ -1,0 +1,6 @@
+claude-eptrepro v4: X=0x20000 A=off 0x20000 B=off 0x30000 porta=0xeeef pid=70445
+  [host] marcatori iniziali: integri (A[0]=0x41414141 B[0]=0x42424242)
+  [run] INOUT port=0xeeef out bytes=4: RAX=0x0000000041414141 EAX=0x41414141 inout.eax=0x41414141
+0 smoke A        esito=0 exit=0 val=0x41414141 gpa=0 errno=0 atteso=0x41414141 -> PASS
+RISULTATO: SMOKE PASS
+HARNESS_PROTOCOL=PASS

@@ -1,0 +1,13 @@
+  ok      senza_tentata preso da s20-pulizia-A-ko (4 errati)
+  ok      runner_ko_prosegue preso da s18-A-fail-senza-vm2 (5 errati)
+  ok      senza_nessun_nodo preso da s21-vm2-resta (3 errati)
+  ok      successo_simulato_0 preso da s1-completa (7 errati)
+  ok      senza_trappole preso da s35-segnale-TERM (5 errati)
+  ok      operatore_ritorna preso da s24-B-operatore (4 errati)
+  ok      B_non_ultimo preso da s4-B-non-ultimo (6 errati)
+  ok      continuita_ignorata preso da s22-continuita-A-ko (2 errati)
+  ok      smoke_finale_ignorato preso da s31-smoke-finale-ko (1 errati)
+  ok      senza_rete_B preso da s34: (3 errati)
+  ok      senza_rete_A preso da s36 (1 errati)
+  ok      senza_verifica_hash preso da s38 (1 errati)
+SUMMARY: 12 presi, 0 non presi

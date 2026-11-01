@@ -1,0 +1,108 @@
+/*
+ * banco.c -- Claude 30/10/2026, parere #158 B4d (R3). Per tre istruzioni VMX dell'L1 con operando in memoria
+ * (VMPTRST, VMCLEAR, INVVPID) esegue il gestore VERO dopo il passo di vm_run che lo precede
+ * (vmm.c:1391 "vcpu->nextrip = vme->rip + vme->inst_length", con inst_length = lunghezza dell'istruzione:
+ * vmx.c:4267, mai azzerata per le uscite VMX) e classifica che cosa vede l'L1 al rientro:
+ *   ESEGUITA          nextrip = rip+len, esito VMX scritto in RFLAGS, nessuna eccezione
+ *   ECCEZIONE         nextrip = rip, una eccezione iniettata, nessun esito VMX
+ *   SALTO_SILENZIOSO  nextrip = rip+len, nessuna eccezione, RFLAGS INTATTI: l'istruzione "e' passata" senza effetto
+ *   RIPARTITA         nextrip = rip senza eccezione (ripartenza senza causa visibile)
+ * Uso: banco <etichetta> <atteso>   atteso = "attuale" (il codice come e') oppure "mutante" (solo stampa)
+ */
+#include "stub.h"
+#include "funzioni.inc"
+
+#define RIP0	0x1000
+#define LEN	5
+#define RFL0	0x8d7		/* CF PF AF ZF SF OF accesi: VMsucceed li spegne, un salto li lascia */
+#define OPGLA	0x2000		/* indirizzo dell'operando */
+#define ESEGUITA		"ESEGUITA"
+#define ECCEZIONE		"ECCEZIONE"
+#define SALTO_SILENZIOSO	"SALTO_SILENZIOSO"
+#define RIPARTITA		"RIPARTITA"
+
+static struct vcpu v;
+static struct vmx_nested n;
+static struct vmx_vcpu x;
+static int nf, nok;
+
+static void scena(uint32_t info, int g0, int g1, int getdesc_err)
+{
+	memset(&sc, 0, sizeof(sc)); memset(&v, 0, sizeof(v)); memset(&n, 0, sizeof(n)); memset(&x, 0, sizeof(x));
+	memset(mem, 0, sizeof(mem));
+	x.vcpu = &v; x.nested = &n; v.cookie = &x; v.stato = VCPU_FROZEN;
+	n.vmxon = 1; n.vmxon_ptr = 0x9000; n.current_vmcs12 = VMCS12_GPA_NONE;
+	for (int i = 0; i < VMX_NESTED_MAX_VMCS12; i++) n.cache[i].vmcs12_gpa = VMCS12_GPA_NONE;
+	n.vmx_msr[0x48c - 0x480] = 1ULL << 41;		/* INVVPID single-context annunciato */
+	n.vpid2 = 7;
+	n.exit_qual = OPGLA;				/* displacement = indirizzo dell'operando */
+	n.exit_insn_info = info;
+	n.exit_insn_length = LEN;
+	n.exit_paging.cpu_mode = CPU_MODE_64BIT;
+	x.gpr[1] = 1;					/* RCX = tipo INVVPID 1 */
+	*(uint64_t *)(mem + OPGLA) = 0x5000;		/* VMCLEAR: regione allineata, non VMXON */
+	*(uint64_t *)(mem + OPGLA) = 0x5000;
+	*(uint64_t *)(mem + OPGLA + 8) = 0;
+	sc.gla2gpa[0] = g0; sc.gla2gpa[1] = g1; sc.getdesc_err = getdesc_err;
+	/* l'uscita: RIP del VMCS, e il passo di vm_run che precede il gestore */
+	v.regs[VM_REG_GUEST_RIP] = RIP0; v.regs[VM_REG_GUEST_RFLAGS] = RFL0;
+	v.exitinfo.rip = RIP0; v.exitinfo.inst_length = LEN;
+	v.nextrip = v.exitinfo.rip + v.exitinfo.inst_length;
+}
+
+static const char *classifica(void)
+{
+	uint64_t rfl = v.regs[VM_REG_GUEST_RFLAGS];
+
+	if (v.nextrip == RIP0 + LEN && sc.eccezioni == 0 && rfl != RFL0)
+		return (ESEGUITA);
+	if (v.nextrip == RIP0 && sc.eccezioni == 1 && rfl == RFL0)
+		return (ECCEZIONE);
+	if (v.nextrip == RIP0 + LEN && sc.eccezioni == 0 && rfl == RFL0)
+		return (SALTO_SILENZIOSO);
+	if (v.nextrip == RIP0 && sc.eccezioni == 0)
+		return (RIPARTITA);
+	return ("ALTRO");
+}
+
+static const char *atteso;
+static void caso(const char *nome, int (*gestore)(struct vmx_vcpu *), uint32_t info, int g0, int g1, int gd,
+    const char *esito_attuale)
+{
+	const char *e;
+	int r;
+
+	scena(info, g0, g1, gd);
+	r = gestore(&x);
+	e = classifica();
+	printf("  %-34s ritorno %d nextrip %#lx RFLAGS %#lx eccezioni %ld esiti %ld -> %s\n", nome, r,
+	    (u_long)v.nextrip, (u_long)v.regs[VM_REG_GUEST_RFLAGS], sc.eccezioni, sc.risultati, e);
+	if (strcmp(atteso, "attuale") != 0)
+		return;
+	if (strcmp(e, esito_attuale) == 0) nok++;
+	else { nf++; printf("  ERRATO  %s: %s, atteso %s\n", nome, e, esito_attuale); }
+}
+
+/* info: addrsize 64 (2<<7), segmento DS (3<<15), indice non valido (bit 22), base non valida (bit 27), reg2 = RCX (1<<28) */
+#define INFO	((2u << 7) | (3u << 15) | (1u << 22) | (1u << 27) | (1u << 28))
+
+int main(int argc, char **argv)
+{
+	atteso = argc > 2 ? argv[2] : "attuale";
+	printf("banco R3 (%s, %s)\n", argc > 1 ? argv[1] : "?", atteso);
+	/* controlli: i due esiti del contratto si distinguono */
+	caso("VMPTRST traduzione ok", nested_vmptrst, INFO, G_OK, G_OK, 0, ESEGUITA);
+	caso("VMPTRST #PF dell'operando", nested_vmptrst, INFO, G_PF, G_OK, 0, ECCEZIONE);
+	caso("VMCLEAR traduzione ok", nested_vmclear, INFO, G_OK, G_OK, 0, ESEGUITA);
+	caso("VMCLEAR #PF dell'operando", nested_vmclear, INFO, G_PF, G_OK, 0, ECCEZIONE);
+	caso("INVVPID traduzione ok", nested_invvpid, INFO, G_OK, G_OK, 0, ESEGUITA);
+	caso("INVVPID #PF sulla seconda meta'", nested_invvpid, INFO, G_OK, G_PF, 0, ECCEZIONE);
+	/* R3: l'errore dell'host */
+	caso("VMPTRST EFAULT della traduzione", nested_vmptrst, INFO, G_EFAULT, G_OK, 0, SALTO_SILENZIOSO);
+	caso("VMCLEAR EFAULT della traduzione", nested_vmclear, INFO, G_EFAULT, G_OK, 0, SALTO_SILENZIOSO);
+	caso("INVVPID EFAULT sulla seconda meta'", nested_invvpid, INFO, G_OK, G_EFAULT, 0, SALTO_SILENZIOSO);
+	caso("VMPTRST errore di vmx_getdesc", nested_vmptrst, INFO, G_OK, G_OK, EINVAL, SALTO_SILENZIOSO);
+	if (kassert_fallite) { nf++; printf("  ERRATO  KASSERT fallite %d\n", kassert_fallite); }
+	printf("%s: %d ok, %d errati\n", argc > 1 ? argv[1] : "?", nok, nf);
+	return (nf != 0);
+}

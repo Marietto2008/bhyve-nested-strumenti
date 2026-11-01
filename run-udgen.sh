@@ -1,0 +1,43 @@
+#!/bin/sh
+# INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-udgen.sh.non-conforme
+echo "INERTE: run-udgen.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-udgen.sh.non-conforme" >&2; exit 4
+# Verifica di 0b1a0f3 + 22dc5d5 (parere #16): 9 corse, win-final.d con
+# diag_vec=6, e dopo ogni corsa l'intestazione del dump nel pagefile.
+O=/mnt/linuxulator2/vm/nested-work/logs/udgen-$(date +%Y%m%d-%H%M)
+mkdir -p $O
+N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/nested-work/dtrace
+IMG=/mnt/da0p2/bhyve/img/Windows/11/Windows11.img
+DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
+mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
+dump() {   # stampa codice e P1/P2 relativi alla base di ntoskrnl
+  md=$(sudo -n mdconfig -a -t vnode -o readonly -f $IMG) || return
+  sudo -n ntfscat -f /dev/${md}p3 pagefile.sys 2>/dev/null | head -c 4096 > $1
+  sleep 1; sudo -n mdconfig -d -u ${md#md}
+  python3 -c "
+import struct,sys
+b=open('$1','rb').read()
+if b[:8]!=b'PAGEDU64': print('nessun dump'); sys.exit()
+c=struct.unpack_from('<I',b,0x38)[0]; p=struct.unpack_from('<QQQQ',b,0x40)
+base=struct.unpack_from('<Q',b,0x20)[0]-0xc298a0
+print(f'code={c:#x} P1={p[0]:#x} P2=nt+{p[1]-base:#x} base={base:#x}')"
+}
+echo "output in $O"; echo "dump PRIMA delle corse: $(dump $O/pf-0.bin)"
+for k in 1 2 3; do
+  echo "######## corsa $k  $(date +%H:%M:%S)"
+  sudo -n sysctl hw.vmm.vmx.diag_vec=6 hw.vmm.vmx.diag_slot=768 >/dev/null
+  sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+  sudo -n dtrace -s $D/win-udgen.d -o $O/g$k.txt 2>/dev/null &
+  sleep 4
+  sudo -n sh $N/12-Windows-11-vm12-senza-gpu > $O/f$k-script.log 2>&1 &
+  i=0; while [ $i -lt 60 ]; do [ -e /dev/vmm/vm0:12 ] && break; sleep 1; i=$((i+1)); done
+  [ -e /dev/vmm/vm0:12 ] && sleep 80 || echo "  VM NON creata"
+  b=$(pgrep -x bhyve); [ -n "$b" ] && { sudo -n kill -KILL $b; sleep 3; }
+  sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null
+  sudo -n pkill -INT -f "win-udgen" 2>/dev/null; sleep 2
+  sudo -n pkill -KILL -f "win-udgen|vncviewer" 2>/dev/null; sleep 1
+  echo "  dump: $(dump $O/pf-$k.bin)"
+  echo "  !!!: $(grep -c "INJ #UD\|L0 vm_inject" $O/g$k.txt)   $(echo)"
+done
+sudo -n sysctl hw.vmm.vmx.diag_vec=0 >/dev/null
+ls /dev/vmm 2>/dev/null || echo "/dev/vmm pulito"

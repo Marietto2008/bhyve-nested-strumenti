@@ -1,0 +1,120 @@
+S1: sequenza completa
+  ok      s1-completa uscita 2
+  ok      s1-completa invocazioni esatte
+  ok      s1-completa diario: 17 INIZIO e 17 FINE con rc
+  ok      s1-completa diario chiuso dall'ESITO
+  ok      s1-completa ogni riga del diario dice SIMULATA
+  ok      s1: successo SIMULATO esce 2, mai 0
+  ok      s1: host simulato sull'originale
+  ok      s2-solo-A uscita 2
+  ok      s2-solo-A invocazioni esatte
+  ok      s2-solo-A diario: 9 INIZIO e 9 FINE con rc
+  ok      s2-solo-A diario chiuso dall'ESITO
+  ok      s2-solo-A ogni riga del diario dice SIMULATA
+  ok      s3-solo-B uscita 2
+  ok      s3-solo-B invocazioni esatte
+S2: argomenti rifiutati prima di qualunque invocazione
+  ok      s4-B-non-ultimo uscita 4
+  ok      s4-B-non-ultimo invocazioni esatte
+  ok      s5-ripetuto uscita 4
+  ok      s5-ripetuto invocazioni esatte
+  ok      s6-fuori-ordine uscita 4
+  ok      s6-fuori-ordine invocazioni esatte
+  ok      s7-sconosciuto uscita 4
+  ok      s7-sconosciuto invocazioni esatte
+  ok      s8-vuoto uscita 4
+  ok      s8-vuoto invocazioni esatte
+  ok      s9-modo uscita 4
+  ok      s9-modo invocazioni esatte
+  ok      s10: cartella esistente rifiutata (4), nessuna invocazione
+  ok      s11: cartella fuori da logs rifiutata (4)
+S3: prima dello scambio
+  ok      s12-host-non-originale uscita 4
+  ok      s12-host-non-originale invocazioni esatte
+  ok      s12-host-non-originale diario: 1 INIZIO e 1 FINE con rc
+  ok      s12-host-non-originale diario chiuso dall'ESITO
+  ok      s12-host-non-originale ogni riga del diario dice SIMULATA
+  ok      s13-scambio-rifiutato uscita 4
+  ok      s13-scambio-rifiutato invocazioni esatte
+  ok      s14-scambio-fallito-tornato uscita 4
+  ok      s14-scambio-fallito-tornato invocazioni esatte
+  ok      s15-scambio-operatore uscita 6
+  ok      s15-scambio-operatore invocazioni esatte
+  ok      s16-scambio-fallito-smoke-ko uscita 6
+  ok      s16-scambio-fallito-smoke-ko invocazioni esatte
+S4: STOP dopo lo scambio -> solo recupero e ritorno
+  ok      s17-C1-ko uscita 4
+  ok      s17-C1-ko invocazioni esatte
+  ok      s17-C1-ko diario: 6 INIZIO e 6 FINE con rc
+  ok      s17-C1-ko diario chiuso dall'ESITO
+  ok      s17-C1-ko ogni riga del diario dice SIMULATA
+  ok      s17: motivo nel diario
+  ok      s18-A-fail-senza-vm2 uscita 4
+  ok      s18-A-fail-senza-vm2 invocazioni esatte
+  ok      s19-A-fail-con-vm2 uscita 4
+  ok      s19-A-fail-con-vm2 invocazioni esatte
+  ok      s20-pulizia-A-ko uscita 6
+  ok      s20-pulizia-A-ko invocazioni esatte
+  ok      s20: nessun secondo --distruggi-da (regola: niente ripetizioni)
+  ok      s21-vm2-resta uscita 6
+  ok      s21-vm2-resta invocazioni esatte
+  ok      s22-continuita-A-ko uscita 4
+  ok      s22-continuita-A-ko invocazioni esatte
+  ok      s23-As-inconcl uscita 4
+  ok      s23-As-inconcl invocazioni esatte
+  ok      s24-B-operatore uscita 6
+  ok      s24-B-operatore invocazioni esatte
+  ok      s25-riclassifica-emergenza uscita 6
+  ok      s25-riclassifica-emergenza invocazioni esatte
+  ok      s26-riclassifica-rc4 uscita 4
+  ok      s26-riclassifica-rc4 invocazioni esatte
+  ok      s27-classifica-recupero-ko uscita 6
+  ok      s27-classifica-recupero-ko invocazioni esatte
+  ok      s28-ritorno-recupero-ko uscita 6
+  ok      s28-ritorno-recupero-ko invocazioni esatte
+S5: il ritorno finale
+  ok      s29-ritorno-fallito-tornato uscita 4
+  ok      s29-ritorno-fallito-tornato invocazioni esatte
+  ok      s30-ritorno-operatore uscita 6
+  ok      s30-ritorno-operatore invocazioni esatte
+  ok      s31-smoke-finale-ko uscita 6
+  ok      s31-smoke-finale-ko invocazioni esatte
+S6: --prova: sola lettura
+  ok      s32-prova uscita 2
+  ok      s32-prova invocazioni esatte
+  ok      s32: stato invariato
+  ok      s33-prova-runner-rifiuta uscita 4
+  ok      s33-prova-runner-rifiuta invocazioni esatte
+S7: le reti contro lo strumento vero (incidente del 31/10)
+  ok      s34: finto senza t_caldo
+  ok      s34: t_smoke ancora nel finto
+  ok      s34: t_runner ancora nel finto
+  ok      s34: t_residuo ancora nel finto
+  ok      s34: t_caldo non ridefinita -> rifiuto simulato (6)
+  ok      s34: trappola NON scattata (la rete B regge)
+  ok      s36: i 4 strumenti puntano alla trappola
+  ok      s36b: trappola scattata: registrata, uscita 99
+  ok      s37: modulo-caldo.sh vero: guardia per SEQ_FINTO (4)
+  ok      s37: modulo-caldo.sh vero: guardia per l'utente collaudo (4)
+  ok      s37: vmm-residuo.sh vero --distruggi-da: guardia PRIMA della classificazione (4)
+  ok      s37: vmm-residuo.sh vero --distruggi: guardia PRIMA della classificazione (4)
+  ok      s37: run-opnd-kut.sh vero: guardia (4)
+  ok      s38-hash-diverso: STOP 4 prima di qualunque invocazione (diverso da quello approvato)
+  ok      s39-elenco-assente: STOP 4 prima di qualunque invocazione (approvati assente)
+  ok      s40-elenco-vuoto: STOP 4 prima di qualunque invocazione (approvati vuoto)
+  ok      s41-solo-commenti: STOP 4 prima di qualunque invocazione (approvati vuoto)
+  ok      s1: approvati verificati e scritti nel diario
+S8: segnali VERI durante un'invocazione in primo piano
+  ok      s35-segnale-TERM uscita 143
+  ok      s35-segnale-TERM invocazioni esatte
+  ok      s35-segnale-TERM diario: interrotta, fase e invocazione
+  ok      s35-segnale-INT uscita 130
+  ok      s35-segnale-INT invocazioni esatte
+  ok      s35-segnale-INT diario: interrotta, fase e invocazione
+  ok      s35-segnale-HUP uscita 129
+  ok      s35-segnale-HUP invocazioni esatte
+  ok      s35-segnale-HUP diario: interrotta, fase e invocazione
+S9: lo script vero non e' mai stato invocato su strumenti veri
+  ok      nessuna funzione non ridefinita usata fuori da s34
+  ok      nessuna trappola scattata in nessun caso
+SUMMARY: 110 ok, 0 errati

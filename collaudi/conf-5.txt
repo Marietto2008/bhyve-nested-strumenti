@@ -1,0 +1,4 @@
+scenari: SUMMARY: 537 ok, 0 FAIL; azioni registrate: 530
+azioni della campagna: 504 ammesse, 0 RIFIUTATE
+kldload di moduli non della campagna (rifiuto atteso, non contato): {'modules': 17, 'ripfix-congelato-20261030-r5': 5, 'logs': 4}
+SUMMARY: 0 tipi di rifiuto
