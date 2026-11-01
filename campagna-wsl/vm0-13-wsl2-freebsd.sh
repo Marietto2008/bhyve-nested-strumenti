@@ -43,4 +43,13 @@ set -- "$BHYVE" -S -c "$(v cpu)" -m "$(v memoria)" -w -H -A \
 	"$VM"
 echo "vm0-13: immagine $IMG, nessun disco dati, rete $(v tap), VNC $(v vnc) (vncviewer localhost:13)"
 [ $PROVA = 1 ] && { echo "PROVA, non avvio:"; echo "$@"; exit 0; }
-exec "$@"
+# bhyve esce a ogni riavvio del sistema ospite: 0 = riavvio (si riparte), 1 spento, 2 arresto, 3 triplo errore,
+# 4 errore (ci si ferma). L'istanza si distrugge solo DOPO l'uscita del NOSTRO bhyve.
+while :; do
+	"$@"; rc=$?
+	bhyvectl --destroy --vm="$VM" >/dev/null 2>&1
+	echo "vm0-13: bhyve uscito rc=$rc $(date '+%F %T')"
+	[ $rc -eq 0 ] || exit $rc
+	echo "vm0-13: riavvio del sistema ospite, riparto"
+	sleep 2
+done
