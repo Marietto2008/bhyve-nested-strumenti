@@ -9,8 +9,8 @@
 # bhyve stesso. Legge i dati della macchina da macchina.conf; il bhyve e' quello della serie, verificato per sha.
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-C=/mnt/linuxulator2/vm/nested-work/campagna-wsl/macchina.conf
-BHYVE=/mnt/linuxulator2/vm/nested-work/stage/current/sbin/bhyve
+C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina.conf
+BHYVE=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/sbin/bhyve
 BHYVE_SHA=d393103a6f56885100fc63c0b8bc37921878e0bb3dc3af2a0b556fbd390e2955
 UEFI=/usr/local/share/uefi-firmware/BHYVE_UEFI_CODE.fd
 v() { sed -n "s/^$1=//p" "$C" | head -1; }

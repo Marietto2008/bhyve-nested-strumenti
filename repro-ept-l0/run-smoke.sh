@@ -2,7 +2,7 @@
 # run-smoke.sh -- Claude 26/10/2026, parere #70 Checkpoint A: SOLO lo smoke test.
 # Da lanciare SOLO dopo l'autorizzazione esplicita dell'utente.
 # Non avvia nessuna fase successiva.
-cd /mnt/linuxulator2/vm/nested-work/repro-ept-l0 || exit 1
+cd /mnt/linuxulator2/vm/wsl2/fbsd/repro-ept-l0 || exit 1
 BIN=./ept_l0_repro
 ATTESO=667b3f3a68a11090c10139e5b0c99c11dad7057cfe3f5e0e94d857dba795e249	# v4
 

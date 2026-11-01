@@ -55,7 +55,7 @@ echo "INERTE: run-ptpad-kut-h2ad.sh ha azioni sull'host senza guardia (controllo
 # USCITA: 0 sessione eseguita e analizzata senza TEST_ERROR; 3 analisi con TEST_ERROR;
 #         2 STOP del driver; 4 STOP al preflight (nessuna VM); 5 VM ancora viva o nodo rimasto.
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 N=$B/freebsd-nested/tools/nested
 MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 FLAT_RITIRATA=8d10c1f5d79cad3065c962fafc95e42c52c582a6f39507804699ab9061092bc1	# #104: eseguiva sempre i D
@@ -100,7 +100,7 @@ case "$FBT" in */ptpad-fbt-ripfix-nested.d) FBT_SHA=$FBT_RIPFIX_SHA;; */ptpad-fb
 piano_ammesso "$MODULO" "$PIANO" || ferma "piano '$PIANO' rifiutato per $MODULO"
 # #119 §3.3: uscita solo su ZFS, dentro il workspace
 case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS: $OUT"
 ulimit -f $LIMITE_BLOCCHI			# ogni file scritto da qui in giu' (driver, dtrace, QEMU) ha un tetto
 # #142: piano TERMINALE dalla tabella (un caso D, o HM_PTP col modulo RIPFIX: la Fase C ferma il vCPU)

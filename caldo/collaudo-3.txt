@@ -10,7 +10,7 @@
   ok   T01-orig-orig nessun evento 'ASTA SENZA PPT'
 == T02-orig-r110 (rc=0)
   ok   T02-orig-r110 rc=0
-  ok   T02-orig-r110 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
+  ok   T02-orig-r110 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
   ok   T02-orig-r110 frozen=0
   ok   T02-orig-r110 6 ppt
   ok   T02-orig-r110 amdgpu NON caricato

@@ -4,7 +4,7 @@
 # esattamente come nel runner (SIGINT ignorato nel job). Nessuna VM, nessun modulo; solo processi sleep.
 # Uso: test-ferma-dtrace.sh <cartella nuova su ZFS>
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 O=${1:?cartella}
 case "$O" in $B/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }

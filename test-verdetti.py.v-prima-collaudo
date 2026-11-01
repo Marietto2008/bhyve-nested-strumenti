@@ -5,7 +5,7 @@
 #   test-verdetti.py <cartella di lavoro nuova>
 import json, os, subprocess, sys, textwrap
 
-B = '/mnt/linuxulator2/vm/nested-work'
+B = '/mnt/linuxulator2/vm/wsl2/fbsd'
 PY = sys.executable
 W = sys.argv[1]
 os.makedirs(W)

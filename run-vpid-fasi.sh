@@ -10,7 +10,7 @@
 # uso: sudo -n sh run-vpid-fasi.sh 02|03|04
 set -u
 F=${1:?passo}
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 O=$B/logs/vpidfase-$F-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 # il modulo CARICATO deve avere il tracciamento VPID: lo si riconosce
 # dall'interruttore, senza legarsi a uno SHA preciso (22ad8106199e o successivi).

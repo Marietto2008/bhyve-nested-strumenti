@@ -5,7 +5,7 @@
 # di ogni stadio cadano solo su etichette corrette dalle patch successive, e che lo stadio finale non ne abbia. Poi i
 # mutanti sullo stadio finale, i sanitizer, la matrice vecchio->nuovo.
 # Uso: run.sh <cartella di uscita>
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 B=$W/banco-opnd
 ST=$W/logs/r6r3-160/stadi
 O=${1:?cartella}

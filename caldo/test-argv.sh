@@ -5,7 +5,7 @@
 # quindi qui guardia_azione e' ridefinita per REGISTRARE la propria chiamata: ogni azione deve chiamarla PRIMA di sudo
 # (atteso "G[...]"), e con la guardia che rifiuta sudo non deve partire (caso finale).
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh
 D=$(cd "$(dirname "$0")" && pwd)
 . "$D/mc-sistema.sh"
 REG=""
@@ -33,7 +33,7 @@ for a in s_freeze s_thaw "s_kenv_set boot_safe YES" "s_kenv_unset boot_safe" s_k
 	[ "$REG" = G ] && [ $r != 0 ] && { P=$((P+1)); echo "  ok   guardia che rifiuta: $a non chiama sudo (rc $r)"; } || { F=$((F+1)); echo "  FAIL guardia che rifiuta: $a -> $REG rc $r"; }
 done
 # la guardia VERA, come utente collaudo, rifiuta (si ricarica guardia.sh)
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh
+. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia.sh
 REG=""; m=$(s_freeze 2>&1); r=$?
 [ $r != 0 ] && [ -z "$REG" ] && echo "$m" | grep -q 'GUARDIA: utente collaudo' && { P=$((P+1)); echo "  ok   guardia vera: s_freeze rifiutato come collaudo"; } || { F=$((F+1)); echo "  FAIL guardia vera: rc $r REG '$REG' $m"; }
 echo "SUMMARY: $P ok, $F FAIL"

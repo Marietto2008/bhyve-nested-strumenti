@@ -12,7 +12,7 @@
 #
 # Funzioni pure: impostano variabili, non toccano l'host.
 
-RM_B=/mnt/linuxulator2/vm/nested-work
+RM_B=/mnt/linuxulator2/vm/wsl2/fbsd
 RM_MOD_ORIG=/boot/kernel/vmm-restore.ko
 RM_MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 RM_MOD_ORIG_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
@@ -35,7 +35,7 @@ modo_carica() {
 		OID_ATTESO=000; FRONTEND=porta; HOTSWAP=no; QEMU=$RM_QEMU_PORTA; QEMU_ATTESO_SHA=$RM_QEMU_PORTA_SHA
 		LIBV_ATTESA=$RM_LIBV; LIBV_ATTESA_SHA=$RM_LIBV_SHA;;
 	h2ad2)
-		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
 		MOD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
 		MOD_BUILDID=6df2856a10e94608a69a3844ff78965e25ad97fe
 		OID_ATTESO=110; FRONTEND=riferimento; HOTSWAP=si; QEMU=$RM_QEMU_RIF;;

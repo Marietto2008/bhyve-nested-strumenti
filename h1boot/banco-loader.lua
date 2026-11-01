@@ -5,7 +5,7 @@
 --   * io.open in scrittura permesso SOLO sotto BANCO, altrimenti errore
 -- uso: flua banco-loader.lua <banco_dir> <nextboot_file|-> [nextboot_enable_env|-]
 local BANCO, NBFILE, NBENV = arg[1], arg[2], arg[3]
-assert(BANCO and BANCO:find("/mnt/linuxulator2/vm/nested-work/h1boot/", 1, true) == 1, "BANCO fuori dal workspace")
+assert(BANCO and BANCO:find("/mnt/linuxulator2/vm/wsl2/fbsd/h1boot/", 1, true) == 1, "BANCO fuori dal workspace")
 package.path = "/boot/lua/?.lua;" .. package.path
 
 local env = { module_path = "/boot/modules;/boot/dtb;/boot/dtb/overlays" }

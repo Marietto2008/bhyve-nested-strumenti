@@ -3,7 +3,7 @@
 # Da lanciare SOLO con l'assenso esplicito dell'utente. Non ripete, non avvia
 # altre corse. Uso: run-full.sh N   (N = numero della corsa, per i nomi dei log)
 N=${1:-1}
-D=/mnt/linuxulator2/vm/nested-work/repro-ept-l0
+D=/mnt/linuxulator2/vm/wsl2/fbsd/repro-ept-l0
 cd $D || exit 1
 BIN=./ept_l0_repro
 ATTESO=fc8ff592b3fcd721cd6be489c5e889b479e0c1ece41607a637f9e5d6fd5ccabf

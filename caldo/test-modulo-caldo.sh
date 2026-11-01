@@ -3,20 +3,20 @@
 # Non tocca l'host: nessun sudo, nessun kld, nessun devctl. Ogni caso gira in un /bin/sh a se' ($$ giusto per i segnali).
 # uso: sh test-modulo-caldo.sh <cartella-uscita su ZFS> [cartella-script, default: quella di questo file]
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 D=${2:-$(cd "$(dirname "$0")" && pwd)}
 O=${1:?cartella}
-case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS: $O"; exit 2;; esac
+case "$O" in /mnt/linuxulator2/vm/wsl2/fbsd/*) ;; *) echo "uscita fuori dal workspace ZFS: $O"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
 mkdir -p "$O" || exit 2
 ORIG=/boot/kernel/vmm-restore.ko
-NEW=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
-H2AD=/mnt/linuxulator2/vm/nested-work/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
-RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
-S9=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
-S10=/mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko
-S11=/mnt/linuxulator2/vm/nested-work/logs/stadio11-congelato-20261101/vmm-restore.ko
-H2=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+NEW=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+H2AD=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+RIPFIX=/mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+S9=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko
+S10=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko
+S11=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
+H2=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
 ko() { FAIL=$((FAIL + 1)); echo "  FAIL $*"; }

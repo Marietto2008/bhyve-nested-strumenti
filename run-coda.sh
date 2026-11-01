@@ -3,7 +3,7 @@
 echo "INERTE: run-coda.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-coda.sh.non-conforme" >&2; exit 4
 # Claude 23/10/2026 -- parere #34 §2: la coda dei gestori INVEPT (oltre 4 ms) con retry 2
 # e retry 1, 4 VP veri, make -j4, verifica HPA spenta. Traccia dtrace/invlong.d per corsa.
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 G=/usr/bin/grep
 for c in "2 C1" "1 C2" "2 C3"; do
 	set -- $c

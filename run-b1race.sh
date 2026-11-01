@@ -1,7 +1,7 @@
 #!/bin/sh
 # Claude 22/10/2026 -- B1 retry (parere #29 §7): corsa deterministica fra le passate.
 # Uso: sudo sh run-b1race.sh   (log in logs/b1race-AAAAMMGG-HHMM)
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested
 O=$B/logs/b1race-$(date +%Y%m%d-%H%M); mkdir -p $O
 G=/usr/bin/grep
 ctr() { sysctl hw.vmm.vmx | $G -E "vept_(scan|test_race_inj|leaves_zapped|keep_(partial|full)|stale)" | sed 's/^hw.vmm.vmx.//'; }

@@ -4,7 +4,7 @@
 # che contano: i 12 bit bassi (tipo, walk, A/D, 11:7), bit alti scelti, indirizzi, capacita' 6/8/14/21, MAXPHYADDR.
 # Verifica anche che il VM entry dello stadio 7 chiami nested_eptp_ok al posto dell'espressione.
 # Uso: eptp-equiv.sh <vmx_nested.c stadio 6> <vmx_nested.c stadio 7> <cartella di uscita>
-B=/mnt/linuxulator2/vm/nested-work/banco-opnd
+B=/mnt/linuxulator2/vm/wsl2/fbsd/banco-opnd
 V=${1:?stadio 6}; N=${2:?stadio 7}; O=${3:?uscita}
 mkdir -p "$O" || exit 2
 python3 - "$V" "$N" "$O/eptp.c" "$B/eptp-equiv.c.modello" <<'FINE_PY_EPTPGEN'
@@ -16,7 +16,7 @@ if not m:
 nuovo = open(sys.argv[2]).read()
 if nuovo.count('!nested_eptp_ok(cap, vmcs12_read_field(c, VMCS_EPTP)))') != 1:
     sys.exit('VM entry dello stadio 7: chiamata a nested_eptp_ok assente')
-f = subprocess.run(['python3', '/mnt/linuxulator2/vm/nested-work/banco-opnd/estrai.py', sys.argv[2], 'nested_eptp_ok'],
+f = subprocess.run(['python3', '/mnt/linuxulator2/vm/wsl2/fbsd/banco-opnd/estrai.py', sys.argv[2], 'nested_eptp_ok'],
     capture_output=True, text=True)
 if f.returncode != 0:
     sys.exit('nested_eptp_ok non estratta')

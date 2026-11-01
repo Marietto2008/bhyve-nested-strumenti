@@ -6,7 +6,7 @@ echo "INERTE: run-ept12plain-fix.sh ha azioni sull'host senza guardia (controllo
 # traccia diag77.d (sonda ricavata al momento, contesto legato, verdetti L0).
 # Da lanciare SOLO con l'assenso esplicito dell'utente per QUESTA corsa.
 # Nessun retry, nessuna corsa successiva, nessun cambio di kernel/flag.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD=/boot/kernel/vmm-restore.ko

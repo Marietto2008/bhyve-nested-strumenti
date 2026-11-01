@@ -30,9 +30,9 @@ r_distruggi() { sudo -n /usr/sbin/bhyvectl --vm="$1" --destroy; }
 r_ora()     { /bin/date '+%F %T'; }
 r_memseg_testo() { sudo -n /usr/sbin/bhyvectl --vm="$1" --get-memseg 2>&1 | /usr/bin/tr -s ' \n' ' '; }	# come nel manifest
 r_dtrace_vivo()  { /bin/pgrep -x dtrace; }
-r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/stato.txt 2>/dev/null; }
+r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/wsl2/fbsd/logs/modulo-caldo/stato.txt 2>/dev/null; }
 [ -n "${VR_FINTO:-}" ] && . "$VR_FINTO"
-VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/nested-work/logs/vmm-residuo/diario.txt}
+VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/wsl2/fbsd/logs/vmm-residuo/diario.txt}
 
 vr_dice() { echo "$*"; [ "${VR_SCRIVI:-0}" = 1 ] && echo "$(r_ora) $*" >> "$VR_DIARIO"; return 0; }
 vr_stop() { vr_dice "RIFIUTO: $*; nulla fatto"; exit 4; }

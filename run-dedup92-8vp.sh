@@ -21,7 +21,7 @@ case "$MISURA_R/$MISURA_BUDGET" in
 *) echo "parere #92: solo il braccio A (MISURA_R=1 MISURA_BUDGET=2000), chiesto $MISURA_R/$MISURA_BUDGET"; exit 4;;
 esac
 BUDGET_INIZIALE_ATTESO=2000
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 # parere #93 §2: gli offset della traccia (senza CTF) valgono per QUESTA build: anche il build-id
 MOD_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49

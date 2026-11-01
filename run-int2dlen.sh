@@ -2,10 +2,10 @@
 # INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-int2dlen.sh.non-conforme
 echo "INERTE: run-int2dlen.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-int2dlen.sh.non-conforme" >&2; exit 4
 # Iniezioni di int 0x2d in L2: RIP all'ingresso, fonte (VMCS12 o L0), esito.
-O=/mnt/linuxulator2/vm/nested-work/logs/int2dlen-$(date +%Y%m%d-%H%M)
+O=/mnt/linuxulator2/vm/wsl2/fbsd/logs/int2dlen-$(date +%Y%m%d-%H%M)
 mkdir -p $O
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/fbsd/dtrace
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
 echo "output in $O"

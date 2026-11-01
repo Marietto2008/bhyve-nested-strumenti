@@ -30,7 +30,7 @@
 # non e' un'evidenza completa); 6 anche se dtrace (il processo identificato o il suo sudo) resta vivo dopo SIGKILL:
 # nessuna finalizzazione ordinaria, manifest "sessione: NON CHIUSA", ramo operatore.
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 MOD=$B/logs/stadio10-congelato-20261031/vmm-restore.ko
 MOD_SHA=142a08b6c0bcfefc05e994dacd8d5e80a6d8d303a18dfc7efeca838779bab006
 MOD_BUILDID=2310be805fcec6b897ab56bad70c389271c108a2
@@ -64,7 +64,7 @@ SONDE_ET=sonde-opnd-v2
 # #168 par. 4: nessun aggancio di simulazione nell'ambiente di una sessione vera
 for v in FS SM_FINTO VR_FINTO OM_FINTO SM_DIARIO; do eval "x=\${$v:-}"; [ -z "$x" ] || { echo "STOP: variabile di collaudo $v nell'ambiente"; exit 4; }; done
 # 31/10/2026 (parere Opus sull'incidente): guardia comune, qualunque *_FINTO e l'utente collaudo
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
+. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
 guardia_azione || { echo "STOP: guardia: nessuna sessione"; exit 4; }
 MODO=$1; PIANO=$2; OUT=$3
 ferma() { echo "STOP: $*"; exit 4; }
@@ -75,7 +75,7 @@ F1|F2|F3|F1,F2|F1,F3|F2,F3|F1,F2,F3) [ "$MODO" = --esegui-d ] && ferma "--esegui
 *) ferma "piano '$PIANO': F1,F2,F3 (o un sottoinsieme in quest'ordine) oppure F4 da sola";;
 esac
 case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
 ulimit -f $LIMITE_BLOCCHI

@@ -10,7 +10,7 @@
 # Nessun rilancio, mai; dopo F4 nessun rientro: la QEMU protetta si ferma da se'. Nessuna distruzione di vm2.
 # USCITA: 0 sessione fatta (VERDETTO); 4 STOP ai controlli; 5 sessione non conclusa; 6 modulo non caricato (--prova).
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 MOD=$B/stage-stadio9/vmm-restore.ko
 MOD_SHA=f158dec46712e6ad03c7f1b66333b3270185c6be4dd7f64cc50052762439022d
 MOD_BUILDID=1d369697acaae9cfd5354a716570f6b1f66d24ad
@@ -43,7 +43,7 @@ F1|F2|F3|F1,F2|F1,F3|F2,F3|F1,F2,F3) [ "$MODO" = --esegui-d ] && ferma "--esegui
 *) ferma "piano '$PIANO': F1,F2,F3 (o un sottoinsieme in quest'ordine) oppure F4 da sola";;
 esac
 case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
 ulimit -f $LIMITE_BLOCCHI

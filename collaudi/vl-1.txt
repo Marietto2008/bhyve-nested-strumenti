@@ -5,17 +5,17 @@
   ok      memseg-con-destroy: RIFIUTO memseg: solo vm2
   ok      fstat: /usr/bin/fstat|/dev/vmm/vm2
   ok      fstat-altro: RIFIUTO fstat-vmm: solo vm2
-  ok      kld-loadcnt: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/nested-work/kld-loadcnt.d|vmm-restore.ko
-  ok      kld-loadcnt-fuori: RIFIUTO kld-loadcnt: /mnt/linuxulator2/vm/nested-work/kld-loadcnt.d non approvato o cambiato
+  ok      kld-loadcnt: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/wsl2/fbsd/kld-loadcnt.d|vmm-restore.ko
+  ok      kld-loadcnt-fuori: RIFIUTO kld-loadcnt: /mnt/linuxulator2/vm/wsl2/fbsd/kld-loadcnt.d non approvato o cambiato
   ok      sonde-lista: /usr/sbin/dtrace|-l|-n|vmm:::fatal-latch|-n|vmm:::fatal-ritorno|-n|vmm:vmx:nested:veptunemul|-n|vmm:vmx:nested:opndfatal|-n|:::fatal-latch|-n|:::fatal-ritorno|-n|:::veptunemul|-n|:::opndfatal
   ok      sonde-lista-argomento: RIFIUTO sonde-lista: uso
-  ok      fbt-compila: /usr/sbin/dtrace|-e|-s|/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d|1
-  ok      fbt-fuori: RIFIUTO fbt-compila: /mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d non approvato o cambiato
-  ok      sonde: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/nested-work/sonde-opnd-v1.d|360
+  ok      fbt-compila: /usr/sbin/dtrace|-e|-s|/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d|1
+  ok      fbt-fuori: RIFIUTO fbt-compila: /mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d non approvato o cambiato
+  ok      sonde: /usr/sbin/dtrace|-s|/mnt/linuxulator2/vm/wsl2/fbsd/sonde-opnd-v1.d|360
   ok      sonde-breve: RIFIUTO sonde: limite fuori da 60..7200 s
   ok      sonde-lunga: RIFIUTO sonde: limite fuori da 60..7200 s
   ok      sonde-non-intero: RIFIUTO sonde: limite non intero
-  ok      sonde-cambiate: RIFIUTO sonde: /mnt/linuxulator2/vm/nested-work/sonde-opnd-v1.d non approvato o cambiato
+  ok      sonde-cambiate: RIFIUTO sonde: /mnt/linuxulator2/vm/wsl2/fbsd/sonde-opnd-v1.d non approvato o cambiato
   ok      sonde-senza-limite: RIFIUTO sonde: uso sonde <limite in secondi>
   ok      ferma-term: /bin/kill|-TERM|4242
   ok      ferma-kill: /bin/kill|-KILL|4242
@@ -23,10 +23,10 @@
   ok      ferma-pid: RIFIUTO ferma-sonde: pid non numerico
   ok      ferma-non-dtrace: RIFIUTO ferma-sonde: 4242 non e' un processo dtrace
   ok      ferma-non-root: RIFIUTO ferma-sonde: 4242 non e' di root
-  ok      ferma-argv-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -c /bin/sh -s /mnt/linuxulator2/vm/nested-work/sonde-opnd-v1.d 360')
-  ok      ferma-limite-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -s /mnt/linuxulator2/vm/nested-work/sonde-opnd-v1.d 360')
-  ok      ldd-qemu: /usr/bin/ldd|/mnt/linuxulator2/vm/nested-work/build-qemu-gate-nested-sr/qemu-system-x86_64
-  ok      ldd-qemu-fuori: RIFIUTO ldd-qemu: /mnt/linuxulator2/vm/nested-work/build-qemu-gate-nested-sr/qemu-system-x86_64 non approvata o cambiata
+  ok      ferma-argv-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -c /bin/sh -s /mnt/linuxulator2/vm/wsl2/fbsd/sonde-opnd-v1.d 360')
+  ok      ferma-limite-diverso: RIFIUTO ferma-sonde: 4242 non e' il dtrace delle sonde approvate ('/usr/sbin/dtrace -s /mnt/linuxulator2/vm/wsl2/fbsd/sonde-opnd-v1.d 360')
+  ok      ldd-qemu: /usr/bin/ldd|/mnt/linuxulator2/vm/wsl2/fbsd/build-qemu-gate-nested-sr/qemu-system-x86_64
+  ok      ldd-qemu-fuori: RIFIUTO ldd-qemu: /mnt/linuxulator2/vm/wsl2/fbsd/build-qemu-gate-nested-sr/qemu-system-x86_64 non approvata o cambiata
   ok      ldd-altro: RIFIUTO ldd-qemu: uso
   ok      sconosciuta: RIFIUTO lettura sconosciuta: 'dtrace'
   ok      vmm-lettura come collaudo: vmm-lettura: RIFIUTO: non sono root

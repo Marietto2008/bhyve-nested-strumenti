@@ -13,7 +13,7 @@ echo "INERTE: run-u64-kut.sh ha azioni sull'host senza guardia (controllo-azioni
 # KUT decodificato, finestra +0/+0).
 # USCITA: quella di u64-verdetto.py (0 MODELLO, 1 CONTRARIO, 3 NON_NATIVA, 5 INCONCLUSIVO); 4 STOP ai controlli.
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 MOD=/boot/kernel/vmm-restore.ko
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 OIDS="hw.vmm.vmx.nested_ept12_viol_emul_reflected hw.vmm.vmx.vept_h2_viol_final hw.vmm.gla2gpa_restart_capped hw.vmm.fatal_latches"
@@ -40,7 +40,7 @@ MODO=$1; OUT=$2
 ferma() { echo "STOP: $*"; exit 4; }
 case "$MODO" in --prova|--esegui) ;; *) ferma "modo $MODO";; esac
 case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
 ulimit -f $LIMITE_BLOCCHI

@@ -10,7 +10,7 @@
   ok   T01-orig-orig nessun evento 'ASTA SENZA PPT'
 == T02-orig-r110 (rc=0)
   ok   T02-orig-r110 rc=0
-  ok   T02-orig-r110 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
+  ok   T02-orig-r110 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko'
   ok   T02-orig-r110 frozen=0
   ok   T02-orig-r110 6 ppt
   ok   T02-orig-r110 amdgpu NON caricato
@@ -258,7 +258,7 @@
 ### H2 (parere #119): terza identita'
 == T30-orig-h2 (rc=0)
   ok   T30-orig-h2 rc=0
-  ok   T30-orig-h2 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko'
+  ok   T30-orig-h2 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko'
   ok   T30-orig-h2 frozen=0
   ok   T30-orig-h2 6 ppt
   ok   T30-orig-h2 amdgpu NON caricato
@@ -333,7 +333,7 @@
   ok   T40-prova-h2 uscita contiene 'secondo scambio automatico h2 -> originale'
 == T41-r110-h2 (rc=0)
   ok   T41-r110-h2 rc=0
-  ok   T41-r110-h2 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko'
+  ok   T41-r110-h2 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko'
   ok   T41-r110-h2 6 ppt
   ok   T41-r110-h2 amdgpu NON caricato
   ok   T41-r110-h2 kenv identico a prima (valore ed esistenza)
@@ -341,7 +341,7 @@
 ### H2-AD (parere #123): identita' h2ad2
 == T50-orig-h2ad2 (rc=0)
   ok   T50-orig-h2ad2 rc=0
-  ok   T50-orig-h2ad2 kld='completo /mnt/linuxulator2/vm/nested-work/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko'
+  ok   T50-orig-h2ad2 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko'
   ok   T50-orig-h2ad2 frozen=0
   ok   T50-orig-h2ad2 6 ppt
   ok   T50-orig-h2ad2 amdgpu NON caricato
@@ -379,7 +379,7 @@
 ### RIPFIX nested (parere #142): identita' ripfix-nested, quarto oid hw.vmm.fatal_latches
 == T60-orig-ripfix (rc=0)
   ok   T60-orig-ripfix rc=0
-  ok   T60-orig-ripfix kld='completo /mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
+  ok   T60-orig-ripfix kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
   ok   T60-orig-ripfix frozen=0
   ok   T60-orig-ripfix 6 ppt
   ok   T60-orig-ripfix amdgpu NON caricato
@@ -427,7 +427,7 @@
   ok   T66-ripfix-cambiato uscita contiene 'non integra'
 == T67-h2ad2-ripfix (rc=0)
   ok   T67-h2ad2-ripfix rc=0
-  ok   T67-h2ad2-ripfix kld='completo /mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
+  ok   T67-h2ad2-ripfix kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
   ok   T67-h2ad2-ripfix 6 ppt
   ok   T67-h2ad2-ripfix amdgpu NON caricato
   ok   T67-h2ad2-ripfix kenv identico a prima (valore ed esistenza)
@@ -453,7 +453,7 @@
 ### STADIO 9 (parere #167R1 par. 9.5): identita' stadio9, quinto oid hw.vmm.vmx.nested_operand_fatal
 == T80-orig-s9 (rc=0)
   ok   T80-orig-s9 rc=0
-  ok   T80-orig-s9 kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T80-orig-s9 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T80-orig-s9 frozen=0
   ok   T80-orig-s9 6 ppt
   ok   T80-orig-s9 amdgpu NON caricato
@@ -481,7 +481,7 @@
   ok   T83-s9-dichiarato-ma-ripfix rc=4
   ok   T83-s9-dichiarato-ma-ripfix nessun evento sul sistema
   ok   T83-s9-dichiarato-ma-ripfix STOP annotato nel diario
-  ok   T83-s9-dichiarato-ma-ripfix uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko''
+  ok   T83-s9-dichiarato-ma-ripfix uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko''
 == T83b-s9-caricato-senza-opnd (rc=4)
   ok   T83b-s9-caricato-senza-opnd rc=4
   ok   T83b-s9-caricato-senza-opnd nessun evento sul sistema
@@ -511,14 +511,14 @@
   ok   T87-s9-caricato-cambiato STOP annotato nel diario
 == T88-ripfix-s9 (rc=0)
   ok   T88-ripfix-s9 rc=0
-  ok   T88-ripfix-s9 kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T88-ripfix-s9 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T88-ripfix-s9 6 ppt
   ok   T88-ripfix-s9 amdgpu NON caricato
   ok   T88-ripfix-s9 kenv identico a prima (valore ed esistenza)
   ok   T88-ripfix-s9 nessun evento 'VIOLAZIONE'
 == T89-s9-ripfix (rc=0)
   ok   T89-s9-ripfix rc=0
-  ok   T89-s9-ripfix kld='completo /mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
+  ok   T89-s9-ripfix kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko'
   ok   T89-s9-ripfix 6 ppt
   ok   T89-s9-ripfix amdgpu NON caricato
   ok   T89-s9-ripfix kenv identico a prima (valore ed esistenza)
@@ -528,7 +528,7 @@
   ok   T90-prova-s9 nessun evento sul sistema
   ok   T90-prova-s9 nessun diario
   ok   T90-prova-s9 uscita contiene 'secondo scambio automatico stadio9 -> originale'
-  ok   T90-prova-s9 uscita contiene 'kldload /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T90-prova-s9 uscita contiene 'kldload /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
 == T91-oid-opnd-residuo (rc=6)
   ok   T91-oid-opnd-residuo rc=6
   ok   T91-oid-opnd-residuo uscita contiene 'VERIFICA FALLITA'
@@ -570,7 +570,7 @@
   ok   T99-vm2-cambiata-sotto-freeze nessun evento 'kldunload'
   ok   T99-vm2-cambiata-sotto-freeze evento 'thaw'
   ok   T99-vm2-cambiata-sotto-freeze frozen=0
-  ok   T99-vm2-cambiata-sotto-freeze kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T99-vm2-cambiata-sotto-freeze kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T99-vm2-cambiata-sotto-freeze kenv identico a prima (valore ed esistenza)
   ok   T99-vm2-cambiata-sotto-freeze pci invariata
   ok   T99-vm2-cambiata-sotto-freeze uscita contiene 'nessuna distruzione'
@@ -592,7 +592,7 @@
   ok   T103-memseg-illeggibile-sotto-freeze nessun evento 'destroy'
   ok   T103-memseg-illeggibile-sotto-freeze nessun evento 'kldunload'
   ok   T103-memseg-illeggibile-sotto-freeze evento 'thaw'
-  ok   T103-memseg-illeggibile-sotto-freeze kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T103-memseg-illeggibile-sotto-freeze kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T103-memseg-illeggibile-sotto-freeze kenv identico a prima (valore ed esistenza)
   ok   T103-memseg-illeggibile-sotto-freeze uscita contiene 'non leggibile dopo il preflight'
 == T104-destroy-fallita (rc=6)
@@ -601,19 +601,19 @@
   ok   T104-destroy-fallita nessun evento 'kldunload'
   ok   T104-destroy-fallita evento 'thaw'
   ok   T104-destroy-fallita frozen=0
-  ok   T104-destroy-fallita kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T104-destroy-fallita kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T104-destroy-fallita pci invariata
   ok   T104-destroy-fallita uscita contiene 'distruzione di vm2 NON riuscita (rc 1'
 == T105-destroy-rc0-nodo-resta (rc=6)
   ok   T105-destroy-rc0-nodo-resta rc=6
   ok   T105-destroy-rc0-nodo-resta nessun evento 'kldunload'
   ok   T105-destroy-rc0-nodo-resta evento 'thaw'
-  ok   T105-destroy-rc0-nodo-resta kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok   T105-destroy-rc0-nodo-resta kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok   T105-destroy-rc0-nodo-resta uscita contiene 'distruzione di vm2 NON riuscita (rc 0, nodi: vm2'
 ### STADIO 10: stessa firma OID dello stadio 9, distinti per percorso, sha e build-id
 == T110-orig-s10 (rc=0)
   ok   T110-orig-s10 rc=0
-  ok   T110-orig-s10 kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko'
+  ok   T110-orig-s10 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko'
   ok   T110-orig-s10 frozen=0
   ok   T110-orig-s10 6 ppt
   ok   T110-orig-s10 amdgpu NON caricato
@@ -630,12 +630,12 @@
   ok   T112-s10-dichiarato-ma-s9 rc=4
   ok   T112-s10-dichiarato-ma-s9 nessun evento sul sistema
   ok   T112-s10-dichiarato-ma-s9 STOP annotato nel diario
-  ok   T112-s10-dichiarato-ma-s9 uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko''
+  ok   T112-s10-dichiarato-ma-s9 uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko''
 == T113-s9-dichiarato-ma-s10 (rc=4)
   ok   T113-s9-dichiarato-ma-s10 rc=4
   ok   T113-s9-dichiarato-ma-s10 nessun evento sul sistema
   ok   T113-s9-dichiarato-ma-s10 STOP annotato nel diario
-  ok   T113-s9-dichiarato-ma-s10 uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko''
+  ok   T113-s9-dichiarato-ma-s10 uscita contiene 'atteso 'completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko''
 == T114-s10-cambiato (rc=4)
   ok   T114-s10-cambiato rc=4
   ok   T114-s10-cambiato nessun evento sul sistema
@@ -648,7 +648,7 @@
   ok   T115-s10-non-carica kenv identico a prima (valore ed esistenza)
 == T116-s9-s10 (rc=0)
   ok   T116-s9-s10 rc=0
-  ok   T116-s9-s10 kld='completo /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko'
+  ok   T116-s9-s10 kld='completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko'
   ok   T116-s9-s10 6 ppt
   ok   T116-s9-s10 kenv identico a prima (valore ed esistenza)
   ok   T116-s9-s10 nessun evento 'VIOLAZIONE'
@@ -656,7 +656,7 @@
   ok   T117-prova-s10 rc=0
   ok   T117-prova-s10 nessun evento sul sistema
   ok   T117-prova-s10 nessun diario
-  ok   T117-prova-s10 uscita contiene 'kldload /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko'
+  ok   T117-prova-s10 uscita contiene 'kldload /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko'
 ### statico
   ok   statico: s_thaw chiamato in UN solo punto (mc_thaw_nostro)
   ok   statico: thaw solo con freeze nostro

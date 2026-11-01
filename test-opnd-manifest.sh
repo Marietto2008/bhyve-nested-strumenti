@@ -4,8 +4,8 @@
 # LETTORI VERI: opnd-verdetto.py, smoke-modulo.sh stadio9 --continuita (SM_FINTO), vmm-residuo.sh --classifica-ritorno
 # (VR_FINTO). Nessun sudo, nessuna VM, nessun kld. Uso: test-opnd-manifest.sh <cartella nuova su ZFS>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
-B=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 C=$B/caldo
 O=${1:?cartella}
 case "$O" in $B/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac

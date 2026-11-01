@@ -1,12 +1,12 @@
 kldload: i due versi dello scambio e i rifiuti
   ok      kldload-andata: /sbin/kldload|/var/db/claude-vmm-azione/art/100e4a7e10349ef73d6c8469fdf29c6acdf9cfd9df3c79308f2e57a62888ea57/vmm-restore.ko
-  ok      kldload-andata: COPIA /mnt/linuxulator2/vm/nested-work/collaudi/va-5/s10/vmm-restore.ko 100e4a7e10349ef73d6c8469fdf29c6acdf9cfd9df3c79308f2e57a62888ea57
+  ok      kldload-andata: COPIA /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/va-5/s10/vmm-restore.ko 100e4a7e10349ef73d6c8469fdf29c6acdf9cfd9df3c79308f2e57a62888ea57
   ok      kldload-ritorno: /sbin/kldload|/var/db/claude-vmm-azione/art/612f387b9ddd9bc89d4cf0c19ebf1cf1b58d5034c6f5fd950bb6a24457cec608/vmm-restore.ko
-  ok      kldload-ritorno: COPIA /mnt/linuxulator2/vm/nested-work/collaudi/va-5/orig/vmm-restore.ko 612f387b9ddd9bc89d4cf0c19ebf1cf1b58d5034c6f5fd950bb6a24457cec608
+  ok      kldload-ritorno: COPIA /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/va-5/orig/vmm-restore.ko 612f387b9ddd9bc89d4cf0c19ebf1cf1b58d5034c6f5fd950bb6a24457cec608
   ok      kldload dell'originale in /boot/kernel: sul posto, senza COPIA
-  ok      kldload-fuori-elenco: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-5/fuori/vmm-restore.ko: non nell'elenco approvato
-  ok      kldload-sha-cambiato: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-5/cambiato/vmm-restore.ko: sha diverso dall'approvato
-  ok      kldload-non-vmm: RIFIUTO kldload /mnt/linuxulator2/vm/nested-work/collaudi/va-5/altro.ko: solo moduli vmm-restore.ko
+  ok      kldload-fuori-elenco: RIFIUTO kldload /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/va-5/fuori/vmm-restore.ko: non nell'elenco approvato
+  ok      kldload-sha-cambiato: RIFIUTO kldload /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/va-5/cambiato/vmm-restore.ko: sha diverso dall'approvato
+  ok      kldload-non-vmm: RIFIUTO kldload /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/va-5/altro.ko: solo moduli vmm-restore.ko
   ok      kldload-uso: RIFIUTO kldload: uso
 kldunload, devctl
   ok      kldunload: /sbin/kldunload|-n|vmm-restore.ko

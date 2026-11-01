@@ -1,7 +1,7 @@
 #!/bin/sh
 # Claude 23/10/2026 -- parere #32: fase B con 4 vCPU VERI (1 socket x 4 core).
 # Regressione breve (compilazione -j2 e -j4, 6 avvii), poi sessione lunga con 4 worker.
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 G=/usr/bin/grep
 VM4=12-Windows-11-vm12-senza-gpu-4core
 for c in "kbuild.sh C4-j2" "kbuild4.sh C4-j4"; do

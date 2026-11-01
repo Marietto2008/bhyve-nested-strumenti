@@ -46,7 +46,7 @@
 # USCITA: 0 sessione eseguita e analizzata senza TEST_ERROR; 3 analisi con TEST_ERROR;
 #         2 STOP del driver; 4 STOP al preflight (nessuna VM); 5 VM ancora viva o nodo rimasto.
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 N=$B/freebsd-nested/tools/nested
 MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 FLAT_RITIRATA=8d10c1f5d79cad3065c962fafc95e42c52c582a6f39507804699ab9061092bc1	# #104: eseguiva sempre i D
@@ -83,7 +83,7 @@ originale)
 	*) ferma "col modulo originale solo gli oracoli hardware (G0: B,HD_DATA,...,HD_PTP_ALL; G1: B,HD_CONFLICT,HD_CONFLICT_PDE)";;
 	esac;;
 h2ad)
-	MOD=$B/obj-h2ad/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+	MOD=$B/obj-h2ad/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
 	MOD_SHA=e29cd0b3631256fda0ed98a5adc7d9b5a95641765aecb5ad8f33528fb14d5fc8; MOD_BUILDID=068d99e6808dd820d72e1873b3ead050af80fa20;;
 *) ferma "modulo '$MODULO': originale o h2ad";;
 esac
@@ -97,7 +97,7 @@ if [ "$MODULO" != originale ]; then
 fi
 # #119 §3.3: uscita solo su ZFS, dentro il workspace
 case "$OUT" in /*) ;; *) OUT=$(pwd)/$OUT;; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS: $OUT"
 ulimit -f $LIMITE_BLOCCHI			# ogni file scritto da qui in giu' (driver, dtrace, QEMU) ha un tetto
 case "$PIANO" in

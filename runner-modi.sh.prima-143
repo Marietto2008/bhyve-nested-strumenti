@@ -16,7 +16,7 @@
 #
 # Funzioni pure: impostano variabili, non toccano l'host.
 
-RM_B=/mnt/linuxulator2/vm/nested-work
+RM_B=/mnt/linuxulator2/vm/wsl2/fbsd
 RM_MOD_ORIG=/boot/kernel/vmm-restore.ko
 RM_MOD_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 RM_MOD_ORIG_BUILDID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
@@ -28,7 +28,7 @@ RM_LIBV=/usr/lib/libvmmapi.so.7
 RM_LIBV_SHA=116a74309070a59eb571a8ae44411b482baa148f8398032211a129053bb7c14e
 RM_FBT=$RM_B/freebsd-nested/tools/nested/ptpad-fbt.d
 # #142: modulo RIPFIX con nesting, copia CONGELATA (r5); la stessa di caldo/mc-logica.sh (MC_RIPFIX)
-RM_MOD_RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+RM_MOD_RIPFIX=/mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
 RM_MOD_RIPFIX_SHA=7bdd6781d3f535798d9133bacd2ecb9791e2e34e8ab828e4f103ee402dd042d5
 RM_MOD_RIPFIX_BUILDID=6bce1d5cc73c1b2b5087ce5647b42867285e7cdb
 RM_FBT_RIPFIX=$RM_B/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
@@ -46,7 +46,7 @@ modo_carica() {
 		OID_ATTESO=0000; FRONTEND=porta; HOTSWAP=no; QEMU=$RM_QEMU_PORTA; QEMU_ATTESO_SHA=$RM_QEMU_PORTA_SHA
 		LIBV_ATTESA=$RM_LIBV; LIBV_ATTESA_SHA=$RM_LIBV_SHA;;
 	h2ad2)
-		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+		MOD=$RM_B/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
 		MOD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
 		MOD_BUILDID=6df2856a10e94608a69a3844ff78965e25ad97fe
 		OID_ATTESO=1100; FRONTEND=riferimento; HOTSWAP=si; QEMU=$RM_QEMU_RIF; CALDO_ID=h2ad2;;

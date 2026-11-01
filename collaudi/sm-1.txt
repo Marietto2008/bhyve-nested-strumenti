@@ -6,7 +6,7 @@ A: C1 (primo caricamento)
   ok      a1: 'SMOKE stadio9: COERENTE SIMULATO'
   ok      a1: 0 controlli falliti
   ok      a2 rc=4
-  ok      a2: 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko''
+  ok      a2: 'atteso 'completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko''
   ok      a3 rc=4
   ok      a3: 'firma OID 11010 non e' quella di stadio9'
   ok      a3: 2 controlli falliti
@@ -22,7 +22,7 @@ A: C1 (primo caricamento)
   ok      a7: 'NON compila'
   ok      a7: 1 controlli falliti
   ok      a8 rc=4
-  ok      a8: 'sha del file /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko diverso'
+  ok      a8: 'sha del file /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko diverso'
   ok      a9 rc=4
   ok      a9: 'dtrace in esecuzione'
   ok      a9: 1 controlli falliti
@@ -61,7 +61,7 @@ C: --continuita (sessione SINTETICA nel formato di run-opnd-kut.sh)
   ok      k6 rc=4
   ok      k6: 'dopo l'avvio della sessione'
   ok      k7 rc=4
-  ok      k7: 'l'ultimo scambio del diario non porta a /mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko'
+  ok      k7: 'l'ultimo scambio del diario non porta a /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko'
   ok      k8 rc=4
   ok      k8: 'il manifest non registra il modulo'
   ok      k9 rc=2
@@ -99,7 +99,7 @@ F: stadio 10 (stessi oid, sonde e contatori dello stadio 9; identita' per percor
   ok      f1: 'nested_operand_fatal = 0 (C1'
   ok      f1: 0 controlli falliti
   ok      f2 rc=4
-  ok      f2: 'atteso 'completo /mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko''
+  ok      f2: 'atteso 'completo /mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko''
   ok      f3 rc=2
   ok      f3: 'modulo stadio10 nel manifest'
   ok      f3: 0 controlli falliti

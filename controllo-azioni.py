@@ -10,7 +10,7 @@
 # Uso: controllo-azioni.py [elenco approvati] [file sequenza] [file in piu' per il punto 3] [cartella in piu' per il 4]
 import glob, os, re, sys
 
-W = '/mnt/linuxulator2/vm/nested-work'
+W = '/mnt/linuxulator2/vm/wsl2/fbsd'
 L = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else W + '/APPROVATI-sequenza.sha256'
 SEQS = [sys.argv[2]] if len(sys.argv) > 2 and sys.argv[2] else [W + '/sequenza-kut.sh', W + '/sequenza-wsl.sh', W + '/sequenza-p3.sh']	# 01/11: anche la campagna WSL e il test di P3
 EXTRA3 = [sys.argv[3]] if len(sys.argv) > 3 and sys.argv[3] else []
@@ -26,7 +26,7 @@ LETTURE = [
 	"sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::fatal-ritorno' -n 'vmm:vmx:nested:veptunemul' "
 	"-n 'vmm:vmx:nested:opndfatal' -n ':::fatal-latch' -n ':::fatal-ritorno' -n ':::veptunemul' -n ':::opndfatal' 2>/dev/null",
 	'sudo -n /usr/sbin/dtrace -e -s $FBTR 1 >/dev/null 2>&1',
-	'sudo -n /usr/sbin/dtrace -s /mnt/linuxulator2/vm/nested-work/kld-loadcnt.d vmm-restore.ko 2>&1',
+	'sudo -n /usr/sbin/dtrace -s /mnt/linuxulator2/vm/wsl2/fbsd/kld-loadcnt.d vmm-restore.ko 2>&1',
 	'sudo -n /usr/sbin/dtrace -s $OM_KLD_D vmm-restore.ko 2>&1',
 	'sudo -n /usr/bin/true 2>/dev/null',
 ]
@@ -140,7 +140,7 @@ def carica_preambolo(f):
 		rr = open(f, errors='replace').read().split('\n')[:15]
 	except OSError:
 		return False
-	return any(r.startswith('. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh') for r in rr)
+	return any(r.startswith('. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh') for r in rr)
 
 nd = 0
 def difetto(s):
@@ -164,7 +164,7 @@ for f in sorted(x for x in approvati if x.endswith('.sh')):
 	except OSError:
 		continue			# gia' riportato come DIFETTO da non_guardate
 	ng = sum(1 for _, r in righe_logiche(t) if 'guardia_azione' in senza_commento(r) and SUDO.search(togli_letture(senza_commento(r))))
-	if ng and f != W + '/caldo/guardia.sh' and not re.search(r'^\. /mnt/linuxulator2/vm/nested-work/caldo/guardia\.sh', t, re.M):
+	if ng and f != W + '/caldo/guardia.sh' and not re.search(r'^\. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia\.sh', t, re.M):
 		difetto('%s: usa guardia_azione ma non carica guardia.sh' % f)
 	print('  %s: %d righe con azioni guardate, %d difetti' % (f.replace(W + '/', ''), ng, len(d)))
 

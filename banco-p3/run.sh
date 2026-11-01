@@ -2,7 +2,7 @@
 # run.sh -- Claude 30/10/2026, pareri #155/#156. Estrae le funzioni VERE dai due cloni, compila il banco P3, lo esegue;
 # poi il MUTANTE della codifica respinta (#156 §3): l'oracolo del contratto deve rifiutarlo.
 # Uso: run.sh <cartella di lavoro nuova>
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 B=$W/banco-p3
 E=$W/logs/h2mmio-ptphold-read-20261030/estrai-fn.sh
 O=${1:?cartella}

@@ -17,8 +17,8 @@
 #   Il controllo /dev/vmm vuoto e' riportato a parte (CONTROLLO VMM): prima della pulizia autorizzata e' l'unico atteso
 #   a fallire.
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
-FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+C=/mnt/linuxulator2/vm/wsl2/fbsd/caldo
+FBTR=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
 . $C/mc-sistema.sh
 . $C/mc-logica.sh
 nf=0
@@ -69,7 +69,7 @@ try:
 	if not ftl or not vmu:
 		print('ERR la sessione non registra FTL/VMU'); sys.exit(0)
 	# il diario di modulo-caldo: l'ultimo scambio eseguito deve PRECEDERE l'avvio della sessione e portare a questo path
-	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
+	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/wsl2/fbsd/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
 	if not sc:
 		print('ERR diario di modulo-caldo senza scambi'); sys.exit(0)
 	u = sc[-1]

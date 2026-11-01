@@ -30,7 +30,7 @@ o_nodi()       { /bin/ls /dev/vmm 2>/dev/null; }			# informativa: senza nodi la 
 OM_VM=${OM_VM:-vm2}
 o_vm2_esiste() { [ -e "/dev/vmm/$OM_VM" ]; }
 o_vm2_ctime()  { /usr/bin/stat -f '%c' "/dev/vmm/$OM_VM" 2>/dev/null; }
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
+. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
 o_vm2_memseg() { sudo -n /usr/sbin/bhyvectl --vm="$OM_VM" --get-memseg 2>&1; }	# il rc conta
 o_dmesg()      { /sbin/dmesg 2>/dev/null; }
 o_ppt()        { om_pc=$(/usr/sbin/pciconf -l 2>/dev/null) || return 1; printf '%s\n' "$om_pc" | /usr/bin/grep '^ppt'; return 0; }
@@ -40,7 +40,7 @@ o_segnala()    { guardia_azione && sudo -n /bin/kill -"$1" "$2"; }
 o_vivo()       { /bin/ps -p "$1" >/dev/null 2>&1; }	# kill -0 su un processo di root darebbe EPERM
 o_dormi()      { /bin/sleep "$1"; }
 o_sysctl_scrivi() { guardia_azione && sudo -n /sbin/sysctl "$1=$2" > /dev/null 2>&1; }
-OM_KLD_D=/mnt/linuxulator2/vm/nested-work/kld-loadcnt.d
+OM_KLD_D=/mnt/linuxulator2/vm/wsl2/fbsd/kld-loadcnt.d
 o_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s $OM_KLD_D vmm-restore.ko 2>&1; }
 
 OM_ERR=""

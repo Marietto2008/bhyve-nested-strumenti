@@ -3,7 +3,7 @@
 # caricata. Copia di ritorno verificata. NON riavvia.
 # uso: sudo -n sh installa-728bfc.sh        ritorno: sudo -n sh installa-728bfc.sh --ritorno
 set -eu
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 K=/boot/kernel/vmm-restore.ko
 PREV=aeb179f81e97e172f85381b6ff39797bd439964a0ffaf0672ca7917a1a6d22a2	# ace877c6dd48
 NUOVO=d102b77897865ee7ea97214715976430e6a5fc71e707f0ce3b62c5b66f9a92b4	# 728bfc544720

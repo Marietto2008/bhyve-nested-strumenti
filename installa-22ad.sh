@@ -4,7 +4,7 @@
 # NON riavvia e NON carica nulla: il modulo nuovo entra al prossimo riavvio, deciso dall'utente.
 # uso: sudo -n sh installa-22ad.sh      ritorno: sudo -n sh installa-22ad.sh --ritorno
 set -eu
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 K=/boot/kernel/vmm-restore.ko
 VECCHIO=52046f6384b0fc539af4c55d10a8259ac69ad0d2101b0ea7007e787f7603175b	# 19fc4ebf6189
 NUOVO=d2ddea7f7d0d978a57089cb69c8654aca745140f003fd61e073eb90643d2a47e	# 22ad8106199e

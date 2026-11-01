@@ -6,7 +6,7 @@ echo "INERTE: run-lungo-b1.sh ha azioni sull'host senza guardia (controllo-azion
 # compilazione, 5 cicli I/O con SHA-256 su ext4 e NTFS, clockmon), poi 20 cicli
 # wsl --shutdown (ciclovita.ps1), poi spegnimento ordinato. Latenze degli
 # interrupt dell'L1 (win-lat.d), contatori B1 prima/dopo. Log in logs/lungoB1-*.
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; D=$B/dtrace; C=$B/faseA
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested; D=$B/dtrace; C=$B/faseA
 O=$B/logs/lungoB1-$(date +%Y%m%d-%H%M); mkdir -p $O
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
 cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }

@@ -8,7 +8,7 @@ echo "INERTE: run-gapcg.sh ha azioni sull'host senza guardia (controllo-azioni.s
 # Sull'host, come in run-gap9p.sh: gaphost.d, win-lat.d, SYNC UDP (tsecho.py).
 # Modulo come nella corsa delle 15:39: vept_keep=1, retry 1, verifica HPA accesa.
 D=${1:-480}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
 O=$B/logs/gapcg-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 H=IP-HOST
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }

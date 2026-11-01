@@ -5,8 +5,8 @@
 # esegue l'oracolo FINALE dello stadio 10; verifica che a ogni stadio gli errori cadano solo su etichette corrette dalle
 # unita' successive e che lo stadio finale non ne abbia. Poi i mutanti, i sanitizer, la matrice 9 -> 10.
 # Uso: run.sh <cartella di uscita>
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 B=$W/banco-opnd-s10
 ST=$W/logs/s10/stadi
 VMMC=$W/logs/r6r3-160/stadi/9-EA/vmm.c		# vmm.c identico fra stadio 9 e 10 (K10)

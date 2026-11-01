@@ -8,8 +8,8 @@
 # REGISTRATE (dtrace -l: 3 col ripfix, 0 con l'originale) e lo script ptpad-fbt-ripfix-nested.d che compila (ripfix) o
 # NON compila (originale). Uscita 0 = tutto coerente; 4 = STOP (elenco dei controlli falliti).
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
-FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+C=/mnt/linuxulator2/vm/wsl2/fbsd/caldo
+FBTR=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
 . $C/mc-sistema.sh
 . $C/mc-logica.sh
 nf=0

@@ -2,7 +2,7 @@
 # Claude 23/10/2026 -- parere #32 §1: cosa vedono Windows e WSL2 della topologia CPU.
 # uso: run-topo.sh <script VM> <etichetta>. Avvio, domande a Windows e WSL, CPU dei thread
 # vCPU di bhyve durante un carico di 4 processi in WSL, spegnimento ordinato.
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested
 VMS=$1; E=$2; O=$B/logs/topo-$E-$(date +%Y%m%d-%H%M); mkdir -p $O
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
 cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }

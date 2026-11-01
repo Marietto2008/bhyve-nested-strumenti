@@ -1,31 +1,31 @@
 S1: sequenza completa
-  ERRATO  s1-completa uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s1-completa uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s1-completa invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione runner_--esegui-ombra_F1,F2,F3_As-sessione residuo_--distruggi-da_As-sessione residuo_--classifica-ritorno_As-sessione smoke_stadio10_--continuita_As-sessione runner_--esegui-d_F4_B-sessione residuo_--distruggi-da_B-sessione residuo_--classifica-ritorno_B-sessione smoke_stadio10_--continuita_B-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
   ERRATO  s1-completa diario: eventi 0, INIZIO , FINE 
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
   ERRATO  s1-completa ultima riga del diario: 
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
   ok      s1-completa ogni riga del diario dice SIMULATA
-  ERRATO  s1: STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
+  ERRATO  s1: STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
   ok      s1: host simulato sull'originale
-  ERRATO  s2-solo-A uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s2-solo-A uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s2-solo-A invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
   ERRATO  s2-solo-A diario: eventi 0, INIZIO , FINE 
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
   ERRATO  s2-solo-A ultima riga del diario: 
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s2-solo-A/seq/DIARIO.txt: No such file or directory
   ok      s2-solo-A ogni riga del diario dice SIMULATA
-  ERRATO  s3-solo-B uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s3-solo-B uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s3-solo-B invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui-d_F4_B-sessione residuo_--distruggi-da_B-sessione residuo_--classifica-ritorno_B-sessione smoke_stadio10_--continuita_B-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
@@ -49,13 +49,13 @@ S3: prima dello scambio
   ERRATO  s12-host-non-originale invocazioni
           attese: smoke_originale
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
   ERRATO  s12-host-non-originale diario: eventi 0, INIZIO , FINE 
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
   ERRATO  s12-host-non-originale ultima riga del diario: 
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s12-host-non-originale/seq/DIARIO.txt: No such file or directory
   ok      s12-host-non-originale ogni riga del diario dice SIMULATA
   ok      s13-scambio-rifiutato uscita 4
   ERRATO  s13-scambio-rifiutato invocazioni
@@ -65,11 +65,11 @@ grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s12-host-non-originale/seq
   ERRATO  s14-scambio-fallito-tornato invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_originale
           avute:  
-  ERRATO  s15-scambio-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s15-scambio-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s15-scambio-operatore invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10
           avute:  
-  ERRATO  s16-scambio-fallito-smoke-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s16-scambio-fallito-smoke-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s16-scambio-fallito-smoke-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_originale
           avute:  
@@ -78,15 +78,15 @@ S4: STOP dopo lo scambio -> solo recupero e ritorno
   ERRATO  s17-C1-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 residuo_--classifica-ritorno_nessuna caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
   ERRATO  s17-C1-ko diario: eventi 0, INIZIO , FINE 
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
   ERRATO  s17-C1-ko ultima riga del diario: 
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
   ok      s17-C1-ko ogni riga del diario dice SIMULATA
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: No such file or directory
   ERRATO  s17: motivo
   ok      s18-A-fail-senza-vm2 uscita 4
   ERRATO  s18-A-fail-senza-vm2 invocazioni
@@ -96,12 +96,12 @@ grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: 
   ERRATO  s19-A-fail-con-vm2 invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--classifica-ritorno_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-  ERRATO  s20-pulizia-A-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s20-pulizia-A-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s20-pulizia-A-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione
           avute:  
-  ERRATO  s20: STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
-  ERRATO  s21-vm2-resta uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s20: STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
+  ERRATO  s21-vm2-resta uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s21-vm2-resta invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione residuo_--classifica-ritorno_A-sessione
           avute:  
@@ -113,11 +113,11 @@ grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: 
   ERRATO  s23-As-inconcl invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione runner_--esegui-ombra_F1,F2,F3_As-sessione residuo_--classifica-ritorno_As-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-  ERRATO  s24-B-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s24-B-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s24-B-operatore invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione runner_--esegui-ombra_F1,F2,F3_As-sessione residuo_--distruggi-da_As-sessione residuo_--classifica-ritorno_As-sessione smoke_stadio10_--continuita_As-sessione runner_--esegui-d_F4_B-sessione residuo_--classifica-ritorno_B-sessione
           avute:  
-  ERRATO  s25-riclassifica-emergenza uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s25-riclassifica-emergenza uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s25-riclassifica-emergenza invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione residuo_--classifica-ritorno_A-sessione
           avute:  
@@ -125,11 +125,11 @@ grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s17-C1-ko/seq/DIARIO.txt: 
   ERRATO  s26-riclassifica-rc4 invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione residuo_--classifica-ritorno_A-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-  ERRATO  s27-classifica-recupero-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s27-classifica-recupero-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s27-classifica-recupero-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 residuo_--classifica-ritorno_nessuna
           avute:  
-  ERRATO  s28-ritorno-recupero-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s28-ritorno-recupero-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s28-ritorno-recupero-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 residuo_--classifica-ritorno_nessuna caldo_--esegui_stadio10_originale
           avute:  
@@ -138,16 +138,16 @@ S5: il ritorno finale
   ERRATO  s29-ritorno-fallito-tornato invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
-  ERRATO  s30-ritorno-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s30-ritorno-operatore uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s30-ritorno-operatore invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione caldo_--esegui_stadio10_originale
           avute:  
-  ERRATO  s31-smoke-finale-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s31-smoke-finale-ko uscita 4, attesa 6 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s31-smoke-finale-ko invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione residuo_--distruggi-da_A-sessione residuo_--classifica-ritorno_A-sessione smoke_stadio10_--continuita_A-sessione caldo_--esegui_stadio10_originale smoke_originale
           avute:  
 S6: --prova: sola lettura
-  ERRATO  s32-prova uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS))
+  ERRATO  s32-prova uscita 4, attesa 2 (STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS))
   ERRATO  s32-prova invocazioni
           attese: smoke_originale caldo_--prova_originale_stadio10 runner_--prova_F1,F2,F3_prova-A runner_--prova_F1,F2,F3_prova-As runner_--prova_F4_prova-B
           avute:  
@@ -161,9 +161,9 @@ S7: le reti contro lo strumento vero (incidente del 31/10)
   ok      s34: t_smoke ancora nel finto
   ok      s34: t_runner ancora nel finto
   ok      s34: t_residuo ancora nel finto
-  ERRATO  s34: rc=4 STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
+  ERRATO  s34: rc=4 STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
   ok      s34: trappola NON scattata (la rete B regge)
-sed: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s36-percorsi/seq/01-smoke-originale.txt: No such file or directory
+sed: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s36-percorsi/seq/01-smoke-originale.txt: No such file or directory
   ERRATO  s36: percorsi ''
   ok      s36b: trappola scattata: registrata, uscita 99
   ok      s37: modulo-caldo.sh vero: guardia per SEQ_FINTO (4)
@@ -171,33 +171,33 @@ sed: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s36-percorsi/seq/01-smoke-o
   ok      s37: vmm-residuo.sh vero --distruggi-da: guardia PRIMA della classificazione (4)
   ok      s37: vmm-residuo.sh vero --distruggi: guardia PRIMA della classificazione (4)
   ok      s37: run-opnd-kut.sh vero: guardia (4)
-  ERRATO  s38-hash-diverso: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
-  ERRATO  s39-elenco-assente: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
-  ERRATO  s40-elenco-vuoto: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
-  ERRATO  s41-solo-commenti: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/nested-work/logs (ZFS)
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
+  ERRATO  s38-hash-diverso: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
+  ERRATO  s39-elenco-assente: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
+  ERRATO  s40-elenco-vuoto: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
+  ERRATO  s41-solo-commenti: rc=4 eventi '' STOP: la cartella deve stare in /mnt/linuxulator2/vm/wsl2/fbsd/logs (ZFS)
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s1-completa/seq/DIARIO.txt: No such file or directory
   ERRATO  s1: approvati non nel diario
 S8: segnali VERI durante un'invocazione in primo piano
   ERRATO  s35-segnale-TERM uscita 4, attesa 143
   ERRATO  s35-segnale-TERM invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-TERM/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-TERM/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-TERM/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-TERM/seq/DIARIO.txt: No such file or directory
   ERRATO  s35-segnale-TERM diario: 
   ERRATO  s35-segnale-INT uscita 4, attesa 130
   ERRATO  s35-segnale-INT invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-INT/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-INT/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-INT/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-INT/seq/DIARIO.txt: No such file or directory
   ERRATO  s35-segnale-INT diario: 
   ERRATO  s35-segnale-HUP uscita 4, attesa 129
   ERRATO  s35-segnale-HUP invocazioni
           attese: smoke_originale caldo_--esegui_originale_stadio10 smoke_stadio10 runner_--esegui_F1,F2,F3_A-sessione
           avute:  
-grep: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-HUP/seq/DIARIO.txt: No such file or directory
-tail: /mnt/linuxulator2/vm/nested-work/collaudi/seq-1/s35-segnale-HUP/seq/DIARIO.txt: No such file or directory
+grep: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-HUP/seq/DIARIO.txt: No such file or directory
+tail: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/seq-1/s35-segnale-HUP/seq/DIARIO.txt: No such file or directory
   ERRATO  s35-segnale-HUP diario: 
 S9: lo script vero non e' mai stato invocato su strumenti veri
   ok      nessuna funzione non ridefinita usata fuori da s34

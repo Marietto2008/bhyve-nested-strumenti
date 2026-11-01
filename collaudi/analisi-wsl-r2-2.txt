@@ -1,4 +1,4 @@
-analisi-wsl-corsa rev. 2: /mnt/linuxulator2/vm/nested-work/collaudi/analisi-wsl-r2-2/allineamento
+analisi-wsl-corsa rev. 2: /mnt/linuxulator2/vm/wsl2/fbsd/collaudi/analisi-wsl-r2-2/allineamento
 fasi: avvio +0 s, desktop +15 s, wsl_inizio +22 s (richiesta al task di Windows)
 vCPU nella serie: vcpu0,vcpu1; campioni: 2 (2 completi)
 SEGNALAZIONI: 0

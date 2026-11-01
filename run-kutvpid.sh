@@ -6,7 +6,7 @@
 #   SH=1 shadow VMCS + verifica (nested_shadow_vmcs=1, nested_shadow_verify=1) e sonda migrapull.d
 # uso: sudo -n env M=0|1 SH=0|1 [P=0.005] sh run-kutvpid.sh <etichetta> [liste...]
 E=${1:?etichetta}; shift
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested
 LISTE=${*:-vpid}
 : "${M:=0}" "${SH:=0}" "${P:=0.005}" "${TR:=-}" "${OFF:=-}"
 O=$B/logs/kutvpid-$E-$(date +%Y%m%d-%H%M); mkdir -p "$O"

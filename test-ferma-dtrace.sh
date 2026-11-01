@@ -6,8 +6,8 @@
 # esattamente come nel runner (SIGINT ignorato nel job). Nessuna VM, nessun modulo; solo processi sleep.
 # Uso: test-ferma-dtrace.sh <cartella nuova su ZFS>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# parere Opus sulla separazione par. 1.2: la LOGICA di om_ferma_dtrace gira come collaudo
-B=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh	# parere Opus sulla separazione par. 1.2: la LOGICA di om_ferma_dtrace gira come collaudo
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 O=${1:?cartella}
 case "$O" in $B/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }

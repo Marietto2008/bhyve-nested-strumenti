@@ -8,7 +8,7 @@ le 6 funzioni:
   pci0:4:0:3 -> pci0:4:0:3 ppt 5 0x10de 0x1ad7
 ok: caricato /boot/kernel/vmm-restore.ko; nodi: nessuno; ppt: pci0:3:0:0=ppt0 pci0:3:0:1=ppt1 pci0:4:0:0=ppt2 pci0:4:0:1=ppt3 pci0:4:0:2=ppt4 pci0:4:0:3=ppt5 ; kenv: boot_safe=(assente) devmatch_blocklist=(assente) 
 PROVA, nessuna azione. Sequenza: kenv boot_safe=YES e devmatch_blocklist='<lista attuale> amdgpu' (con rilettura);
-  devctl freeze; kldunload -n vmm-restore.ko; kldload /mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+  devctl freeze; kldunload -n vmm-restore.ko; kldload /mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
   (se fallisce: /boot/kernel/vmm-restore.ko, sempre sotto freeze); verifica modulo completo; devctl thaw (solo se nostro);
   verifica 6 BDF+ID/sha/oid/amdgpu/loader.conf; ripristino ESATTO del kenv (con rilettura)
   se la verifica di r110 fallisce: secondo scambio automatico r110 -> originale

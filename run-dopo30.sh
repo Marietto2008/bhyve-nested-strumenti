@@ -3,7 +3,7 @@
 echo "INERTE: run-dopo30.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-dopo30.sh.non-conforme" >&2; exit 4
 # Claude 22/10/2026 -- parere #30: controllo kut rapido, retry 2 contro retry 1 su
 # Windows, poi la serie di stabilita' (12 avvii, retry 1, verifica HPA).
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested
 O=$B/logs/dopo30-$(date +%Y%m%d-%H%M); mkdir -p $O
 echo "######## kut rapido $(date +%T)"
 sudo -n sysctl hw.vmm.vmx.vept_keep=1 hw.vmm.vmx.vept_scan_retries=1 hw.vmm.vmx.vept_test_race=0 >/dev/null

@@ -138,7 +138,7 @@ fi
 # claude 29/10: QEMU usa SEMPRE il nome vm2 (bhyve-all.c r.338). Si pulisce solo vm2, e solo se e' un residuo:
 # il ciclo di prima distruggeva OGNI VM in /dev/vmm, anche una VM bhyve viva (es. Windows vm0:12).
 segna "03b pulizia del solo vm2"
-sh /mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/vm-propria.sh vm2 || { echo "vm2 e' in uso" >&2; exit 1; }
+sh /mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/vm-propria.sh vm2 || { echo "vm2 e' in uso" >&2; exit 1; }
 
 # --------------------------------------------------------------------------
 # La scheda

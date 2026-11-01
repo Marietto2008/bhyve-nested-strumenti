@@ -2,7 +2,7 @@
 # run.sh -- Claude 30/10/2026, parere #135 §8. Estrae le funzioni VERE dal vmm.c di ciascun clone, compila il banco
 # e lo esegue; poi applica i mutanti al testo estratto e verifica che ciascuno faccia fallire almeno un controllo.
 # Uso: run.sh <cartella di lavoro>
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 B=$W/banco-ripfix
 E=$W/logs/h2mmio-ptphold-read-20261030/estrai-fn.sh
 O=${1:?cartella}

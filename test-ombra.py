@@ -5,14 +5,14 @@
 # valore riportato a 0. Nessun sysctl vero, nessun sudo. Uso: test-ombra.py <cartella nuova> [produttore]
 # 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 import os as _os, pwd as _pwd, shutil as _sh
-_os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/nested-work/collaudo-bin'
+_os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/wsl2/fbsd/collaudo-bin'
 if _pwd.getpwuid(_os.getuid()).pw_name != 'collaudo':
 	print('STOP: le suite girano solo come utente collaudo (sudo -u collaudo ...)'); raise SystemExit(2)
 if _sh.which('sudo'):
 	print('STOP: sudo raggiungibile dal collaudo'); raise SystemExit(2)
 import os, signal, subprocess, sys, time
 O = sys.argv[1]
-P = sys.argv[2] if len(sys.argv) > 2 else '/mnt/linuxulator2/vm/nested-work/opnd-manifest.sh'
+P = sys.argv[2] if len(sys.argv) > 2 else '/mnt/linuxulator2/vm/wsl2/fbsd/opnd-manifest.sh'
 os.makedirs(O)
 nok = nko = 0
 def esito(ok, m):

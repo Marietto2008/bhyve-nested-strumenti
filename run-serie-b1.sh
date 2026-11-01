@@ -6,7 +6,7 @@ echo "INERTE: run-serie-b1.sh ha azioni sull'host senza guardia (controllo-azion
 # uso: run-serie.sh <N>. Ogni corsa: avvio, desktop (explorer via SSH), wsl -d Debian,
 # contatori, shutdown /s pulito. Nessun limite stretto: 15 min per il desktop, 5 per lo spegnimento.
 N=${1:-3}
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 T=$B/freebsd-nested/tools/nested
 S=$B/logs/serieB1-$(date +%Y%m%d-%H%M); mkdir -p $S
 ctr() { sysctl hw.vmm.vmx | /usr/bin/grep -E "vept_|nested_" | sed 's/^hw.vmm.vmx.//'; }

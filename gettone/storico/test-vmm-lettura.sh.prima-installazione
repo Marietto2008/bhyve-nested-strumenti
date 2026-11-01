@@ -3,9 +3,9 @@
 # (vmm_lettura_decidi), come utente collaudo: elenchi di prova con i file VERI (e varianti con sha cambiato o voce
 # mancante); i fatti di ferma-sonde sono dati del collaudo. Uso: sudo -u collaudo sh test-vmm-lettura.sh <cartella>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh
+. /mnt/linuxulator2/vm/wsl2/fbsd/gettone/gettone-lib.sh
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
 nok=0; nko=0
 ok() { nok=$((nok+1)); echo "  ok      $*"; }; no() { nko=$((nko+1)); echo "  ERRATO  $*"; }

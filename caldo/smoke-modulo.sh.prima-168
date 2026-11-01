@@ -23,8 +23,8 @@
 #        della riga "contatori dopo:" del suo manifest (coperto da SHA256SUMS), l'avvio dalla riga "avvio sessione:".
 # SM_FINTO (solo collaudo, test-smoke-stadio9.sh): file che ridefinisce le funzioni s_* e sm_* dopo quelle vere.
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
-FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+C=/mnt/linuxulator2/vm/wsl2/fbsd/caldo
+FBTR=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
 . $C/mc-sistema.sh
 . $C/mc-logica.sh
 sm_sonde_lista() { sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::fatal-ritorno' -n 'vmm:vmx:nested:veptunemul' \
@@ -99,7 +99,7 @@ try:
 			print('ERR la sessione non registra FTL/VMU'); sys.exit(0)
 		valori = [ftl[-1], vmu[-1]]
 	# il diario di modulo-caldo: l'ultimo scambio eseguito deve PRECEDERE l'avvio della sessione e portare a questo path
-	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
+	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/wsl2/fbsd/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
 	if not sc:
 		print('ERR diario di modulo-caldo senza scambi'); sys.exit(0)
 	u = sc[-1]

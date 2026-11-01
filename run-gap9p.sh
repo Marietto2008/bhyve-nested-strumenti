@@ -12,7 +12,7 @@ echo "INERTE: run-gap9p.sh ha azioni sull'host senza guardia (controllo-azioni.s
 # Allineamento: SYNC UDP Linux<->FreeBSD (tsecho.py) e scarto di Windows misurato via
 # SSH all'inizio e alla fine di ogni prova (WINOFF, incertezza = mezzo RTT).
 D=${1:-480}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+B=/mnt/linuxulator2/vm/wsl2/fbsd; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
 O=$B/logs/gap9p-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 H=IP-HOST
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }

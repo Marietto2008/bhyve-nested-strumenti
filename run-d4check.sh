@@ -4,7 +4,7 @@ echo "INERTE: run-d4check.sh ha azioni sull'host senza guardia (controllo-azioni
 # Claude 25/10/2026 -- parere #52 §2: riconciliazione richieste differite / invalidazioni VPID02.
 # Quattro prove (aggancio 0|200, CPU fissa|migrante) con la stessa suite breve; per ognuna i delta
 # dei contatori VPID02 e gli errori dei test. Tracciamento SEMPRE acceso (il VPID02 e' suo).
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 O=$B/logs/d4check-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 C="nested_vpid_d4_injected vpid02_req vpid02_req_coalesced vpid02_req_satisfied vpid02_req_dropped \
    vpid02_invvpid_first vpid02_invvpid_real_migration vpid02_invvpid_pending vpid01_invvpid_pending"

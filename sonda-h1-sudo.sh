@@ -4,7 +4,7 @@
 # rieseguirla solo quando cambiano (aggiornamento di pkg o di world). Gira come marietto; solo processi sleep.
 # Registra versione e sha di sudo e /bin/sh. Uso: sonda-h1-sudo.sh <cartella nuova in logs/>
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 . $B/caldo/guardia.sh
 O=${1:?cartella}
 case "$O" in $B/logs/*) ;; *) echo "uscita fuori da $B/logs"; exit 2;; esac

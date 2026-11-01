@@ -10,9 +10,9 @@
 # Uscite: quella del verdetto (0 PASS, 1 FAIL, 5 INCONCLUSIVO); 4 STOP ai controlli; 6 modulo non caricato (--prova) o
 # operatore; 7 DTrace non attivata; 5 anche per sessione non valida; 8 sessione incompleta.
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 for v in FS SM_FINTO VR_FINTO OM_FINTO SM_DIARIO; do eval "x=\${$v:-}"; [ -z "$x" ] || { echo "STOP: variabile di collaudo $v nell'ambiente"; exit 4; }; done
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh
+. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia.sh
 guardia_azione || { echo "STOP: guardia: nessuna sessione"; exit 4; }
 MOD=$B/logs/stadio11-congelato-20261101/vmm-restore.ko
 MOD_SHA=3bfc6ae8b8c938f131d428cc353dafcad4e99169fbe45cd6a288f9e7e70d4a43
@@ -43,7 +43,7 @@ ferma() { echo "STOP: $*"; exit 4; }
 MODO=$1; OUT=$2; STADIO=${3:-stadio11}
 case "$MODO" in --prova|--esegui) ;; *) ferma "modo $MODO";; esac
 [ "$STADIO" = stadio11 ] || ferma "il test di provocazione di P3 gira SOLO sullo stadio 11, non su '$STADIO'"
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ -e "$OUT" ] && ferma "$OUT esiste gia': nessuna sovrascrittura"
 [ "$(df -T "$(dirname "$OUT")" | awk 'NR==2{print $2}')" = zfs ] || ferma "uscita non su ZFS"
 ulimit -f $LIMITE_BLOCCHI

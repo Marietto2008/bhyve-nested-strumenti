@@ -5,7 +5,7 @@
 # sudoers: regola SENZA [omesso] e timestamp_timeout=0 (nessuna credenziale riusabile da Claude Code).
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+L=/mnt/linuxulator2/vm/wsl2/fbsd/APPROVATI-sequenza.sha256
 G=/var/run/claude-gettone
 [ "$(/usr/bin/id -u)" = 0 ] || { echo "solo via sudo"; exit 4; }
 [ $# = 3 ] || { echo "uso: sudo $0 <ore 1-12> <passi> <descrizione>"; exit 4; }

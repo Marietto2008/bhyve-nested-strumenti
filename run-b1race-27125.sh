@@ -24,7 +24,7 @@ echo "INERTE: run-b1race-27125.sh ha azioni sull'host senza guardia (controllo-a
 #   4   CAMPAGNA=NON_ESEGUITA: STOP ai controlli a freddo, nessuna VM avviata
 #   130/143/129  CAMPAGNA=INTERROTTA da SIGINT/SIGTERM/SIGHUP
 # Nessun retry, nessuna corsa successiva automatica.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9

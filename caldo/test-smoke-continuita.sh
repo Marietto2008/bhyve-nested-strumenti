@@ -4,12 +4,12 @@
 # (sysctl, kldstat, dtrace -l: sola lettura) col modulo RIPFIX r5 caricato e FTL=1/VMU=0 dopo D.
 # Uso: test-smoke-continuita.sh <cartella nuova su ZFS> <sessione D>
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
+C=/mnt/linuxulator2/vm/wsl2/fbsd/caldo
 O=${1:?cartella}; D=${2:?sessione D}
-case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "fuori dal workspace ZFS"; exit 2;; esac
+case "$O" in /mnt/linuxulator2/vm/wsl2/fbsd/*) ;; *) echo "fuori dal workspace ZFS"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
 mkdir -p "$O" || exit 2
-DIA=/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/diario.txt
+DIA=/mnt/linuxulator2/vm/wsl2/fbsd/logs/modulo-caldo/diario.txt
 nf=0; nok=0
 ok() { nok=$((nok+1)); echo "  ok      $*"; }
 no() { nf=$((nf+1)); echo "  ERRATO  $*"; }
@@ -39,9 +39,9 @@ copia m5; sed -i '' '/^VMU after=/d' "$O/m5/drv/combinato.txt"; risomma m5
 caso m5 "$O/m5" "$DIA" "la sessione non registra FTL/VMU"
 caso m6 "$O/non-esiste" "$DIA" "continuita' non dimostrabile"
 echo "S3: mutanti del diario di modulo-caldo"
-cp "$DIA" "$O/d1.txt"; echo "2026-10-30 23:59:00 === ESEGUO: da /boot/kernel/vmm-restore.ko a /mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko ===" >> "$O/d1.txt"
+cp "$DIA" "$O/d1.txt"; echo "2026-10-30 23:59:00 === ESEGUO: da /boot/kernel/vmm-restore.ko a /mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko ===" >> "$O/d1.txt"
 caso d1 "$D" "$O/d1.txt" "dopo l'avvio della sessione"
-cp "$DIA" "$O/d2.txt"; echo "2026-10-30 17:30:00 === ESEGUO: da /mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko a /boot/kernel/vmm-restore.ko ===" >> "$O/d2.txt"
+cp "$DIA" "$O/d2.txt"; echo "2026-10-30 17:30:00 === ESEGUO: da /mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko a /boot/kernel/vmm-restore.ko ===" >> "$O/d2.txt"
 caso d2 "$D" "$O/d2.txt" "l'ultimo scambio del diario non porta a"
 : >| "$O/d3.txt"; caso d3 "$D" "$O/d3.txt" "diario di modulo-caldo senza scambi"
 echo "S4: la modalita' C1 resta quella del primo caricamento"

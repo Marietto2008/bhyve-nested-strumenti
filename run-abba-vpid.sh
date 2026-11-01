@@ -6,7 +6,7 @@ echo "INERTE: run-abba-vpid.sh ha azioni sull'host senza guardia (controllo-azio
 # deriva lineare. Lo shadow resta allo stesso valore in tutte le prove (SH, default 0), cosi' si
 # misura solo l'effetto del tracciamento. Ogni prova e' una VM nuova (run-abba-prova.sh): avvio,
 # Windows fermo, WSL, prova ext4, compilazione, spegnimento. Swap svuotato prima di ogni prova.
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/fbsd
 : "${SH:=0}"			# shadow costante; 1 per misurare il VPID sopra lo shadow
 BASE=$B/logs/abbavpid-$(date +%Y%m%d-%H%M); mkdir -p "$BASE"
 i=0

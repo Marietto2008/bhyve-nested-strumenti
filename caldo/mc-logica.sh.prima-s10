@@ -25,7 +25,7 @@ MC_EMERG="freeze LASCIATO: enumerazione/probe differiti globalmente; stato NON r
 MC_ORIG=/boot/kernel/vmm-restore.ko
 MC_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 MC_ORIG_BID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
-MC_NEW=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+MC_NEW=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
 MC_NEW_SHA=d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873
 MC_NEW_BID=1ba0803c8165661c9e6b0a2c0c73c32182998341
 MC_R109_SHA=4626c65e824dce3f86fbfac3a6e35228187c4dedf18b5fefd167b1f9600f0dec
@@ -34,27 +34,27 @@ MC_KERNEL_BID=34ce6caea8356679eba32bdb7839cc4b5acce595
 MC_NUOVO_OID=hw.vmm.vmx.nested_ept12_viol_emul_reflected	# esiste in r110 e in h2
 # H2 (29/10, pareri #119/#120): terza identita', la correzione di H2 SOLA sopra r110 (P3 escluso, parere #120 B1;
 # la variante H2+P3 07013a44 e' RITIRATA e non ha un'identita' qui)
-MC_H2=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+MC_H2=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 MC_H2_SHA=335fe2b82a2da2cc482a32983d8d8db99b36247a6c216e2d077afdc8cb7b8d8f
 MC_H2_BID=dcfb2ea8b50752a428f3152eb54b84050a95369b
 MC_H2_OID=hw.vmm.vmx.vept_h2_viol_final				# esiste in h2 (e in ogni sua derivata)
 MC_P3_OID=hw.vmm.gla2gpa_restart_capped				# esiste SOLO nella variante con P3: mai qui
 # H2-AD rev.2 (pareri #123-#127): walk in due fasi sopra h2, superiori rinviati (G0), precedenza DATO (G1b), ricerca
 # della voce su tutto ptp_pend (audit A #127). h2ad0/h2ad1 e h2ad e29cd0b3 RITIRATI
-MC_H2AD=/mnt/linuxulator2/vm/nested-work/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+MC_H2AD=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
 MC_H2AD_SHA=4882d73d415f8fcf3e2cf16dfd93d816066521e521d1810042ea0d8d86e9e9d6
 MC_H2AD_BID=6df2856a10e94608a69a3844ff78965e25ad97fe
 # RIPFIX nested (#135-#142): h2ad2 + latch fatale K1/K2/K3, Fase C, sonde fatal-latch e fatal-ritorno. Copia CONGELATA
 # (non l'albero di build, che si puo' ricompilare): logs/ripfix-congelato-20261030-r5. Unica identita' con l'oid
 # hw.vmm.fatal_latches
-MC_RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+MC_RIPFIX=/mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
 MC_RIPFIX_SHA=7bdd6781d3f535798d9133bacd2ecb9791e2e34e8ab828e4f103ee402dd042d5
 MC_RIPFIX_BID=6bce1d5cc73c1b2b5087ce5647b42867285e7cdb
 MC_FATAL_OID=hw.vmm.fatal_latches				# esiste SOLO nei moduli RIPFIX (e nelle loro derivate)
 # STADIO 9 (#164-#167R1): RIPFIX r5 + unita' 01..09 (R6, R3, R7, m128, wrap, R8, EPTP, W4G, EA) sul ramo
 # nested-r3-failstop. Copia CONGELATA in sola lettura: logs/stadio9-congelato-20261031. Unica identita' con l'oid
 # hw.vmm.vmx.nested_operand_fatal (il contatore del latch dell'operando, VM_FATAL_NESTED_OPERAND)
-MC_S9=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
+MC_S9=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko
 MC_S9_SHA=f158dec46712e6ad03c7f1b66333b3270185c6be4dd7f64cc50052762439022d
 MC_S9_BID=1d369697acaae9cfd5354a716570f6b1f66d24ad
 MC_OPND_OID=hw.vmm.vmx.nested_operand_fatal			# esiste SOLO nello stadio 9

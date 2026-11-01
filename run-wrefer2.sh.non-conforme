@@ -1,6 +1,6 @@
 #!/bin/sh
-O=/mnt/linuxulator2/vm/nested-work/logs/wrefer2-$(date +%Y%m%d-%H%M); mkdir -p $O
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
+O=/mnt/linuxulator2/vm/wsl2/fbsd/logs/wrefer2-$(date +%Y%m%d-%H%M); mkdir -p $O
+N=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested
 S=/tmp/claude-1001/-mnt-linuxulator2-freebsd-radxa-src/b3d0f7b6-b200-4070-a188-1436b7dd0836/scratchpad
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2

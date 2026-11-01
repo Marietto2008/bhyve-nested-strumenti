@@ -35,7 +35,7 @@
 # SEQ_FINTO (solo collaudo, test-sequenza-wsl.sh): file che ridefinisce le funzioni t_*; uscita SIMULATA: 2 al posto
 # di 0, mai 0; ogni riga del diario e la riga finale dicono SIMULATA.
 set -u
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 C=$W/caldo
 umask 022
 t_ora()     { /bin/date '+%F %T'; }
@@ -70,8 +70,8 @@ SEQ=$2; NC=$3; OMBRA=$4
 case "$NC" in [1-3]) ;; *) echo "STOP: sessioni fra 1 e 3, non '$NC'"; exit 4;; esac
 case "$OMBRA" in 0) RMODO=--esegui;; *) echo "STOP: ombra solo 0 nel test di P3, non '$OMBRA'"; exit 4;; esac
 case "$SEQ" in
-/mnt/linuxulator2/vm/nested-work/logs/*) ;;
-/mnt/linuxulator2/vm/nested-work/collaudi/*) [ -n "$SIM" ] || { echo "STOP: collaudi/ e' solo per il modo finto"; exit 4; };;
+/mnt/linuxulator2/vm/wsl2/fbsd/logs/*) ;;
+/mnt/linuxulator2/vm/wsl2/fbsd/collaudi/*) [ -n "$SIM" ] || { echo "STOP: collaudi/ e' solo per il modo finto"; exit 4; };;
 *) echo "STOP: la cartella deve stare in $W/logs (ZFS)"; exit 4;;
 esac
 [ -e "$SEQ" ] && { echo "STOP: $SEQ esiste gia'"; exit 4; }

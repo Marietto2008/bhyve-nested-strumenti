@@ -5,8 +5,8 @@
 # Verifica: 0 errori sullo stadio 11; sulla griglia dello stadio 10 esiti IDENTICI caso per caso (regressione); i
 # mutanti dello stadio 10 ancora presi; i mutanti dello stadio 11 presi; sanitizer.
 # Uso: run.sh <cartella nuova in collaudi>
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 B=$W/banco-opnd-s11
 B10=$W/banco-opnd-s10
 S11=$W/freebsd-s11-nested/sys/amd64/vmm

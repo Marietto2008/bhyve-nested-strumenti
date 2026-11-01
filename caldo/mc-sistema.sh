@@ -1,7 +1,7 @@
 # mc-sistema.sh -- Claude 29/10/2026. Accesso REALE al sistema per modulo-caldo.sh.
 # Ogni funzione s_* e' l'unico punto in cui la logica (mc-logica.sh) tocca l'host.
 # Il banco di collaudo (mc-finto.sh) definisce le stesse funzioni su uno stato simulato.
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
+. /mnt/linuxulator2/vm/wsl2/fbsd/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
 s_kld_path()    { /sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | /usr/bin/sed -n 's/.*vmm-restore\.ko (\(.*\))$/\1/p' | /usr/bin/head -1; }
 s_kld_modules() { /sbin/kldstat -v -n vmm-restore.ko 2>/dev/null | /usr/bin/awk '/Contains modules:/{f=1;next} f && $1 ~ /^[0-9]+$/ {print $2}' | /usr/bin/sort; }
 s_kld_loaded()  { /sbin/kldstat -q -n "$1" 2>/dev/null; }

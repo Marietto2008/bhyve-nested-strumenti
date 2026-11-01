@@ -4,7 +4,7 @@
 # sequenza-kut.sh lo verifica all'avvio. Si rigenera SOLO dopo una revisione; lo sha dell'elenco va nell'autorizzazione.
 # Uso: approva-strumenti.sh <motivo della revisione>   (rifiuta se l'elenco esiste: prima va archiviato con un nome nuovo)
 set -u
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/fbsd
 L=$W/APPROVATI-sequenza.sha256
 [ $# = 1 ] || { echo "uso: $0 <motivo della revisione>"; exit 4; }
 [ -e "$L" ] && { echo "STOP: $L esiste: archiviarlo prima con un nome nuovo"; exit 4; }

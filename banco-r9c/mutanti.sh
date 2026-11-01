@@ -2,7 +2,7 @@
 # mutanti.sh -- Claude 31/10/2026, stadio 10 (R9 + R9c). Ogni mutante modifica UNA regola di vmm_instruction_emul.c
 # dell'albero dato (in una copia) e il banco deve fallire. Uso: mutanti.sh <albero> <cartella di uscita nuova>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 D=$(cd "$(dirname "$0")" && pwd); T=$1; O=$2
 [ -e "$O" ] && { echo "$O esiste"; exit 2; }
 mkdir -p "$O"; nf=0

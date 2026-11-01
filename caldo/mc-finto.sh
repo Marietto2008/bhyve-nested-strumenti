@@ -14,13 +14,13 @@
 #   kenv_unset_fail, vm2_cambia_sotto_freeze (valori vm2_ctime, vm2_memseg), fail_load_s9, s9_ricompilato, s9_senza_opnd, oid_opnd_finto; valori: inflight_s=N, segnale_dopo_unload=1, iommu=1, carico_<modulo>=1.
 FS=${FS:?}
 MC_ORIG_T=/boot/kernel/vmm-restore.ko
-MC_NEW_T=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
-MC_H2AD_T=/mnt/linuxulator2/vm/nested-work/obj-h2ad-a/mnt/linuxulator2/vm/nested-work/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
-MC_RIPFIX_T=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
-MC_S9_T=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
-MC_S10_T=/mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko
-MC_S11_T=/mnt/linuxulator2/vm/nested-work/logs/stadio11-congelato-20261101/vmm-restore.ko
-MC_H2_T=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+MC_NEW_T=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+MC_H2AD_T=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2ad-a/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2ad/sys/modules/vmm/vmm-restore.ko
+MC_RIPFIX_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+MC_S9_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko
+MC_S10_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko
+MC_S11_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
+MC_H2_T=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 f_get()     { cat "$FS/$1" 2>/dev/null; }
 f_set()     { printf '%s\n' "$2" >| "$FS/$1"; }
 f_has()     { [ -e "$FS/$1" ]; }

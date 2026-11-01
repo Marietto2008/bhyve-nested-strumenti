@@ -3,8 +3,8 @@
 # (vmm_azione_valuta = vmm_azione_decidi + gettone), come utente collaudo: moduli, gettoni e fatti dell'host sono dati
 # del collaudo. Uso: sudo -u collaudo sh test-vmm-azione.sh <cartella in collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-VL_DIR=/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm
+. /mnt/linuxulator2/vm/wsl2/fbsd/collaudo-preambolo.sh
+VL_DIR=/mnt/linuxulator2/vm/wsl2/fbsd/installazione/files/usr/local/libexec/claude-vmm
 . $VL_DIR/gettone-lib.sh	# la SORGENTE della libreria installata (parere Opus «wrapper di root» par. 2.2e)
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
 nok=0; nko=0
@@ -113,7 +113,7 @@ gettone g-vecchio scambio; sed -i '' "s/^elenco .*/elenco $(printf 'a%.0s' $(seq
 rifiuto elenco-cambiato "cambiato dopo il gettone" g-vecchio kldunload
 v=$(vmm_azione_valuta $O/non-esiste $O/g-scambio $ORA $U kldunload); [ $? = 1 ] && echo "$v" | grep -q illeggibile && ok "elenco assente: $v" || no "elenco assente: $v"
 echo "il wrapper vero, come collaudo: si ferma prima di tutto"
-m=$(sh /mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/sbin/vmm-azione kldunload 2>&1); r=$?
+m=$(sh /mnt/linuxulator2/vm/wsl2/fbsd/installazione/files/usr/local/sbin/vmm-azione kldunload 2>&1); r=$?
 [ $r = 4 ] && echo "$m" | grep -q 'non sono root' && ok "vmm-azione come collaudo: $m" || no "vmm-azione: rc=$r $m"
 echo "SUMMARY: $nok ok, $nko errati"
 [ $nko = 0 ]

@@ -1,5 +1,5 @@
 controllo-azioni.sh 4356c92ee9ad9b7c796ef2c8efb117d828292108477f40f73e8d098f07132964 controllo-azioni.py 25ee683e55412882cf143d20915b42407a6f916205a9ace21b47e4c762c097e8
-  ERRATO  positivo rc=1         ^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh' 
+  ERRATO  positivo rc=1         ^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/wsl2/fbsd/gettone/gettone-lib.sh' 
   ok      kldload_senza_guardia: preso (non e' una lettura)
   ok      sudo_in_stringa: preso (non e' una lettura)
   ok      kill_come_lettura: preso (non e' una lettura)
@@ -25,5 +25,5 @@ controllo-azioni.sh 4356c92ee9ad9b7c796ef2c8efb117d828292108477f40f73e8d098f0713
   ok      inerte nella forma esatta: saltato
   ok      suite col preambolo: saltata
   ok      script con la guardia: conforme
-  ERRATO  su-parola:   DIFETTO /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh:0: illeggibile: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh'
+  ERRATO  su-parola:   DIFETTO /mnt/linuxulator2/vm/wsl2/fbsd/gettone/gettone-lib.sh:0: illeggibile: [Errno 2] No such file or directory: '/mnt/linuxulator2/vm/wsl2/fbsd/gettone/gettone-lib.sh'
 SUMMARY: 22 ok, 5 errati

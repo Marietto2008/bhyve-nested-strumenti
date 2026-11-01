@@ -24,8 +24,8 @@
 # SM_FINTO (solo collaudo, test-smoke-stadio9.sh): file che ridefinisce le funzioni s_* e sm_* dopo quelle vere.
 #   Uscita SIMULATA: 2 = coerente (mai 0), 4 = STOP; la riga finale dice SIMULATO.
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
-FBTR=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
+C=/mnt/linuxulator2/vm/wsl2/fbsd/caldo
+FBTR=/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-nested/tools/nested/ptpad-fbt-ripfix-nested.d
 . $C/mc-sistema.sh
 . $C/mc-logica.sh
 sm_sonde_lista() { sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::fatal-ritorno' -n 'vmm:vmx:nested:veptunemul' \
@@ -33,7 +33,7 @@ sm_sonde_lista() { sudo -n /usr/sbin/dtrace -l -n 'vmm:::fatal-latch' -n 'vmm:::
 sm_fbt_compila() { sudo -n /usr/sbin/dtrace -e -s $FBTR 1 >/dev/null 2>&1; }
 sm_dtrace_vivo() { /bin/pgrep -x dtrace >/dev/null; }
 # #168 par. 3: identita' dell'ISTANZA caricata (lf->loadcnt, mai riusato), non solo del file
-sm_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s /mnt/linuxulator2/vm/nested-work/kld-loadcnt.d vmm-restore.ko 2>&1 |
+sm_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s /mnt/linuxulator2/vm/wsl2/fbsd/kld-loadcnt.d vmm-restore.ko 2>&1 |
     sed -n 's/^KLD vmm-restore\.ko \(id=[0-9]* loadcnt=[0-9]*\)$/\1/p'; }
 # #168 par. 4: con SM_FINTO l'esito e' SIMULATO e non vale come evidenza: COERENTE esce 2, mai 0
 SIM=""; [ -n "${SM_FINTO:-}" ] && { SIM=" SIMULATO (SM_FINTO: non vale come evidenza)"; . "$SM_FINTO"; }
@@ -118,7 +118,7 @@ try:
 			print('ERR la sessione non registra FTL/VMU'); sys.exit(0)
 		valori = [ftl[-1], vmu[-1]]
 	# il diario di modulo-caldo: l'ultimo scambio eseguito deve PRECEDERE l'avvio della sessione e portare a questo path
-	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
+	sc = [r for r in open(os.environ.get('SM_DIARIO', '/mnt/linuxulator2/vm/wsl2/fbsd/logs/modulo-caldo/diario.txt')) if '=== ESEGUO:' in r]
 	if not sc:
 		print('ERR diario di modulo-caldo senza scambi'); sys.exit(0)
 	u = sc[-1]
