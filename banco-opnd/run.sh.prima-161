@@ -3,7 +3,7 @@
 # 3-R7, 4-m128) estrae le funzioni VERE, compila il banco e lo esegue contro l'oracolo FINALE; verifica che gli
 # errori di ogni stadio cadano solo su etichette corrette dalle patch successive. Poi i mutanti sullo stadio 4.
 # Uso: run.sh <cartella di uscita>
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 B=$W/banco-opnd
 ST=$W/logs/r6r3-160/stadi
 O=${1:?cartella}

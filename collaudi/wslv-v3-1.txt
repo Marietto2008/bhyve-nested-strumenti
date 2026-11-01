@@ -1,4 +1,4 @@
-esemplare reale: /mnt/linuxulator2/vm/nested-work/logs/serie-20261020-1619/corsa1 (stats.txt 12 righe, wsl-o.txt '6.18.54.1-microsoft-standard-WSL2')
+esemplare reale: /mnt/linuxulator2/vm/wsl2/linux/logs/serie-20261020-1619/corsa1 (stats.txt 12 righe, wsl-o.txt '6.18.54.1-microsoft-standard-WSL2')
   ok     pass                               uscita 0 (attesa 0): PASS: corsa wsl --esegui, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo
   ok     pass_ombra                         uscita 0 (attesa 0): PASS: corsa wsl --esegui-ombra, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo, ombra 50000 ingressi
   ok     pass_v2                            uscita 0 (attesa 0): PASS: corsa wsl --esegui, desktop 112 s, WSL2 e SHA-256 ok, 0 VMfail, spegnimento pulito, latch fermo

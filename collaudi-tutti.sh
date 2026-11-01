@@ -3,8 +3,8 @@
 # utente collaudo: sudo -u collaudo sh collaudi-tutti.sh <nome del giro>. Uscite in collaudi/<giro>/. Fuori da qui (come
 # marietto, e NON a ogni giro: solo dopo un aggiornamento di sudo o di /bin/sh): sonda-h1-sudo.sh.
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work; G=$COLLAUDI/${1:?giro}
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux; G=$COLLAUDI/${1:?giro}
 [ -e "$G" ] && { echo "$G esiste"; exit 2; }; mkdir -p "$G" || exit 2
 T=$W/freebsd-s10-nested; nko=0
 s() {	# s <nome> <comando...>
@@ -42,7 +42,7 @@ s sequenza-wsl     sh $W/test-sequenza-wsl.sh $G/sequenza-wsl
 s sequenza-p3      sh $W/test-sequenza-p3.sh $G/sequenza-p3
 s p3-verdetto      python3 $W/test-p3-verdetto.py $G/p3-verdetto
 # scritture di collaudo nel workspace: il find completo, atteso vuoto fuori da collaudi/
-t0=$(date +%s); x=$(find /mnt/linuxulator2/vm/nested-work -writable ! -path '/mnt/linuxulator2/vm/nested-work/collaudi' ! -path '/mnt/linuxulator2/vm/nested-work/collaudi/*' 2>/dev/null | head -20)
+t0=$(date +%s); x=$(find /mnt/linuxulator2/vm/wsl2/linux -writable ! -path '/mnt/linuxulator2/vm/wsl2/linux/collaudi' ! -path '/mnt/linuxulator2/vm/wsl2/linux/collaudi/*' 2>/dev/null | head -20)
 if [ -z "$x" ]; then echo "scritture rc=0 ($(( $(date +%s) - t0 )) s): collaudo non puo' scrivere nulla fuori da collaudi/"; else nko=$((nko+1)); echo "scritture rc=1: scrivibili da collaudo: $(echo "$x" | tr '\n' ' ')"; fi
 echo "GIRO $1: $nko suite fallite"
 [ $nko = 0 ]

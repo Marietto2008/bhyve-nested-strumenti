@@ -6,7 +6,7 @@
 #                                      (in C:/claude/faseA) contenga PAT, cioe' che il
 #                                      carico sia partito, poi crea C:\claude\guardia-pausa
 #  guardia-win.sh riprendi             toglie la pausa
-C=/mnt/linuxulator2/vm/nested-work/faseA
+C=/mnt/linuxulator2/vm/wsl2/linux/faseA
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }
 cpw() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$@"; }
 case "$1" in

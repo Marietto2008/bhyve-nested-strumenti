@@ -20,7 +20,7 @@ if len(sys.argv) > 2 and sys.argv[2] != "--prima":
 else:
     limite = sys.argv[3] if len(sys.argv) > 3 else "20261024-1800"
     fonte = f"riassunti precedenti a {limite}"
-    for f in sorted(glob.glob("/mnt/linuxulator2/vm/nested-work/logs/kut-*-riassunto.txt")):
+    for f in sorted(glob.glob("/mnt/linuxulator2/vm/wsl2/linux/logs/kut-*-riassunto.txt")):
         m = re.search(r"kut-(\d{8}-\d{6})-riassunto", f)
         if not m or m.group(1) >= limite.replace("-", "-") and m.group(1)[:13] >= limite[:13]:
             continue

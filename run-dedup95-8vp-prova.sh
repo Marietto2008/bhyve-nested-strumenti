@@ -37,7 +37,7 @@
 # Ultima riga: "OUTPUT <cartella> COMPLETA|INCOMPLETA <motivo>|CORRETTEZZA <motivo>|CONFIG <motivo>".
 # Uso (da root, come l'orchestratore): env O=<cartella> R=<1|2> MOD=<A|B> sh run-abba-retry-prova.sh [D=480] [W=2]
 D=${1:-480}; W=${2:-2}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested; C=$B/faseA
 O=${O:?cartella}; R=${R:?retry}; MOD=${MOD:?modalita}
 mkdir -p "$O" || exit 1
 H=IP-HOST

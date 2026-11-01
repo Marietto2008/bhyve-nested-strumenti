@@ -9,8 +9,8 @@
 #   sh modulo-caldo.sh --esegui r110 originale               ritorno
 # Uscita: 0 ok | 4 STOP, nulla cambiato | 5 fallito ma tornato all'originale verificato | 6 OPERATORE.
 set -u
-C=/mnt/linuxulator2/vm/nested-work/caldo
-L=/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo
+C=/mnt/linuxulator2/vm/wsl2/linux/caldo
+L=/mnt/linuxulator2/vm/wsl2/linux/logs/modulo-caldo
 umask 022
 ulimit -c 0			# nessun core di questo script o dei suoi figli
 mkdir -p "$L" && cd "$L" || { echo "cartella log $L non disponibile"; exit 4; }

@@ -5,14 +5,14 @@
 #   test-verdetti.py <cartella di lavoro nuova>
 # 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 import os as _os, pwd as _pwd, shutil as _sh
-_os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/nested-work/collaudo-bin'
+_os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/wsl2/linux/collaudo-bin'
 if _pwd.getpwuid(_os.getuid()).pw_name != 'collaudo':
 	print('STOP: le suite girano solo come utente collaudo (sudo -u collaudo ...)'); raise SystemExit(2)
 if _sh.which('sudo'):
 	print('STOP: sudo raggiungibile dal collaudo'); raise SystemExit(2)
 import json, os, subprocess, sys, textwrap
 
-B = '/mnt/linuxulator2/vm/nested-work'
+B = '/mnt/linuxulator2/vm/wsl2/linux'
 PY = sys.executable
 W = sys.argv[1]
 os.makedirs(W)

@@ -8,7 +8,7 @@ echo "INERTE: run-abba.sh ha azioni sull'host senza guardia (controllo-azioni.sh
 # del kernel (kbuild4.sh: mrproper + defconfig + drop_caches, -j4), spegnimento.
 # Prima di ogni prova: processi piu' attivi dell'host (attivita' esterna). Ci si ferma alla prima
 # prova non COMPLETA (errore nuovo dello shadow, WSL che non risponde, VM uscita).
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 BASE=$B/logs/abba-$(date +%Y%m%d-%H%M); mkdir -p "$BASE"
 i=0
 for M in A B C D D C B A; do

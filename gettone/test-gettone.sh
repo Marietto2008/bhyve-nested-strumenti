@@ -2,8 +2,8 @@
 # test-gettone.sh -- Claude 31/10/2026. Collaudo di gettone_valido (gettone-lib.sh), come utente collaudo: i gettoni
 # sono file di collaudo (uid atteso = quello di collaudo, in produzione 0). Uso: sudo -u collaudo sh test-gettone.sh <cartella>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-VL_DIR=/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+VL_DIR=/mnt/linuxulator2/vm/wsl2/linux/installazione/files/usr/local/libexec/claude-vmm
 . $VL_DIR/gettone-lib.sh	# la SORGENTE della libreria installata (parere Opus «wrapper di root» par. 2.2e)
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
 U=$(id -u); ORA=1793500000; S=$(printf 'a%.0s' $(seq 64)); S2=$(printf 'b%.0s' $(seq 64))

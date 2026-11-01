@@ -9,7 +9,7 @@ echo "INERTE: run-ept12keep-27125b.sh ha azioni sull'host senza guardia (control
 # prima dell'ingresso). SCOPE: 1 VM QEMU (vm2).
 # Da lanciare SOLO con l'assenso esplicito dell'utente per QUESTA corsa.
 # Nessun retry, nessuna corsa successiva, nessun cambio di kernel/flag.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD=/boot/kernel/vmm-restore.ko

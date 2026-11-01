@@ -3,8 +3,8 @@
 # con lo STESSO finto di test-sequenza-kut.sh (runner adattato: <modo> <cartella>). Si confronta la sequenza ESATTA delle
 # invocazioni, l'esito e il diario. Gira SOLO come utente collaudo: sudo -u collaudo sh test-sequenza-wsl.sh <cartella>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}
 case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }

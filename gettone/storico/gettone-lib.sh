@@ -118,7 +118,7 @@ vmm_azione_valuta() {
 # solo su stdout/stderr, i file li crea il chiamante. Ogni programma eseguito (.d, la QEMU per ldd) deve stare
 # nell'elenco con il suo sha. Fatti dall'host (per ferma-sonde): vl_comm <pid>, vl_uid <pid>, vl_args <pid>.
 # Uscita 0: "LETTURA <nome>" e poi l'argv, uno per riga. Uscita 1: "RIFIUTO <motivo>".
-VL_W=/mnt/linuxulator2/vm/nested-work
+VL_W=/mnt/linuxulator2/vm/wsl2/linux
 vl_approvato() {	# vl_approvato <elenco> <file>: nell'elenco e con lo sha registrato
 	vh=$(/usr/bin/awk -v f="$2" '$1 !~ /^#/ && $2 == f {print $1}' "$1")
 	[ -n "$vh" ] && [ "$(/sbin/sha256 -q "$2" 2>/dev/null)" = "$vh" ]

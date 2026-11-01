@@ -11,10 +11,10 @@
 set -u
 # 31/10/2026, incidente del collaudo di sequenza-kut.sh: uno strumento che cambia il modulo dell'host non gira mai
 # in un ambiente di collaudo (qualunque *_FINTO) ne' come utente collaudo: guardia comune, prima di tutto.
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
+. /mnt/linuxulator2/vm/wsl2/linux/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
 guardia_azione || { echo "STOP: guardia: nessuno scambio"; exit 4; }
-C=/mnt/linuxulator2/vm/nested-work/caldo
-L=/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo
+C=/mnt/linuxulator2/vm/wsl2/linux/caldo
+L=/mnt/linuxulator2/vm/wsl2/linux/logs/modulo-caldo
 umask 022
 ulimit -c 0			# nessun core di questo script o dei suoi figli
 mkdir -p "$L" && cd "$L" || { echo "cartella log $L non disponibile"; exit 4; }

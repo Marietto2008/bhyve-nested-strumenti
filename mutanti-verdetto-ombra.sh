@@ -2,8 +2,8 @@
 # mutanti-verdetto-ombra.sh -- Claude 31/10/2026, parere Opus C1. Un mutante per ogni regola del contratto dell'ombra e
 # del modo in opnd-verdetto.py; test-verdetti.py, puntato sul verdetto mutato, deve FALLIRE. Uso: <cartella nuova>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
-B=/mnt/linuxulator2/vm/nested-work; O=${1:?cartella}
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+B=/mnt/linuxulator2/vm/wsl2/linux; O=${1:?cartella}
 [ -e "$O" ] && { echo "$O esiste"; exit 2; }
 mkdir -p "$O"; nf=0
 mut() {	# mut <nome> <caso che DEVE prenderlo> <vecchio> <nuovo>  (parere Opus sull'incidente par. 3.4: il MOTIVO)

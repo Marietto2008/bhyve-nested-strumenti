@@ -3,8 +3,8 @@
 # deve prenderlo (uscita != 0) e ognuno dal caso atteso. Uso: mutanti-sequenza.sh <cartella nuova in nested-work/logs>
 # Gira SOLO come utente collaudo (parere Opus sull'incidente, par. 3.1): sudo -u collaudo sh mutanti-sequenza.sh <cartella>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
 nok=0; nko=0
 mut() {	# mut <nome> <caso che deve prenderlo> <python: trasformazione di t>

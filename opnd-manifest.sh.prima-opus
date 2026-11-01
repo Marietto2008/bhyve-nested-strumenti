@@ -26,7 +26,7 @@ o_vm2_memseg() { sudo -n /usr/sbin/bhyvectl --vm=vm2 --get-memseg 2>&1; }	# il r
 o_dmesg()      { /sbin/dmesg 2>&1; }
 o_ppt()        { /usr/sbin/pciconf -l 2>&1 | /usr/bin/grep '^ppt'; }
 o_osrelease()  { /sbin/sysctl -n kern.osrelease 2>/dev/null; }
-OM_KLD_D=/mnt/linuxulator2/vm/nested-work/kld-loadcnt.d
+OM_KLD_D=/mnt/linuxulator2/vm/wsl2/linux/kld-loadcnt.d
 o_kld_loadcnt() { sudo -n /usr/sbin/dtrace -s $OM_KLD_D vmm-restore.ko 2>&1; }
 
 # om_leggi_kld: OM_KLD="id=<n> loadcnt=<m>" del kld vmm-restore.ko (#168 par. 3: un ricaricamento dello STESSO file

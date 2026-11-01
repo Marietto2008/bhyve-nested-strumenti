@@ -20,7 +20,7 @@ r_modulo()  { /sbin/kldstat -q -n vmm-restore.ko || /sbin/kldstat -q -n vmm.ko; 
 r_distruggi() { sudo -n /usr/sbin/bhyvectl --vm="$1" --destroy; }
 r_ora()     { /bin/date '+%F %T'; }
 [ -n "${VR_FINTO:-}" ] && . "$VR_FINTO"
-VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/nested-work/logs/vmm-residuo/diario.txt}
+VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/wsl2/linux/logs/vmm-residuo/diario.txt}
 
 vr_dice() { echo "$*"; [ "${VR_SCRIVI:-0}" = 1 ] && echo "$(r_ora) $*" >> "$VR_DIARIO"; return 0; }
 vr_stop() { vr_dice "RIFIUTO: $*; nulla fatto"; exit 4; }

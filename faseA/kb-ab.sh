@@ -3,7 +3,7 @@
 # Con Windows gia' acceso e WSL pronto: traccia host (win-kb.d), tempo CPU di bhyve
 # prima e dopo, compilazione del kernel in WSL (kbuild.sh), log in logs/kb-<etichetta>-*.
 E="${1:?etichetta}"; KB="${2:-kbuild.sh}"	# script di compilazione (kbuild.sh -j2, kbuild4.sh -j4)
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 C="$B/faseA"
 O="$B/logs/kb-$E-$(date +%Y%m%d-%H%M)"
 mkdir -p "$O"

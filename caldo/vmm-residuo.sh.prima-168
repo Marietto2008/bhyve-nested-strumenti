@@ -35,7 +35,7 @@ r_dtrace_vivo()  { /bin/pgrep -x dtrace; }
 # identita' del modulo caricato secondo mc-logica.sh: originale | ripfix-nested | stadio9 | h2ad2 | r110 | h2 |
 # incompleto:<stato> | sconosciuto:<path> (path, sha e firma OID devono coincidere TUTTI)
 r_modulo_id() {
-	( . /mnt/linuxulator2/vm/nested-work/caldo/mc-sistema.sh; . /mnt/linuxulator2/vm/nested-work/caldo/mc-logica.sh
+	( . /mnt/linuxulator2/vm/wsl2/linux/caldo/mc-sistema.sh; . /mnt/linuxulator2/vm/wsl2/linux/caldo/mc-logica.sh
 	  c=$(mc_caricato); case "$c" in "completo "*) p=${c#completo };; *) echo "incompleto:$c"; exit 0;; esac
 	  for i in originale ripfix-nested stadio9 h2ad2 r110 h2; do
 		set -- $(mc_identita $i)
@@ -43,9 +43,9 @@ r_modulo_id() {
 	  done
 	  echo "sconosciuto:$p" )
 }
-r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/stato.txt 2>/dev/null; }
+r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/wsl2/linux/logs/modulo-caldo/stato.txt 2>/dev/null; }
 [ -n "${VR_FINTO:-}" ] && . "$VR_FINTO"
-VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/nested-work/logs/vmm-residuo/diario.txt}
+VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/wsl2/linux/logs/vmm-residuo/diario.txt}
 
 vr_dice() { echo "$*"; [ "${VR_SCRIVI:-0}" = 1 ] && echo "$(r_ora) $*" >> "$VR_DIARIO"; return 0; }
 vr_stop() { vr_dice "RIFIUTO: $*; nulla fatto"; exit 4; }

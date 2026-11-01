@@ -134,12 +134,12 @@
   ok      m8h: manifest 'sessione: INCOMPLETA: istanza del kld'
   ok      m8i: om_chiudi rc 1
   ok      m8i: manifest 'sessione: INCOMPLETA: dmesg della sessione'
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
-/mnt/linuxulator2/vm/nested-work/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/nested-work/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
+/mnt/linuxulator2/vm/wsl2/linux/test-opnd-manifest.sh: cannot create /mnt/linuxulator2/vm/wsl2/linux/collaudi/om-1/m8j/manifest.txt: Permission denied
   ok      m8j: om_chiudi rc 1
   ok      m8j: manifest senza 'sessione: CHIUSA'
 sha256: VERDETTO: Permission denied

@@ -2,7 +2,7 @@
 # Claude 25/10/2026 -- parere #53 §8: strumentazione INVEPT 216f0f725c5d sopra la 728bfc544720 caricata.
 # Solo contatori, nessun cambio di comportamento. NON riavvia. --ritorno torna a 728bfc544720.
 set -eu
-B=/mnt/linuxulator2/vm/nested-work; K=/boot/kernel/vmm-restore.ko
+B=/mnt/linuxulator2/vm/wsl2/linux; K=/boot/kernel/vmm-restore.ko
 PREV=d102b77897865ee7ea97214715976430e6a5fc71e707f0ce3b62c5b66f9a92b4	# 728bfc544720
 NUOVO=4ca4c1abc1ef7f0ee1a19bba6d97a8806a87f31012fe75de5bf322ed6765beb7	# 216f0f725c5d
 SRC=$B/stage/216f0f725c5d-invept-instr/vmm-restore.ko

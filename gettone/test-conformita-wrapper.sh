@@ -5,8 +5,8 @@
 # wrapper. Copia degli script in collaudi/, il finto (mc-finto.sh) REGISTRA ogni azione con i fatti del momento.
 # Come utente collaudo. Uso: sudo -u collaudo sh test-conformita-wrapper.sh <cartella in collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O/script" || exit 2
 cp $W/caldo/mc-logica.sh $W/caldo/mc-sistema.sh $W/caldo/test-modulo-caldo.sh $W/caldo/guardia.sh "$O/script/" || exit 2
 REG=$O/azioni.txt; : > "$REG"; export REG
@@ -50,7 +50,7 @@ for r in open(reg):
 		fuori[prim[1].split('/')[-3] if prim[1].count('/') > 3 else prim[1]] += 1
 		continue                           # moduli non della campagna: il rifiuto e' atteso
 	ko = orig[caso]
-	prog = ('VL_DIR=/mnt/linuxulator2/vm/nested-work/installazione/files/usr/local/libexec/claude-vmm; . $VL_DIR/gettone-lib.sh\n'
+	prog = ('VL_DIR=/mnt/linuxulator2/vm/wsl2/linux/installazione/files/usr/local/libexec/claude-vmm; . $VL_DIR/gettone-lib.sh\n'
 	        'va_ctime() { echo "%s"; }\nva_memseg() { echo "%s"; }\nva_blocklist() { echo "%s"; }\n'
 	        'va_kenv_originale() { case "$1" in boot_safe) echo "%s";; devmatch_blocklist) echo "%s";; esac; }\n'
 	        'vmm_azione_decidi "$@"\n') % (f.get('ctime', ''), f.get('memseg', ''), f.get('bl', ''),

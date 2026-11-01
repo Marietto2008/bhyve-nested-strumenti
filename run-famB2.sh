@@ -5,7 +5,7 @@ echo "INERTE: run-famB2.sh ha azioni sull'host senza guardia (controllo-azioni.s
 # leggera dtrace/invB.d, senza i ping di claude_winhost (corretto alle 01:08), 4 VP veri, make -j4, vept_keep=1, vept_scan_retries=2 (baseline
 # sperimentale a 4 VP), verifica HPA spenta. Memoria dell'host: vmstat 1 e swapinfo ogni
 # 30 s per tutta la corsa.
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 G=/usr/bin/grep
 T=$(date +%Y%m%d-%H%M)
 echo "######## FAMB2-r2: 4 VP, -j4, retry 2 $(date +%T)"

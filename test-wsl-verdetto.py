@@ -4,12 +4,12 @@
 # vero per ogni forma d'uscita. Ogni caso cambia una sola cosa e verifica esito E motivo.
 # Uso: sudo -u collaudo python3 test-wsl-verdetto.py <cartella nuova in collaudi>
 import os, pwd, shutil, subprocess, sys
-os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/nested-work/collaudo-bin'
+os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/wsl2/linux/collaudo-bin'
 if pwd.getpwuid(os.getuid()).pw_name != 'collaudo':
 	print('STOP: le suite girano solo come utente collaudo'); raise SystemExit(2)
 if shutil.which('sudo'):
 	print('STOP: sudo raggiungibile dal collaudo'); raise SystemExit(2)
-W = '/mnt/linuxulator2/vm/nested-work'
+W = '/mnt/linuxulator2/vm/wsl2/linux'
 O = sys.argv[1]
 if not O.startswith(W + '/collaudi/') or os.path.exists(O):
 	print('cartella non valida o esistente'); raise SystemExit(2)

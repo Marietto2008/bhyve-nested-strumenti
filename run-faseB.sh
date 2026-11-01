@@ -3,7 +3,7 @@
 echo "INERTE: run-faseB.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-faseB.sh.non-conforme" >&2; exit 4
 # Claude 22/10/2026 -- parere #31: verifica HPA O(K x D) e fase B a 4 vCPU.
 # vept_keep=1, vept_scan_retries=1, vept_verify_hpa=1 dove non detto altrimenti.
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested
 O=$B/logs/faseB-$(date +%Y%m%d-%H%M); mkdir -p $O
 G=/usr/bin/grep
 ctr() { sysctl hw.vmm.vmx | $G -E "vept_|nested_" | sed 's/^hw.vmm.vmx.//'; }

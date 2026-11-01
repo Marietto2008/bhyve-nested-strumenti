@@ -3,7 +3,7 @@
 # SOLO lettura, spento di default, sopra la 216f0f725c5d caricata. NON riavvia.
 # --ritorno torna a 216f0f725c5d. Richiede riavvio esplicito dell'utente dopo.
 set -eu
-B=/mnt/linuxulator2/vm/nested-work; K=/boot/kernel/vmm-restore.ko
+B=/mnt/linuxulator2/vm/wsl2/linux; K=/boot/kernel/vmm-restore.ko
 PREV=4ca4c1abc1ef7f0ee1a19bba6d97a8806a87f31012fe75de5bf322ed6765beb7	# 216f0f725c5d
 NUOVO=b4d64537f9874fb5f5f9afbc12dac59338f83ef89121f8f68d0a14c7e47c9958	# diag58 8862eedd9494
 SRC=$B/stage/diag58-8862eedd9494/vmm-restore.ko

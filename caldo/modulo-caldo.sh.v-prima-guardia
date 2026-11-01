@@ -14,8 +14,8 @@ set -u
 if /usr/bin/env | /usr/bin/grep -q '^[A-Za-z0-9_]*_FINTO='; then
 	echo "STOP: variabile di collaudo nell'ambiente ($(/usr/bin/env | /usr/bin/grep -o '^[A-Za-z0-9_]*_FINTO' | /usr/bin/tr '\n' ' ')): nessuno scambio"; exit 4
 fi
-C=/mnt/linuxulator2/vm/nested-work/caldo
-L=/mnt/linuxulator2/vm/nested-work/logs/modulo-caldo
+C=/mnt/linuxulator2/vm/wsl2/linux/caldo
+L=/mnt/linuxulator2/vm/wsl2/linux/logs/modulo-caldo
 umask 022
 ulimit -c 0			# nessun core di questo script o dei suoi figli
 mkdir -p "$L" && cd "$L" || { echo "cartella log $L non disponibile"; exit 4; }

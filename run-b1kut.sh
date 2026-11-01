@@ -3,7 +3,7 @@
 # generazione dei mapping e verifica HPA, tutti con hw.vmm.vmx.vept_keep=1.
 # Per ogni test: contatori hw.vmm.vmx.vept_* prima e dopo, traccia b1keep.d.
 # Uso: sudo sh run-b1kut.sh   (log in logs/b1kut-AAAAMMGG-HHMM)
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 N=$B/freebsd-nested/tools/nested
 O=$B/logs/b1kut-$(date +%Y%m%d-%H%M); mkdir -p $O
 BUMP=$O/memgen-bump

@@ -2,7 +2,7 @@
 # Claude 26/10/2026 -- parere #60 §8: diag58 esteso (27125f004917), SOLO lettura,
 # spento di default, sopra diag58 b4d64537 o 216f0f. NON riavvia. --ritorno -> 216f0f.
 set -eu
-B=/mnt/linuxulator2/vm/nested-work; K=/boot/kernel/vmm-restore.ko
+B=/mnt/linuxulator2/vm/wsl2/linux; K=/boot/kernel/vmm-restore.ko
 BASE=4ca4c1abc1ef7f0ee1a19bba6d97a8806a87f31012fe75de5bf322ed6765beb7	# 216f0f725c5d (rollback)
 OLD=b4d64537f9874fb5f5f9afbc12dac59338f83ef89121f8f68d0a14c7e47c9958	# diag58 8862eedd9494
 NUOVO=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9	# diag58ext 27125f004917

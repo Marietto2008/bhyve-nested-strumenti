@@ -6,8 +6,8 @@
 # per la sequenza autorizzata (non per i collaudi: collaudo non ha sudo). Finestre brevi: per una sequenza KUT, 1 ora.
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
-L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+. /mnt/linuxulator2/vm/wsl2/linux/gettone/gettone-lib.sh
+L=/mnt/linuxulator2/vm/wsl2/linux/APPROVATI-sequenza.sha256
 G=/var/run/claude-gettone
 D=/var/log/claude-vmm-azione.log
 registra() { [ "$(id -u)" = 0 ] && echo "$(date '+%F %T') $*" >> $D; return 0; }

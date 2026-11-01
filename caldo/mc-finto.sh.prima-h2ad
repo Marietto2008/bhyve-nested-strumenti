@@ -14,8 +14,8 @@
 #   kenv_unset_fail; valori: inflight_s=N, segnale_dopo_unload=1, iommu=1, carico_<modulo>=1.
 FS=${FS:?}
 MC_ORIG_T=/boot/kernel/vmm-restore.ko
-MC_NEW_T=/mnt/linuxulator2/vm/nested-work/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
-MC_H2_T=/mnt/linuxulator2/vm/nested-work/obj-h2-only/mnt/linuxulator2/vm/nested-work/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
+MC_NEW_T=/mnt/linuxulator2/vm/wsl2/linux/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/linux/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+MC_H2_T=/mnt/linuxulator2/vm/wsl2/linux/obj-h2-only/mnt/linuxulator2/vm/wsl2/linux/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 f_get()     { cat "$FS/$1" 2>/dev/null; }
 f_set()     { printf '%s\n' "$2" >| "$FS/$1"; }
 f_has()     { [ -e "$FS/$1" ]; }

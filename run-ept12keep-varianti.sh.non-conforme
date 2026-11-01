@@ -4,7 +4,7 @@
 # vept_scan_retries=1 (impostati, riletti, ripristinati alla fine), traccia
 # diag79c.d. SCOPE: 3 VM QEMU (vm2), una per variante, in sequenza.
 # Nessun retry, nessuna corsa successiva automatica.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9

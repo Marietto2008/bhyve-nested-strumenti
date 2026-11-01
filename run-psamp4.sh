@@ -5,7 +5,7 @@ echo "INERTE: run-psamp4.sh ha azioni sull'host senza guardia (controllo-azioni.
 # campionamento (dtrace/pmapsamp.d, profile-199, stack(12)), niente lockstat ne' ping, 4 VP veri, make -j4, vept_keep=1, vept_scan_retries=2 (baseline
 # sperimentale a 4 VP), verifica HPA spenta. Memoria dell'host: vmstat 1 e swapinfo ogni
 # 30 s per tutta la corsa.
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 G=/usr/bin/grep
 T=$(date +%Y%m%d-%H%M)
 echo "######## PSAMP4-r2: 4 VP, -j4, retry 2 $(date +%T)"

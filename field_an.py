@@ -8,7 +8,7 @@
 import re, sys, os, statistics as st
 from collections import defaultdict
 d = sys.argv[1]
-H = sys.argv[2] if len(sys.argv) > 2 else "/mnt/linuxulator2/vm/nested-work/freebsd-nested/sys/amd64/vmm/intel/vmcs.h"
+H = sys.argv[2] if len(sys.argv) > 2 else "/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/sys/amd64/vmm/intel/vmcs.h"
 nome = {}
 for l in open(H):
     m = re.match(r"#define\s+VMCS_(\w+)\s+(0x[0-9a-fA-F]+)", l)

@@ -24,7 +24,7 @@
 # Uscita 0 = distrutto e /dev/vmm/vm2 assente; 6 = distruzione tentata ma il nodo resta (operatore).
 # Accesso al sistema solo dalle funzioni r_* (sovrascritte dal collaudo, test-vmm-residuo.sh).
 set -u
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
+. /mnt/linuxulator2/vm/wsl2/linux/caldo/guardia.sh	# 31/10/2026 (parere Opus sull'incidente): guardia comune delle azioni
 r_nodi()    { /bin/ls /dev/vmm 2>/dev/null; }
 r_ctime()   { /usr/bin/stat -f '%c' "/dev/vmm/$1" 2>/dev/null; }
 # #169 R5: le letture d'identita' valgono solo se bhyvectl e' riuscito (pipefail): mai l'hash o il testo di un errore
@@ -39,7 +39,7 @@ r_dtrace_vivo()  { /bin/pgrep -x dtrace; }
 # identita' del modulo caricato secondo mc-logica.sh: originale | ripfix-nested | stadio9 | stadio10 | h2ad2 | r110 | h2 |
 # incompleto:<stato> | sconosciuto:<path> (path, sha e firma OID devono coincidere TUTTI)
 r_modulo_id() {
-	( . /mnt/linuxulator2/vm/nested-work/caldo/mc-sistema.sh; . /mnt/linuxulator2/vm/nested-work/caldo/mc-logica.sh
+	( . /mnt/linuxulator2/vm/wsl2/linux/caldo/mc-sistema.sh; . /mnt/linuxulator2/vm/wsl2/linux/caldo/mc-logica.sh
 	  c=$(mc_caricato); case "$c" in "completo "*) p=${c#completo };; *) echo "incompleto:$c"; exit 0;; esac
 	  for i in originale ripfix-nested stadio9 stadio10 h2ad2 r110 h2; do
 		set -- $(mc_identita $i)
@@ -47,7 +47,7 @@ r_modulo_id() {
 	  done
 	  echo "sconosciuto:$p" )
 }
-r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/nested-work/logs/modulo-caldo/stato.txt 2>/dev/null; }
+r_fase_caldo()   { /usr/bin/sed -n 's/^fase=//p' /mnt/linuxulator2/vm/wsl2/linux/logs/modulo-caldo/stato.txt 2>/dev/null; }
 # #168 par. 4: con VR_FINTO nessuna distruzione REALE e' raggiungibile (r_distruggi rifiuta finche' il finto non la
 # ridefinisce) e ogni uscita e' marcata SIMULATA
 if [ -n "${VR_FINTO:-}" ]; then
@@ -55,7 +55,7 @@ if [ -n "${VR_FINTO:-}" ]; then
 	. "$VR_FINTO"
 	echo "SIMULAZIONE (VR_FINTO): esito non valido come evidenza"
 fi
-VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/nested-work/logs/vmm-residuo/diario.txt}
+VR_DIARIO=${VR_DIARIO:-/mnt/linuxulator2/vm/wsl2/linux/logs/vmm-residuo/diario.txt}
 
 vr_dice() { echo "$*"; [ "${VR_SCRIVI:-0}" = 1 ] && echo "$(r_ora) $*" >> "$VR_DIARIO"; return 0; }
 vr_stop() { vr_dice "RIFIUTO: $*; nulla fatto"; exit 4; }

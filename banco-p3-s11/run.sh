@@ -3,8 +3,8 @@
 # banco, poi i mutanti (ciascuno deve essere preso da un caso). Come utente collaudo:
 #   sudo -u collaudo sh run.sh <cartella nuova in collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 B=$W/banco-p3-s11
 E=$W/logs/h2mmio-ptphold-read-20261030/estrai-fn.sh
 S=${S11:-$W/freebsd-s11-nested}/sys/amd64/vmm/vmm_instruction_emul.c

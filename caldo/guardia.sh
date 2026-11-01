@@ -1,6 +1,6 @@
 # guardia.sh -- Claude 31/10/2026, parere Opus sull'incidente del collaudo, par. 3.3. Guardia COMUNE delle azioni che
 # cambiano lo stato dell'host (kldload/kldunload, devctl, kenv in scrittura, sysctl in scrittura, bhyvectl --destroy,
-# avvio di VM). Si carica con `. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh` e si chiama SULLA STESSA RIGA
+# avvio di VM). Si carica con `. /mnt/linuxulator2/vm/wsl2/linux/caldo/guardia.sh` e si chiama SULLA STESSA RIGA
 # dell'azione: `guardia_azione && sudo -n ...` (controllo-azioni.sh lo verifica). Rifiuta:
 #   - qualunque variabile *_FINTO nell'ambiente, tranne quella passata come argomento (il collaudo dello strumento
 #     stesso, le cui funzioni d'azione sono gia' sostituite);

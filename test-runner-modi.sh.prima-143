@@ -4,7 +4,7 @@
 # d'uscita: in particolare l'assenza del consiglio di hot-swap dove nessun modulo cambia, e che la prova a secco di
 # originale-porta superi la firma degli oid anche con vm2 presente (prima si fermava prima e la nascondeva).
 # Nessuna VM, nessuna distruzione di /dev/vmm/vm2. Uso: test-runner-modi.sh <cartella su ZFS>
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}
 mkdir -p "$O" || exit 1
 nf=0

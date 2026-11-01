@@ -47,7 +47,7 @@ MEM=4096
 VNC_DISPLAY=0            # VNC server su 127.0.0.1:5900, viewer su display :0
 SSH_FWD=2222
 
-WORK=/mnt/linuxulator2/vm/nested-work/
+WORK=/mnt/linuxulator2/vm/wsl2/linux/
 VARS=$WORK/uefi-vars.fd
 CONSOLE=$WORK/console.log
 QLOG=$WORK/qemu-stderr.log

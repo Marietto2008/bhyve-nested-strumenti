@@ -3,7 +3,7 @@
 # lo esegue (atteso: il comportamento ATTUALE, cioe' il salto silenzioso su EFAULT), poi applica un mutante che
 # cambia il ramo EFAULT e verifica che il banco se ne accorga. Il clone base non ha vmx_nested.c: R3 non vi esiste.
 # Uso: run.sh <cartella di uscita>
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 B=$W/banco-r3
 T=$W/freebsd-ripfix-nested/sys/amd64/vmm
 O=${1:?cartella}

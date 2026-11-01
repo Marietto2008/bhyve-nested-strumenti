@@ -5,7 +5,7 @@ echo "INERTE: run-ept12sent-fix.sh ha azioni sull'host senza guardia (controllo-
 # ept12_remap_sentinel col test fail-closed (kut ad04d3e8, vmxc-sent.flat).
 # Da lanciare SOLO con l'assenso esplicito dell'utente per QUESTA corsa.
 # Nessun retry, nessuna corsa successiva, nessun cambio di kernel/flag.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD=/boot/kernel/vmm-restore.ko

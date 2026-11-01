@@ -6,10 +6,10 @@
 # SEPARATI, ciascuno con la sua durata; (2) un campione con una sola vCPU NON deve dare -80 ma NA, segnalato.
 # Uso: sudo -u collaudo python3 test-analisi-wsl.py <cartella nuova in collaudi>
 import os, pwd, subprocess, sys
-os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/nested-work/collaudo-bin'
+os.environ['PATH'] = '/bin:/usr/bin:/sbin:/usr/sbin:/mnt/linuxulator2/vm/wsl2/linux/collaudo-bin'
 if pwd.getpwuid(os.getuid()).pw_name != 'collaudo':
 	print('STOP: le suite girano solo come utente collaudo'); raise SystemExit(2)
-W = '/mnt/linuxulator2/vm/nested-work'
+W = '/mnt/linuxulator2/vm/wsl2/linux'
 O = sys.argv[1]
 if not O.startswith(W + '/collaudi/') or os.path.exists(O):
 	print('cartella non valida o esistente'); raise SystemExit(2)

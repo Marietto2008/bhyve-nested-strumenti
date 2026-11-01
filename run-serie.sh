@@ -5,7 +5,7 @@ echo "INERTE: run-serie.sh ha azioni sull'host senza guardia (controllo-azioni.s
 # uso: run-serie.sh <N>. Ogni corsa: avvio, desktop (explorer via SSH), wsl -d Debian,
 # contatori, shutdown /s pulito. Nessun limite stretto: 15 min per il desktop, 5 per lo spegnimento.
 N=${1:-3}
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 T=$B/freebsd-nested/tools/nested
 S=$B/logs/serie-$(date +%Y%m%d-%H%M); mkdir -p $S
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY

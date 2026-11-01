@@ -4,11 +4,11 @@ echo "INERTE: run-verifica-fix.sh ha azioni sull'host senza guardia (controllo-a
 # Verifica dei commit e8efe28 + 6496bc2 + 98c3fac (parere #15 di Astra): 9 corse.
 # Atteso: zero synth_exit con 0xd1, zero slot SINT3 occupati, zero winexit
 # owner=1, zero vmfail, nessun rinvio mai chiuso. Baseline: 6 stalli su 9.
-O=/mnt/linuxulator2/vm/nested-work/logs/verifica-$(date +%Y%m%d-%H%M)
+O=/mnt/linuxulator2/vm/wsl2/linux/logs/verifica-$(date +%Y%m%d-%H%M)
 mkdir -p $O
 SP=/tmp/claude-1001/-mnt-linuxulator2-freebsd-radxa-src/b3d0f7b6-b200-4070-a188-1436b7dd0836/scratchpad
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/linux/dtrace
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
 echo "output in $O"

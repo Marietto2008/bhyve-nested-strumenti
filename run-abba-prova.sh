@@ -18,7 +18,7 @@ echo "INERTE: run-abba-prova.sh ha azioni sull'host senza guardia (controllo-azi
 # gia' 3 per le iniezioni): DELTA nested_sh_faults = 0, nested_sh_entry_after_fault = 0.
 # Al primo errore nuovo dello shadow la sessione SI FERMA (parere #46 §4): nessun altro passo.
 D=${1:-480}; W=${2:-2}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested; C=$B/faseA
 O=${O:?cartella}; mkdir -p "$O"; : "${S0:?}" "${SH:?}" "${VF:=0}" "${MOD:?}" "${TR:=0}"
 H=IP-HOST
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }

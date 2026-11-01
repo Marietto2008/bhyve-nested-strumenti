@@ -5,17 +5,17 @@
 # file. Nessun sudo, nessun dtrace, nessun kld. Sessioni e diari SINTETICI (mai quelli veri).
 # Uso: test-smoke-stadio9.sh <cartella nuova su ZFS>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 C=$(cd "$(dirname "$0")" && pwd)
 O=${1:?cartella}
-case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+case "$O" in /mnt/linuxulator2/vm/wsl2/linux/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
 mkdir -p "$O" || exit 2
 ORIG=/boot/kernel/vmm-restore.ko
-RIPFIX=/mnt/linuxulator2/vm/nested-work/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
-S9=/mnt/linuxulator2/vm/nested-work/logs/stadio9-congelato-20261031/vmm-restore.ko
+RIPFIX=/mnt/linuxulator2/vm/wsl2/linux/logs/ripfix-congelato-20261030-r5/nested/vmm-restore.ko
+S9=/mnt/linuxulator2/vm/wsl2/linux/logs/stadio9-congelato-20261031/vmm-restore.ko
 S9_SHA=$(sha256 -q "$S9")
-S10=/mnt/linuxulator2/vm/nested-work/logs/stadio10-congelato-20261031/vmm-restore.ko
+S10=/mnt/linuxulator2/vm/wsl2/linux/logs/stadio10-congelato-20261031/vmm-restore.ko
 S10_SHA=$(sha256 -q "$S10")
 nf=0; nok=0
 ok() { nok=$((nok+1)); echo "  ok      $*"; }

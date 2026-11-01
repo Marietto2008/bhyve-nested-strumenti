@@ -4,10 +4,10 @@ echo "INERTE: run-bugcheck.sh ha azioni sull'host senza guardia (controllo-azion
 # 4 corse: parametri del bugcheck della root (win-bugcheck.d) + criteri di
 # verifica (win-verify.d). Corretto il difetto del banco di prova del 19/10:
 # si aspetta che la memoria della VM esista prima di misurare.
-O=/mnt/linuxulator2/vm/nested-work/logs/bugcheck-$(date +%Y%m%d-%H%M)
+O=/mnt/linuxulator2/vm/wsl2/linux/logs/bugcheck-$(date +%Y%m%d-%H%M)
 mkdir -p $O
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/linux/dtrace
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
 echo "output in $O"

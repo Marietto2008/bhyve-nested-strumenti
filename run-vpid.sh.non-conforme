@@ -15,7 +15,7 @@
 # vst_* (calib), tempo CPU dei thread vCPU; dalla prova, buchi e durata dei passi del ciclo.
 # Fotografie a: inizio e fine C0, fine riscaldamento, fine prova.
 D=${1:-480}; W=${2:-2}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested; C=$B/faseA
 O=$B/logs/vpid-$(date +%Y%m%d-%H%M); T=$B/dtrace; mkdir -p "$O"
 H=IP-HOST
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000\r' | iconv -f CP850 -t UTF-8 2>/dev/null; }

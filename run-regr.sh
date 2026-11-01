@@ -1,7 +1,7 @@
 #!/bin/sh
 # Claude 21/10/2026 -- B1 (parere #28), passo 6: regressione kvm-unit-tests
 # completa con hw.vmm.vmx.vept_keep=1 e poi =0, stesso modulo. Uso: sudo sh run-regr.sh
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested
 O=$B/logs/regr-$(date +%Y%m%d-%H%M); mkdir -p $O
 for k in 1 0; do
 	sysctl hw.vmm.vmx.vept_keep=$k hw.vmm.vmx.vept_verify_hpa=$k >/dev/null

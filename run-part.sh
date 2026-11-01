@@ -12,7 +12,7 @@ echo "INERTE: run-part.sh ha azioni sull'host senza guardia (controllo-azioni.sh
 # Modulo come la corsa di confronto: vept_keep=1, retry 1, verifica HPA accesa.
 # Memoria dell'host: vmstat 1, swapinfo ogni 30 s (parere #37 §6).
 D=${1:-480}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested; C=$B/faseA; T=$B/dtrace
 O=$B/logs/part-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 H=IP-HOST
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }

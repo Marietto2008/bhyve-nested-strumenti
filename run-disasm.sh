@@ -4,10 +4,10 @@ echo "INERTE: run-disasm.sh ha azioni sull'host senza guardia (controllo-azioni.
 # Astra #17 Fase A: disassemblare l'istruzione a user-RIP 0x7ff..43xx dove smss
 # prende #UD. smss resta in loop di EPT violation su quella pagina per secondi
 # prima di morire: si cattura CR3+RIP a VM VIVA e si leggono i byte (gva.py).
-O=/mnt/linuxulator2/vm/nested-work/logs/disasm-$(date +%Y%m%d-%H%M); mkdir -p $O
+O=/mnt/linuxulator2/vm/wsl2/linux/logs/disasm-$(date +%Y%m%d-%H%M); mkdir -p $O
 SP=/tmp/claude-1001/-mnt-linuxulator2-freebsd-radxa-src/b3d0f7b6-b200-4070-a188-1436b7dd0836/scratchpad
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/linux/dtrace
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
 sudo -n bhyvectl --vm=vm0:12 --destroy 2>/dev/null

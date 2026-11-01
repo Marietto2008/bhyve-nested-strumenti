@@ -5,8 +5,8 @@
 # di prova. Controllo statico (par. 2.2e): ogni programma eseguito sta sotto VL_DIR; i wrapper installati caricano solo
 # la libreria installata. Uso: sudo -u collaudo sh test-vmm-lettura.sh <cartella in collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 SRC=$W/installazione/files/usr/local/libexec/claude-vmm
 VL_DIR=$SRC
 . $VL_DIR/gettone-lib.sh	# la SORGENTE della libreria installata

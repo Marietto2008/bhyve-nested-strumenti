@@ -3,7 +3,7 @@
 # hw.vmm.vmx.vept_keep=$1 (1) e vept_verify_hpa=$2 (1). Avvio, desktop, WSL2 con la
 # compilazione del kernel (kb-ab.sh), spegnimento ordinato. Log in logs/b1win-*.
 K=${1:-1}; V=${2:-1}; E=${3:-B1k${K}v${V}}; R=${4:-1}
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested; D=$B/dtrace
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested; D=$B/dtrace
 O=$B/logs/b1win-$E-$(date +%Y%m%d-%H%M); mkdir -p $O
 w() { sshpass -f /home/marietto/.config/claude-wsl2/password-windows ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR marietto@win11 "$@" 2>&1 | LC_ALL=C tr -d '\000' | iconv -f CP850 -t UTF-8 2>/dev/null; }
 ctr() { sysctl hw.vmm.vmx | /usr/bin/grep -E "vept_|nested_" | sed 's/^hw.vmm.vmx.//'; }

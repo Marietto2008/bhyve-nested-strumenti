@@ -21,7 +21,7 @@
 #   4   CAMPAGNA=NON_ESEGUITA (controlli a freddo, nessuna VM avviata)
 #   130/143/129  CAMPAGNA=INTERROTTA
 # Uso: sudo -n sh run-abba-retry-2vp.sh   (da root, come winrun)
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 LAT_SHA=c375c281519db0a6ec118b4cff02b9281f3db911bfa299db286126d418f8d108
 PROVA_SHA=4913267ece3feb215b144a79efb79927b2d101ccb144a2eaed8b9d9121d9a0e6

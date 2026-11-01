@@ -17,11 +17,11 @@ echo "INERTE: modulo-h1fix.sh ha azioni sull'host senza guardia (controllo-azion
 #
 # USCITA: 0 ok; 4 STOP ai controlli (nulla fatto); 5 azione fallita (stato da guardare, vedi messaggio).
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 ORIG=/boot/kernel/vmm-restore.ko
 ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 ORIG_BID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
-NEW=$B/obj-h1-ptphold-r110/mnt/linuxulator2/vm/nested-work/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
+NEW=$B/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/linux/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
 NEW_SHA=d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873
 NEW_BID=1ba0803c8165661c9e6b0a2c0c73c32182998341
 R109_SHA=4626c65e824dce3f86fbfac3a6e35228187c4dedf18b5fefd167b1f9600f0dec	# r109: da NON caricare

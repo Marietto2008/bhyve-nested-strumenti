@@ -6,8 +6,8 @@
 # Nessun sudo, nessun sysctl, nessuna VM. Gira SOLO come utente collaudo (parere Opus sull'incidente, par. 3.1):
 #   sudo -u collaudo sh test-sequenza-kut.sh <cartella nuova in nested-work/collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}
 case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }

@@ -2,10 +2,10 @@
 # test-vmm-residuo.sh -- Claude 30/10/2026, parere #142. Collaudo di vmm-residuo.sh su un sistema SIMULATO (stato in
 # file, funzioni r_* sovrascritte via VR_FINTO). Nessun sudo, nessun bhyvectl. Uso: test-vmm-residuo.sh <cartella su ZFS>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh	# 31/10/2026 (parere Opus sull'incidente): solo utente collaudo, sudo irraggiungibile
 D=$(cd "$(dirname "$0")" && pwd)
 O=${1:?cartella}
-case "$O" in /mnt/linuxulator2/vm/nested-work/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
+case "$O" in /mnt/linuxulator2/vm/wsl2/linux/*) ;; *) echo "uscita fuori dal workspace ZFS"; exit 2;; esac
 [ -e "$O" ] && { echo "$O esiste gia'"; exit 2; }
 mkdir -p "$O" || exit 2
 nf=0; nok=0

@@ -6,7 +6,7 @@
 # Poi wsl --shutdown, traccia per minuto (win-wslcfg.d), memoria di vmmemWSL,
 # compilazione del kernel (kb-ab.sh). Log in logs/wslcfg-<etichetta>-*.
 E="${1:?etichetta}"; M="${2:?orig|noreclaim}"
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 C="$B/faseA"
 O="$B/logs/wslcfg-$E-$(date +%Y%m%d-%H%M)"
 mkdir -p "$O"

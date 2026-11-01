@@ -7,7 +7,7 @@
 # spegnimento forzato (ISO live: nessun dato da perdere). Console seriale su nmdm.
 # Successo = il vCPU 1 registra uscite e HLT (l'AP e' partito); la console dice "smp:".
 S=${1:-90}
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 BHYVE=$B/stage/current/sbin/bhyve
 ISO=/mnt/linuxulator2/vm/ISO/Linux/alpine-virt-3.19.0-x86_64.iso
 O=$B/logs/x2apic-linux-$(date +%Y%m%d-%H%M); mkdir -p "$O"

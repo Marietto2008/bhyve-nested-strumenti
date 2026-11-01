@@ -11,8 +11,8 @@
 # (avvio-vm: il driver della KUT; da definire nel dettaglio con la campagna, oggi NON implementato -> rifiuto)
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-. /mnt/linuxulator2/vm/nested-work/gettone/gettone-lib.sh
-L=/mnt/linuxulator2/vm/nested-work/APPROVATI-sequenza.sha256
+. /mnt/linuxulator2/vm/wsl2/linux/gettone/gettone-lib.sh
+L=/mnt/linuxulator2/vm/wsl2/linux/APPROVATI-sequenza.sha256
 G=/var/run/claude-gettone
 D=/var/log/claude-vmm-azione.log
 rifiuta() { echo "$(date '+%F %T') RIFIUTO $*" >> $D; echo "vmm-azione: RIFIUTO: $*" >&2; exit 4; }

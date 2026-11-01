@@ -5,7 +5,7 @@ echo "INERTE: run-ept12rax-fix.sh ha azioni sull'host senza guardia (controllo-a
 # ept12_remap_rax col test corretto (kut fe6d8bce, vmxc-skiprip.flat).
 # Da lanciare SOLO con l'assenso esplicito dell'utente per QUESTA corsa.
 # Nessun retry, nessuna corsa successiva, nessun cambio di kernel/flag.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 T=$W/freebsd-nested/tools/nested
 cd $W || exit 1
 MOD=/boot/kernel/vmm-restore.ko

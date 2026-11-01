@@ -3,10 +3,10 @@
 echo "INERTE: run-udgen.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-udgen.sh.non-conforme" >&2; exit 4
 # Verifica di 0b1a0f3 + 22dc5d5 (parere #16): 9 corse, win-final.d con
 # diag_vec=6, e dopo ogni corsa l'intestazione del dump nel pagefile.
-O=/mnt/linuxulator2/vm/nested-work/logs/udgen-$(date +%Y%m%d-%H%M)
+O=/mnt/linuxulator2/vm/wsl2/linux/logs/udgen-$(date +%Y%m%d-%H%M)
 mkdir -p $O
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/linux/dtrace
 IMG=/mnt/da0p2/bhyve/img/Windows/11/Windows11.img
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2

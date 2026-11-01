@@ -3,8 +3,8 @@
 # stadio 11, compila ed esegue banco-r1, poi i mutanti (ciascuno deve far fallire il controllo indicato).
 #   sudo -u collaudo sh run.sh <cartella nuova in collaudi>
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 B=$W/banco-r1-s11
 E=$W/logs/h2mmio-ptphold-read-20261030/estrai-fn.sh
 S=${S11:-$W/freebsd-s11-nested}/sys/amd64/vmm/vmm.c

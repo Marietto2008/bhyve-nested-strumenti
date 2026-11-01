@@ -3,7 +3,7 @@
 # la 22ad8106199e attualmente caricata. Copia di ritorno verificata. NON riavvia.
 # uso: sudo -n sh installa-ace877.sh        ritorno: sudo -n sh installa-ace877.sh --ritorno
 set -eu
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 K=/boot/kernel/vmm-restore.ko
 VAL=d2ddea7f7d0d978a57089cb69c8654aca745140f003fd61e073eb90643d2a47e	# 22ad8106199e (validato)
 NUOVO=aeb179f81e97e172f85381b6ff39797bd439964a0ffaf0672ca7917a1a6d22a2	# ace877c6dd48 (diagnostico)

@@ -9,7 +9,7 @@ echo "INERTE: run-b1keep-27125-r2.sh ha azioni sull'host senza guardia (controll
 # SCOPE: 5 test = 5 VM QEMU (nome "vm2", la VM dei kvm-unit-tests, ricreata da
 # QEMU a ogni test). Da lanciare SOLO con l'assenso dell'utente per QUESTA suite.
 # Nessun retry, nessuna corsa successiva automatica. Ripristina i sysctl iniziali.
-W=/mnt/linuxulator2/vm/nested-work
+W=/mnt/linuxulator2/vm/wsl2/linux
 T=$W/freebsd-nested/tools/nested
 L=$T/kut-b1keep-27125.list
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9

@@ -12,8 +12,8 @@
 # Uscite: 0 PASS | 1 FAIL | 4 STOP prima della VM | 5 sessione non valida | 6 operatore | 7 DTrace non attivata |
 #         8 sessione incompleta
 set -u
-B=/mnt/linuxulator2/vm/nested-work
-. /mnt/linuxulator2/vm/nested-work/caldo/guardia.sh
+B=/mnt/linuxulator2/vm/wsl2/linux
+. /mnt/linuxulator2/vm/wsl2/linux/caldo/guardia.sh
 guardia_azione || { echo "STOP: guardia: nessuna corsa"; exit 4; }
 MOD=$B/logs/stadio10-congelato-20261031/vmm-restore.ko
 MOD_SHA=142a08b6c0bcfefc05e994dacd8d5e80a6d8d303a18dfc7efeca838779bab006
@@ -45,7 +45,7 @@ stadio11) MOD=$B/logs/stadio11-congelato-20261101/vmm-restore.ko
 *) ferma "stadio '$STADIO': stadio10 o stadio11";;
 esac
 case "$MODO" in --prova|--esegui|--esegui-ombra) ;; *) ferma "modo $MODO";; esac
-case "$OUT" in /mnt/linuxulator2/vm/nested-work/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
+case "$OUT" in /mnt/linuxulator2/vm/wsl2/linux/logs/*) ;; *) ferma "uscita fuori da nested-work/logs: $OUT";; esac
 [ -e "$OUT" ] && ferma "$OUT esiste gia'"
 cv() { sed -n "s/^$1=//p" "$CONF" | head -1; }
 VM=$(cv vm); WH=$(cv host_windows); WU=$(cv utente_windows); WPF=$(cv password_file)

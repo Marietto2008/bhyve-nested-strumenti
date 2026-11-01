@@ -2,8 +2,8 @@
 # test-controllo-azioni.sh -- Claude 31/10/2026, parere Opus sulla separazione par. 6: il negativo del controllo statico,
 # rieseguito sulla versione FINALE e reso un collaudo. Come utente collaudo: solo letture di file.
 set -u
-. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh
-W=/mnt/linuxulator2/vm/nested-work
+. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh
+W=/mnt/linuxulator2/vm/wsl2/linux
 O=${1:?cartella}; case "$O" in $COLLAUDI/*) ;; *) echo "uscita fuori da $COLLAUDI"; exit 2;; esac; [ -e "$O" ] && exit 2; mkdir -p "$O" || exit 2
 nok=0; nko=0
 ok() { nok=$((nok+1)); echo "  ok      $*"; }; no() { nko=$((nko+1)); echo "  ERRATO  $*"; }
@@ -50,7 +50,7 @@ sh $W/controllo-azioni.sh $W/APPROVATI-sequenza.sha256 $W/sequenza-kut.sh $O/nom
 mkdir -p $O/altri
 printf '#!/bin/sh\n# INERTE (finto: solo il commento)\nsudo -n /sbin/kldload x\n' > $O/altri/solo-commento.sh
 printf '#!/bin/sh\n# INERTE (vero)\necho "INERTE: vero" >&2; exit 4\nsudo -n /sbin/kldload x\n' > $O/altri/inerte-vero.sh
-printf '#!/bin/sh\nset -u\n. /mnt/linuxulator2/vm/nested-work/collaudo-preambolo.sh\nsudo -n /sbin/kldload x\n' > $O/altri/suite.sh
+printf '#!/bin/sh\nset -u\n. /mnt/linuxulator2/vm/wsl2/linux/collaudo-preambolo.sh\nsudo -n /sbin/kldload x\n' > $O/altri/suite.sh
 printf '#!/bin/sh\nguardia_azione && sudo -n /sbin/kldload x\n' > $O/altri/guardato.sh
 sh $W/controllo-azioni.sh "" "" "" $O/altri > $O/altri.txt 2>&1
 grep -q "non conforme: .*altri/solo-commento.sh" $O/altri.txt && ok "inerte solo per commento: NON conforme" || no "solo-commento non segnalato: $(grep 'non conforme' $O/altri.txt | tr '\n' ' ')"

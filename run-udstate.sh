@@ -1,10 +1,10 @@
 #!/bin/sh
 # INERTE (31/10/2026, parere Opus sulla separazione par. 6): azioni sull'host senza guardia_azione. Originale: run-udstate.sh.non-conforme
 echo "INERTE: run-udstate.sh ha azioni sull'host senza guardia (controllo-azioni.sh). Va adattato e riabilitato uno per volta; originale in run-udstate.sh.non-conforme" >&2; exit 4
-O=/mnt/linuxulator2/vm/nested-work/logs/udstate-$(date +%Y%m%d-%H%M); mkdir -p $O
+O=/mnt/linuxulator2/vm/wsl2/linux/logs/udstate-$(date +%Y%m%d-%H%M); mkdir -p $O
 SP=/tmp/claude-1001/-mnt-linuxulator2-freebsd-radxa-src/b3d0f7b6-b200-4070-a188-1436b7dd0836/scratchpad
-N=/mnt/linuxulator2/vm/nested-work/freebsd-nested/tools/nested
-D=/mnt/linuxulator2/vm/nested-work/dtrace
+N=/mnt/linuxulator2/vm/wsl2/linux/freebsd-nested/tools/nested
+D=/mnt/linuxulator2/vm/wsl2/linux/dtrace
 DISPLAY=:0; XAUTHORITY=/home/marietto/.Xauthority; export DISPLAY XAUTHORITY
 mount | grep -q "/mnt/da0p2" || sudo -n mount -t ufs /dev/da0p2 /mnt/da0p2
 sudo -n sysctl hw.vmm.vmx.diag_ud=1 >/dev/null

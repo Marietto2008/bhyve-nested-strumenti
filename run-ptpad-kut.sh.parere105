@@ -16,7 +16,7 @@
 #
 # Uso (SOLO dopo consenso): sudo -n sh run-ptpad-kut.sh <cartella-out> <kut.flat> <serial-dev-o-log>
 set -u
-B=/mnt/linuxulator2/vm/nested-work
+B=/mnt/linuxulator2/vm/wsl2/linux
 N=$B/freebsd-nested/tools/nested
 MOD=/boot/kernel/vmm-restore.ko
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9

@@ -23,7 +23,7 @@ case "$MISURA_R/$MISURA_BUDGET" in
 *) echo "combinazione non prevista: MISURA_R=$MISURA_R MISURA_BUDGET=$MISURA_BUDGET (ammesse 1|2 e 2000|4000)"; exit 4;;
 esac
 BUDGET_INIZIALE_ATTESO=2000
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested
 MOD_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
 PROVA=$B/run-misura-8vp-prova.sh
 PROVA_SHA=81a7b8fd2b754f29b2d6837d3c1b6cc089cb7c61099004371be94fdfaec747ae

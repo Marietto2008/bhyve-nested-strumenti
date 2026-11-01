@@ -7,7 +7,7 @@
 #               interruttori) prima e dopo, per vedere se lo shadow ha lavorato e se ci sono errori
 # uso: sudo -n sh run-kut-fase.sh <etichetta> [liste...]
 E=${1:?etichetta}; shift
-B=/mnt/linuxulator2/vm/nested-work; N=$B/freebsd-nested/tools/nested
+B=/mnt/linuxulator2/vm/wsl2/linux; N=$B/freebsd-nested/tools/nested
 LISTE=${*:-"f1 f2a f2b f2c b1 efersave immexit invept persist"}
 O=$B/logs/kutfase-$E-$(date +%Y%m%d-%H%M); mkdir -p "$O"
 foto() { sysctl hw.vmm.vmx | /usr/bin/grep -E "\.nested_(ffv|sh|fast|shadow)" > "$O/$1"; }
