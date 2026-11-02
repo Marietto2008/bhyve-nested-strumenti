@@ -22,9 +22,12 @@ MC_EMERG="freeze LASCIATO: enumerazione/probe differiti globalmente; stato NON r
 #   | 4 STOP, nulla cambiato | 5 fallito ma tornato all'ORIGINALE verificato, kenv ripristinato
 #   | 6 OPERATORE (stato dichiarato nel diario)
 
+# ORIGINALE = il modulo di BOOT. Dal 01/11/2026 15:00 (riavvio col consenso dell'utente) /boot/kernel/vmm-restore.ko e' lo
+# STADIO 11 (3bfc6ae8; il 149fa57e di prima e' in /boot/kernel/vmm-restore.ko.149fa57e). Claude 02/11/2026: identita' e
+# firma OID aggiornate (lo strumento restava sul 149fa57e: 'originale non integro' a ogni preflight, anche per tornare).
 MC_ORIG=/boot/kernel/vmm-restore.ko
-MC_ORIG_SHA=149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
-MC_ORIG_BID=d30f6a7f6ea6c9259b5f39604c9399564aba5f49
+MC_ORIG_SHA=3bfc6ae8b8c938f131d428cc353dafcad4e99169fbe45cd6a288f9e7e70d4a43
+MC_ORIG_BID=7947f8af2c30b6a1e051ff067d265fe433490b83
 MC_NEW=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h1-ptphold-r110/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h1-ptphold/amd64.amd64/sys/modules/vmm/vmm-restore.ko
 MC_NEW_SHA=d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873
 MC_NEW_BID=1ba0803c8165661c9e6b0a2c0c73c32182998341
@@ -70,6 +73,12 @@ MC_S10_BID=2310be805fcec6b897ab56bad70c389271c108a2
 MC_S11=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
 MC_S11_SHA=3bfc6ae8b8c938f131d428cc353dafcad4e99169fbe45cd6a288f9e7e70d4a43
 MC_S11_BID=7947f8af2c30b6a1e051ff067d265fe433490b83
+# STADIO 11 + LAPIC (Claude 02/11/2026): stadio 11 + VM_LAPIC_SET_STATE che riallinea lvt_last/isrvec_stk/timer (panic
+# 'inconsistent lvt value' con QEMU q35+OVMF). Copia CONGELATA logs/stadio11-lapic-congelato-20261102. Nessun sysctl
+# nuovo: firma 11111 come lo stadio 11 e l'originale; si distinguono per percorso, sha e build-id.
+MC_S11L=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vmm-restore.ko
+MC_S11L_SHA=2fd5019c86587756bfde0257434a8c6227fd7f9193457f26ced77b1938609d16
+MC_S11L_BID=edad32ad28103a5efca02c4f19920100cf469d46
 MC_MODULI_ATTESI="acpi/ivhd pci/amdviiommu pci/ppt vmm"
 MC_KENV_VARS="boot_safe devmatch_blocklist"
 
@@ -98,12 +107,13 @@ mc_identita() {
 	stadio9)   echo "$MC_S9 $MC_S9_SHA $MC_S9_BID";;
 	stadio10)  echo "$MC_S10 $MC_S10_SHA $MC_S10_BID";;
 	stadio11)  echo "$MC_S11 $MC_S11_SHA $MC_S11_BID";;
+	stadio11-lapic) echo "$MC_S11L $MC_S11L_SHA $MC_S11L_BID";;
 	*) return 1;;
 	esac
 }
 
-# firma dei sysctl del modulo CARICATO (oid r110, oid h2, oid P3, oid fatal, oid opnd): originale 00000, r110 10000,
-# h2/h2ad2 11000, ripfix-nested 11010, stadio9/10 11011, stadio11 11111. L'oid di P3 e' ammesso SOLO nello stadio 11 (#120 B1: la
+# firma dei sysctl del modulo CARICATO (oid r110, oid h2, oid P3, oid fatal, oid opnd): originale 11111 (dal 01/11; prima 00000), r110 10000,
+# h2/h2ad2 11000, ripfix-nested 11010, stadio9/10 11011, stadio11 e stadio11-lapic 11111. L'oid di P3 e' ammesso SOLO nello stadio 11, nelle sue derivate e nell'originale che ora lo E' (#120 B1: la
 # variante con P3 non deve passare per h2). h2ad2 e ripfix-nested si distinguono SOLO per hw.vmm.fatal_latches (#142);
 # ripfix-nested e stadio9 SOLO per hw.vmm.vmx.nested_operand_fatal (#167R1 par. 9.5). rc 0 se coincide con $1
 mc_oid_ok() {
@@ -114,12 +124,12 @@ mc_oid_ok() {
 	s_sysctl_present $MC_FATAL_OID && mc_o4=1
 	s_sysctl_present $MC_OPND_OID && mc_o5=1
 	case "$1" in
-	"$MC_ORIG") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 00000 ];;
+	"$MC_ORIG") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11111 ];;	# dal 01/11 l'originale E' lo stadio 11
 	"$MC_NEW")  [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 10000 ];;
 	"$MC_H2"|"$MC_H2AD") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11000 ];;
 	"$MC_RIPFIX") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11010 ];;
 	"$MC_S9"|"$MC_S10") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11011 ];;
-	"$MC_S11") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11111 ];;	# P3 ammesso SOLO qui
+	"$MC_S11"|"$MC_S11L") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11111 ];;	# P3: stadio 11, sue derivate e l'originale (= stadio 11)
 	*) return 1;;
 	esac
 }
@@ -322,6 +332,7 @@ mc_verifica() {		# $1 = path atteso. rc 0 = modulo, dispositivi ppt come prima, 
 	"$MC_S9")   [ "$(s_sha "$1")" = "$MC_S9_SHA" ] || mc_bad="$mc_bad sha";;
 	"$MC_S10")  [ "$(s_sha "$1")" = "$MC_S10_SHA" ] || mc_bad="$mc_bad sha";;
 	"$MC_S11")  [ "$(s_sha "$1")" = "$MC_S11_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_S11L") [ "$(s_sha "$1")" = "$MC_S11L_SHA" ] || mc_bad="$mc_bad sha";;
 	*) mc_bad="$mc_bad identita'-sconosciuta";;
 	esac
 	mc_oid_ok "$1" || mc_bad="$mc_bad oid(r110=$mc_o1,h2=$mc_o2,p3=$mc_o3,fatal=$mc_o4,opnd=$mc_o5)"
@@ -414,9 +425,9 @@ mc_trap() {	# EXIT/INT/TERM/HUP. Idempotente (MC_TRAP_IN). Non copre SIGKILL, pa
 }
 
 mc_main() {	# $1 --prova|--esegui  $2 da  $3 a
-	[ $# -eq 3 ] || { echo "uso: modulo-caldo.sh --prova|--esegui originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11 originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11"; exit 4; }
+	[ $# -eq 3 ] || { echo "uso: modulo-caldo.sh --prova|--esegui originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic"; exit 4; }
 	case "$1" in --prova) MC_PROVA=1;; --esegui) MC_PROVA=0;; *) echo "modo $1"; exit 4;; esac
-	mc_identita "$2" >/dev/null && mc_identita "$3" >/dev/null || { echo "da/a: originale, r110, h2, h2ad2, ripfix-nested, stadio9, stadio10 o stadio11"; exit 4; }
+	mc_identita "$2" >/dev/null && mc_identita "$3" >/dev/null || { echo "da/a: originale, r110, h2, h2ad2, ripfix-nested, stadio9, stadio10, stadio11 o stadio11-lapic"; exit 4; }
 	[ "$2" = "$3" ] && [ "$2" != originale ] && { echo "$2 -> $3 non ha senso"; exit 4; }
 	mc_preflight "$2" "$3"
 	if [ $MC_PROVA = 1 ]; then

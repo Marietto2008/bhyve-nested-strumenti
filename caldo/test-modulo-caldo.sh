@@ -16,6 +16,7 @@ RIPFIX=/mnt/linuxulator2/vm/wsl2/fbsd/logs/ripfix-congelato-20261030-r5/nested/v
 S9=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko
 S10=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko
 S11=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
+S11L=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vmm-restore.ko
 H2=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
@@ -27,7 +28,7 @@ kenv_foto() { for k in boot_safe devmatch_blocklist; do printf '%s e=%s v=%s\n' 
 caso() {
 	N=$1; INI=$2; MODO=$3; DA=$4; A=$5; shift 5
 	FS=$O/$N; export FS
-	( . "$D/mc-finto.sh"; case "$INI" in new) f_init "$NEW";; h2) f_init "$H2";; h2ad2) f_init "$H2AD";; ripfix) f_init "$RIPFIX";; s9) f_init "$S9";; s10) f_init "$S10";; s11) f_init "$S11";; *) f_init "$ORIG";; esac
+	( . "$D/mc-finto.sh"; case "$INI" in new) f_init "$NEW";; h2) f_init "$H2";; h2ad2) f_init "$H2AD";; ripfix) f_init "$RIPFIX";; s9) f_init "$S9";; s10) f_init "$S10";; s11) f_init "$S11";; s11l) f_init "$S11L";; *) f_init "$ORIG";; esac
 	  for i in "$@"; do case "$i" in
 	    hw:*) f_hw_${i#hw:}; f_pci_tutti ppt;;
 	    kenv:*) i=${i#kenv:}; printf '%s\n' "${i#*=}" >| "$FS/kenv_${i%%=*}"; printf '1\n' >| "$FS/kenv_${i%%=*}.e";;
@@ -170,16 +171,17 @@ caso T33-cattura-h2 orig --esegui originale h2 cattura_al_thaw
 rc_e 6; kld_e "completo $ORIG"; out_ha "h2 caricato ma la verifica e' fallita: torno all'originale"
 caso T34-h2-ritorno-non-carica h2 --esegui h2 originale fail_load_orig
 rc_e 6; kld_e nessuno; frozen_e 1; pci_libere; amdgpu_no; kenv_protetto
-caso T35-orig-con-oid-h2 orig --esegui originale h2 oid_h2_finto;    rc_e 4; nessun_evento; stop_nel_diario
+# 02/11/2026: l'originale (boot) e' lo stadio 11, firma 11111: il modulo sbagliato e' quello a cui MANCA un oid
+caso T35-orig-senza-oid-h2 orig --esegui originale h2 orig_senza_h2;  rc_e 4; nessun_evento; stop_nel_diario
 # oid di r110 che RESTA dopo il ritorno all'originale (modulo sbagliato rimasto): la verifica deve fallire
-caso T36-oid-r110-residuo h2 --esegui h2 originale oid_r110_finto;   rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=1,h2=0,p3=0,fatal=0,opnd=0)'
+caso T36-orig-senza-r110-dopo h2 --esegui h2 originale orig_senza_r110; rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=0,h2=1,p3=1,fatal=1,opnd=1)'
 # #120 B1/C5: la variante RITIRATA con P3 non passa per h2, ne' da caricare ne' da caricata
 caso T42-staging-h2-e-p3 orig --esegui originale h2 h2_e_p3;         rc_e 4; nessun_evento; stop_nel_diario
 caso T43-caricato-con-p3 h2 --esegui h2 originale oid_p3_finto;      rc_e 4; nessun_evento; stop_nel_diario
 caso T44-p3-dopo-il-carico orig --esegui originale h2 oid_p3_dopo
 rc_e 5; kld_e "completo $ORIG"; out_ha "h2 caricato ma la verifica e' fallita"; pci_ppt; amdgpu_no; kenv_come_prima
 caso T37-r110-dichiarato-ma-h2 h2 --esegui r110 originale;          rc_e 4; nessun_evento; stop_nel_diario
-caso T38-orig-con-oid-r110 orig --esegui originale h2 oid_r110_finto; rc_e 4; nessun_evento; stop_nel_diario
+caso T38-orig-senza-oid-r110 orig --esegui originale h2 orig_senza_r110; rc_e 4; nessun_evento; stop_nel_diario
 caso T39-h2-h2 h2 --esegui h2 h2;                                    rc_e 4; nessun_evento
 caso T40-prova-h2 orig --prova originale h2;                          rc_e 0; nessun_evento; nessun_diario; out_ha 'secondo scambio automatico h2 -> originale'
 caso T41-r110-h2 new --esegui r110 h2
@@ -217,7 +219,7 @@ caso T67-h2ad2-ripfix h2ad2 --esegui h2ad2 ripfix-nested
 rc_e 0; kld_e "completo $RIPFIX"; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze
 caso T68-prova-ripfix orig --prova originale ripfix-nested;          rc_e 0; nessun_evento; nessun_diario; out_ha 'secondo scambio automatico ripfix-nested -> originale'
 # oid fatal che RESTA dopo il ritorno all'originale: la verifica deve fallire (modulo sbagliato rimasto)
-caso T69-oid-fatal-residuo ripfix --esegui ripfix-nested originale oid_fatal_finto; rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=0,h2=0,p3=0,fatal=1,opnd=0)'
+caso T69-orig-senza-fatal-dopo ripfix --esegui ripfix-nested originale orig_senza_fatal; rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=1,h2=1,p3=1,fatal=0,opnd=1)'
 caso T70-ripfix-ripfix ripfix --esegui ripfix-nested ripfix-nested;  rc_e 4; nessun_evento
 # il ritorno all'originale dal RIPFIX con vm2 residua (QEMU): distrutta SOTTO freeze, come per gli altri
 caso T71-ripfix-orig-vm2 ripfix --esegui ripfix-nested originale vmm_nodes=vm2 'aut=1793362388 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -249,7 +251,7 @@ caso T89-s9-ripfix s9 --esegui stadio9 ripfix-nested
 rc_e 0; kld_e "completo $RIPFIX"; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze
 caso T90-prova-s9 orig --prova originale stadio9;                 rc_e 0; nessun_evento; nessun_diario; out_ha 'secondo scambio automatico stadio9 -> originale'; out_ha "kldload $S9"
 # oid opnd che RESTA dopo il ritorno all'originale: la verifica deve fallire
-caso T91-oid-opnd-residuo s9 --esegui stadio9 originale oid_opnd_finto; rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=0,h2=0,p3=0,fatal=0,opnd=1)'
+caso T91-orig-senza-opnd-dopo s9 --esegui stadio9 originale orig_senza_opnd; rc_e 6; out_ha 'VERIFICA FALLITA'; out_ha 'oid(r110=1,h2=1,p3=1,fatal=1,opnd=0)'
 caso T92-s9-s9 s9 --esegui stadio9 stadio9;                       rc_e 4; nessun_evento
 # il ritorno all'originale dallo stadio 9 con vm2 residua (QEMU): distrutta SOTTO freeze
 caso T93-s9-orig-vm2 s9 --esegui stadio9 originale vmm_nodes=vm2 'aut=1793362388 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -310,6 +312,26 @@ caso T127-s11-caricato-senza-p3 s11 --esegui stadio11 originale s11_senza_p3; rc
 caso T128-s10-s11 s10 --esegui stadio10 stadio11
 rc_e 0; kld_e "completo $S11"; pci_ppt; kenv_come_prima; mai_senza_freeze
 caso T129-prova-s11 orig --prova originale stadio11;               rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11"
+
+echo "### originale = stadio 11 (02/11/2026) e stadio11-lapic"
+# in /boot c'e' ancora il 149fa57e: lo strumento NON deve scambiare (ne' verso, ne' di ritorno)
+caso T130-orig-vecchio orig --esegui originale stadio11-lapic orig_vecchio; rc_e 4; nessun_evento; stop_nel_diario; out_ha 'originale non integro'
+caso T131-orig-senza-p3 orig --esegui originale stadio11-lapic orig_senza_p3; rc_e 4; nessun_evento; stop_nel_diario; out_ha 'p3=0'
+caso T132-orig-s11l orig --esegui originale stadio11-lapic
+rc_e 0; kld_e "completo $S11L"; frozen_e 0; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze; nessuna_asta
+caso T133-s11l-orig s11l --esegui stadio11-lapic originale
+rc_e 0; kld_e "completo $ORIG"; frozen_e 0; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze
+caso T134-s11l-dichiarato-ma-s11 s11 --esegui stadio11-lapic originale; rc_e 4; nessun_evento; stop_nel_diario; out_ha "atteso 'completo $S11L'"
+caso T135-s11-dichiarato-ma-s11l s11l --esegui stadio11 originale;     rc_e 4; nessun_evento; stop_nel_diario; out_ha "atteso 'completo $S11'"
+caso T136-s11l-cambiato orig --esegui originale stadio11-lapic s11l_ricompilato; rc_e 4; nessun_evento; stop_nel_diario; out_ha 'non integra'
+caso T137-s11l-non-carica orig --esegui originale stadio11-lapic fail_load_s11l
+rc_e 5; kld_e "completo $ORIG"; frozen_e 0; pci_ppt; kenv_come_prima; mai_senza_freeze
+caso T138-s11l-ritorno-non-carica s11l --esegui stadio11-lapic originale fail_load_orig
+rc_e 6; kld_e nessuno; frozen_e 1; pci_libere; amdgpu_no; kenv_protetto
+caso T139-s11-s11l s11 --esegui stadio11 stadio11-lapic
+rc_e 0; kld_e "completo $S11L"; pci_ppt; kenv_come_prima; mai_senza_freeze
+caso T140-prova-s11l orig --prova originale stadio11-lapic;          rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11L"; out_ha 'secondo scambio automatico stadio11-lapic -> originale'
+caso T141-s11l-s11l s11l --esegui stadio11-lapic stadio11-lapic;     rc_e 4; nessun_evento
 # l'oid di P3 resta VIETATO nello stadio 10 (e in ogni altra identita')
 caso T130-s10-con-p3 s10 --esegui stadio10 originale oid_p3_finto;   rc_e 4; nessun_evento; stop_nel_diario
 
