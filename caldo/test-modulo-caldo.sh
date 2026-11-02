@@ -18,6 +18,7 @@ S10=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.
 S11=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
 S11L=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vmm-restore.ko
 S11I=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi2-congelato-20261102/vmm-restore.ko
+S11C=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ccr-congelato-20261102/vmm-restore.ko
 H2=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
@@ -29,7 +30,7 @@ kenv_foto() { for k in boot_safe devmatch_blocklist; do printf '%s e=%s v=%s\n' 
 caso() {
 	N=$1; INI=$2; MODO=$3; DA=$4; A=$5; shift 5
 	FS=$O/$N; export FS
-	( . "$D/mc-finto.sh"; case "$INI" in new) f_init "$NEW";; h2) f_init "$H2";; h2ad2) f_init "$H2AD";; ripfix) f_init "$RIPFIX";; s9) f_init "$S9";; s10) f_init "$S10";; s11) f_init "$S11";; s11l) f_init "$S11L";; s11i) f_init "$S11I";; *) f_init "$ORIG";; esac
+	( . "$D/mc-finto.sh"; case "$INI" in new) f_init "$NEW";; h2) f_init "$H2";; h2ad2) f_init "$H2AD";; ripfix) f_init "$RIPFIX";; s9) f_init "$S9";; s10) f_init "$S10";; s11) f_init "$S11";; s11l) f_init "$S11L";; s11i) f_init "$S11I";; s11c) f_init "$S11C";; *) f_init "$ORIG";; esac
 	  for i in "$@"; do case "$i" in
 	    hw:*) f_hw_${i#hw:}; f_pci_tutti ppt;;
 	    kenv:*) i=${i#kenv:}; printf '%s\n' "${i#*=}" >| "$FS/kenv_${i%%=*}"; printf '1\n' >| "$FS/kenv_${i%%=*}.e";;
@@ -345,6 +346,17 @@ caso T147-prova-s11i s11l --prova stadio11-lapic stadio11-ipi;       rc_e 0; nes
 caso T148-orig-s11i orig --esegui originale stadio11-ipi
 rc_e 0; kld_e "completo $S11I"; frozen_e 0; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze; nessuna_asta
 caso T149-prova-orig-s11i orig --prova originale stadio11-ipi;       rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11I"
+caso T150-s11i-s11c s11i --esegui stadio11-ipi stadio11-ccr
+rc_e 0; kld_e "completo $S11C"; frozen_e 0; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze; nessuna_asta
+caso T151-orig-s11c orig --esegui originale stadio11-ccr
+rc_e 0; kld_e "completo $S11C"; frozen_e 0; pci_ppt; kenv_come_prima; mai_senza_freeze
+caso T152-s11c-orig s11c --esegui stadio11-ccr originale
+rc_e 0; kld_e "completo $ORIG"; frozen_e 0; pci_ppt; kenv_come_prima; mai_senza_freeze
+caso T153-s11c-dichiarato-ma-s11i s11i --esegui stadio11-ccr originale; rc_e 4; nessun_evento; stop_nel_diario; out_ha "atteso 'completo $S11C'"
+caso T154-s11c-cambiato s11i --esegui stadio11-ipi stadio11-ccr s11c_ricompilato; rc_e 4; nessun_evento; stop_nel_diario; out_ha 'non integra'
+caso T155-s11c-non-carica s11i --esegui stadio11-ipi stadio11-ccr fail_load_s11c
+rc_e 5; kld_e "completo $ORIG"; frozen_e 0; pci_ppt; kenv_come_prima; mai_senza_freeze
+caso T156-prova-s11c s11i --prova stadio11-ipi stadio11-ccr;       rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11C"
 # l'oid di P3 resta VIETATO nello stadio 10 (e in ogni altra identita')
 caso T130-s10-con-p3 s10 --esegui stadio10 originale oid_p3_finto;   rc_e 4; nessun_evento; stop_nel_diario
 
