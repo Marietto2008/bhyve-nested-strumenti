@@ -18,7 +18,7 @@ case $QEMUSEL in
 	approvato) QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 	           QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a ;;
 	sipi)      QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
-	           QEMU_SHA=69597d15b188b40488ac2e0113db61a98cdeb49382ed422266b52ac971805159 ;;
+	           QEMU_SHA=836c86831fd61292db1ea6d7a1de59a2138c98b951402398a43f04e634929435 ;;
 	*) echo "QEMUSEL=approvato|sipi"; exit 4 ;;
 esac
 [ "$(sha256 -q $QEMU)" = "$QEMU_SHA" ] || { echo "QEMU diverso"; exit 4; }

@@ -10,10 +10,17 @@
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; SNAP=on
-for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; *) echo "uso: $0 [--prova] [--scrivi]"; exit 4;; esac; done
+SIPI=0
+for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;; *) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi]"; exit 4;; esac; done
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina-vm13.conf
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
+# --qemu-sipi (Claude 02/11): lo stesso QEMU + wait-for-SIPI (qemu-sipi 883658d899): con OVMF a piu' vCPU gli AP
+# eseguivano il firmware dal vettore di reset fra INIT e SIPI (triple fault con nested, blocco con 32 GB)
+if [ $SIPI = 1 ]; then
+	QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
+	QEMU_SHA=836c86831fd61292db1ea6d7a1de59a2138c98b951402398a43f04e634929435
+fi
 PCBIOS=/mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios
 OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
 OVMF_VARS=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini/vm0-13-qemu-vars.fd
