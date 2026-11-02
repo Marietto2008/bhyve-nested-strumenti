@@ -90,6 +90,11 @@ MC_S11I_BID=451d47fc9153a87e793e2b2976889b316ed881e1
 MC_S11C=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ccr-congelato-20261102/vmm-restore.ko
 MC_S11C_SHA=bca051c963f1a514623c1285d826c6b78e530163ef2e0c1018e7af1d4addd84a
 MC_S11C_BID=ec022e5f1a25014ba3c8564883a2be1efbdbf534
+# STADIO 11 + HLTK (Claude 02/11/2026): stadio11-ccr + VM_OP_F_QEMU_HLTK (HLT nel kernel per QEMU, sysctl
+# hw.vmm.qemu_hlt_kernel). Copia CONGELATA logs/stadio11-hltk-congelato-20261102. Firma OID 11111.
+MC_S11H=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-hltk-congelato-20261102/vmm-restore.ko
+MC_S11H_SHA=d4bae59a26c3dccd9d57eb986d9e7158b56b0edda7d0a2cd7cc6e73a48b57cc1
+MC_S11H_BID=6eacf0b1621aed62eccb00e9a89127e7979a4e1c
 MC_MODULI_ATTESI="acpi/ivhd pci/amdviiommu pci/ppt vmm"
 MC_KENV_VARS="boot_safe devmatch_blocklist"
 
@@ -121,6 +126,7 @@ mc_identita() {
 	stadio11-lapic) echo "$MC_S11L $MC_S11L_SHA $MC_S11L_BID";;
 	stadio11-ipi) echo "$MC_S11I $MC_S11I_SHA $MC_S11I_BID";;
 	stadio11-ccr) echo "$MC_S11C $MC_S11C_SHA $MC_S11C_BID";;
+	stadio11-hltk) echo "$MC_S11H $MC_S11H_SHA $MC_S11H_BID";;
 	*) return 1;;
 	esac
 }
@@ -142,7 +148,7 @@ mc_oid_ok() {
 	"$MC_H2"|"$MC_H2AD") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11000 ];;
 	"$MC_RIPFIX") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11010 ];;
 	"$MC_S9"|"$MC_S10") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11011 ];;
-	"$MC_S11"|"$MC_S11L"|"$MC_S11I"|"$MC_S11C") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11111 ];;	# P3: stadio 11, sue derivate e l'originale (= stadio 11)
+	"$MC_S11"|"$MC_S11L"|"$MC_S11I"|"$MC_S11C"|"$MC_S11H") [ $mc_o1$mc_o2$mc_o3$mc_o4$mc_o5 = 11111 ];;	# P3: stadio 11, sue derivate e l'originale (= stadio 11)
 	*) return 1;;
 	esac
 }
@@ -348,6 +354,7 @@ mc_verifica() {		# $1 = path atteso. rc 0 = modulo, dispositivi ppt come prima, 
 	"$MC_S11L") [ "$(s_sha "$1")" = "$MC_S11L_SHA" ] || mc_bad="$mc_bad sha";;
 	"$MC_S11I") [ "$(s_sha "$1")" = "$MC_S11I_SHA" ] || mc_bad="$mc_bad sha";;
 	"$MC_S11C") [ "$(s_sha "$1")" = "$MC_S11C_SHA" ] || mc_bad="$mc_bad sha";;
+	"$MC_S11H") [ "$(s_sha "$1")" = "$MC_S11H_SHA" ] || mc_bad="$mc_bad sha";;
 	*) mc_bad="$mc_bad identita'-sconosciuta";;
 	esac
 	mc_oid_ok "$1" || mc_bad="$mc_bad oid(r110=$mc_o1,h2=$mc_o2,p3=$mc_o3,fatal=$mc_o4,opnd=$mc_o5)"
@@ -440,9 +447,9 @@ mc_trap() {	# EXIT/INT/TERM/HUP. Idempotente (MC_TRAP_IN). Non copre SIGKILL, pa
 }
 
 mc_main() {	# $1 --prova|--esegui  $2 da  $3 a
-	[ $# -eq 3 ] || { echo "uso: modulo-caldo.sh --prova|--esegui originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic|stadio11-ipi|stadio11-ccr originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic|stadio11-ipi|stadio11-ccr"; exit 4; }
+	[ $# -eq 3 ] || { echo "uso: modulo-caldo.sh --prova|--esegui originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic|stadio11-ipi|stadio11-ccr|stadio11-hltk originale|r110|h2|h2ad2|ripfix-nested|stadio9|stadio10|stadio11|stadio11-lapic|stadio11-ipi|stadio11-ccr|stadio11-hltk"; exit 4; }
 	case "$1" in --prova) MC_PROVA=1;; --esegui) MC_PROVA=0;; *) echo "modo $1"; exit 4;; esac
-	mc_identita "$2" >/dev/null && mc_identita "$3" >/dev/null || { echo "da/a: originale, r110, h2, h2ad2, ripfix-nested, stadio9, stadio10, stadio11, stadio11-lapic, stadio11-ipi o stadio11-ccr"; exit 4; }
+	mc_identita "$2" >/dev/null && mc_identita "$3" >/dev/null || { echo "da/a: originale, r110, h2, h2ad2, ripfix-nested, stadio9, stadio10, stadio11, stadio11-lapic, stadio11-ipi, stadio11-ccr o stadio11-hltk"; exit 4; }
 	[ "$2" = "$3" ] && [ "$2" != originale ] && { echo "$2 -> $3 non ha senso"; exit 4; }
 	mc_preflight "$2" "$3"
 	if [ $MC_PROVA = 1 ]; then
