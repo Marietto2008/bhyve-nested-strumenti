@@ -3,20 +3,21 @@
 # l'acceleratore bhyve con il nested (-accel bhyve,nested=on), invece di bhyve. Stessa immagine, stessi 8 vCPU e
 # 32 GB, stesso MAC (00:a0:98:a1:73:65 -> stesso indirizzo DHCP), tap13, VNC 127.0.0.1:5913.
 # MAI PROVATA PRIMA del 02/11: il QEMU nested aveva fatto girare solo i KUT.
-#   - il disco e' in snapshot=on per DIFETTO: Windows scrive su un file temporaneo (disco interno), l'immagine resta
-#     intatta (QEMU = chipset q35: Windows vede hardware nuovo). --scrivi per scrivere davvero sull'immagine.
+#   - 02/11 (utente: «Non voglio snapshot, ti ho fatto clonare l'immagine originale [...] per far si che le modifiche
+#     attecchiscano sulla copia per sempre»): si SCRIVE sul clone per difetto. --snapshot solo se chiesto; con lo snapshot
+#     ogni avvio era il primo su q35 (driver e rilevamento rifatti e buttati via) e Windows restava sempre occupata.
 #   - parte SOLO se non c'e' nessun'altra VM (stessa immagine e stesso nome Windows della vm0:13 sotto bhyve).
 # Gira come ROOT. Con --prova stampa il comando e NON avvia niente.
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
-PROVA=0; SNAP=on
+PROVA=0; SNAP=off
 # TRACCIA=1 di base (02/11): la rete virtio-net e' intermittente, ogni avvio fallito deve lasciare la sua traccia
 SIPI=0; NICOPT=""; TRACCIA=1; AUDIO=0
-for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;;
+for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --snapshot) SNAP=on;; --qemu-sipi) SIPI=1;;
 	--nic-noeventidx) NICOPT=",event_idx=off";;
 	--trace-virtio) TRACCIA=1;;	# 02/11: eventi virtio/MSI-X dall'avvio in un file a parte (rete intermittente)
 	--audio) AUDIO=1;;		# 02/11: HDA di q35 (driver incluso in Windows) su /dev/dsp, come hda in B	# 02/11: prova diagnostica della ricezione virtio-net bloccata
-	*) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi] [--nic-noeventidx] [--trace-virtio] [--audio]"; exit 4;; esac; done
+	*) echo "uso: $0 [--prova] [--snapshot] [--qemu-sipi] [--nic-noeventidx] [--trace-virtio] [--audio]"; exit 4;; esac; done
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina-vm13.conf
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
