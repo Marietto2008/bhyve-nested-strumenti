@@ -33,6 +33,10 @@ OVMF_VARS=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini/vm0
 export TMPDIR=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini/tmp	# il file dello snapshot (02/11: spostato fuori dal disco radice, quasi pieno)
 v() { sed -n "s/^$1=//p" "$C" | head -1; }
 [ "$(sha256 -q "$QEMU")" = "$QEMU_SHA" ] || { echo "QEMU diverso da quello approvato"; exit 4; }
+# 02/11: se Windows si spegne da sola QEMU esce ma vm2 resta nel kernel: residuo SOLO se e' vm2 e nessun QEMU gira
+if [ "$(ls /dev/vmm 2>/dev/null)" = vm2 ] && ! pgrep -f '/qemu-system-x86_64 ' >/dev/null; then
+	[ $PROVA = 1 ] && echo "(residuo vm2 senza QEMU: verrebbe distrutto)" || { bhyvectl --destroy --vm=vm2 && echo "residuo vm2 distrutto"; }
+fi
 altre=$(ls /dev/vmm 2>/dev/null | tr '\n' ' ')
 [ -z "$altre" ] || { echo "STOP: c'e' gia' una VM ($altre): la configurazione A parte solo da sola"; exit 4; }
 ps -ax -o comm= | grep -qiE 'bhyve|qemu-system' && { echo "STOP: un processo bhyve/qemu e' vivo"; exit 4; }
