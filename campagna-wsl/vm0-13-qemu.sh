@@ -56,4 +56,8 @@ set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-monitor none -serial none
 echo "vm0-13 (A, QEMU): immagine $IMG snapshot=$SNAP, $N vCPU, rete $(v tap), VNC 127.0.0.1:5913"
 [ $PROVA = 1 ] && { echo "PROVA, non avvio:"; echo "$@"; exit 0; }
+# 02/11: Windows+Hyper-V va lanciato con la EPT ombra in modalita' keep (collaudata, #81): si fissa alla CREAZIONE
+# dei vCPU. Con vept_keep=0 ogni ingresso in L2 butta via le foglie: 250.000 INVEPT e fault EPT02 al secondo, Windows
+# ferma e QEMU al 300%; con 1: SSH dopo 64 s, QEMU 70-130%.
+sysctl hw.vmm.vmx.vept_keep=1 >/dev/null || { echo "vept_keep=1 non impostabile"; exit 4; }
 exec "$@"
