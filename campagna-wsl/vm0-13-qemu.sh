@@ -65,7 +65,7 @@ if [ $TRACCIA = 1 ]; then
 fi
 if [ $AUDIO = 1 ]; then
 	DSP=$(awk -F: '/^pcm[0-9]+:/ && /play/ {sub("pcm","",$1); print "/dev/dsp" $1; exit}' /dev/sndstat); [ -n "$DSP" ] || DSP=/dev/dsp
-	set -- "$@" -audiodev oss,id=snd0,dev="$DSP" -device ich9-intel-hda -device hda-duplex,audiodev=snd0
+	set -- "$@" -audiodev oss,id=snd0,out.dev="$DSP",in.dev="$DSP" -device ich9-intel-hda -device hda-duplex,audiodev=snd0
 	echo "audio: $DSP"
 fi
 [ $PROVA = 1 ] && { echo "PROVA, non avvio:"; echo "$@"; exit 0; }
