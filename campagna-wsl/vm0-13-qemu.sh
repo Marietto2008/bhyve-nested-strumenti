@@ -10,7 +10,8 @@
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; SNAP=on
-SIPI=0; NICOPT=""; TRACCIA=0; AUDIO=0
+# TRACCIA=1 di base (02/11): la rete virtio-net e' intermittente, ogni avvio fallito deve lasciare la sua traccia
+SIPI=0; NICOPT=""; TRACCIA=1; AUDIO=0
 for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;;
 	--nic-noeventidx) NICOPT=",event_idx=off";;
 	--trace-virtio) TRACCIA=1;;	# 02/11: eventi virtio/MSI-X dall'avvio in un file a parte (rete intermittente)
