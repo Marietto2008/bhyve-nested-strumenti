@@ -8,8 +8,8 @@
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 ET=$1; shift
-MACCHINA=pc FW=bhyve MEM=4G SMP=2 NESTED=0 SECONDI=90 DEBUGCON=0 QEMUSEL=approvato
-for a in "$@"; do case $a in MACCHINA=*|FW=*|MEM=*|SMP=*|NESTED=*|SECONDI=*|DEBUGCON=*|QEMUSEL=*) eval "$a";; *) echo "argomento sconosciuto: $a"; exit 4;; esac; done
+MACCHINA=pc FW=bhyve MEM=4G SMP=2 NESTED=0 SECONDI=90 DEBUGCON=0 QEMUSEL=approvato QEMUDEBUG=0
+for a in "$@"; do case $a in MACCHINA=*|FW=*|MEM=*|SMP=*|NESTED=*|SECONDI=*|DEBUGCON=*|QEMUSEL=*|QEMUDEBUG=*) eval "$a";; *) echo "argomento sconosciuto: $a"; exit 4;; esac; done
 I=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini
 L=$I/bisezione                      # registri sincronizzati (fsync): sopravvivono a un reset
 mkdir -p $L; D=$L/$(date +%Y%m%d-%H%M%S)-$ET; mkdir $D || exit 4
@@ -18,7 +18,7 @@ case $QEMUSEL in
 	approvato) QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 	           QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a ;;
 	sipi)      QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
-	           QEMU_SHA=90e9b05c680a3a45685371826973a094bee473b469ff44ed7543f7e616354162 ;;
+	           QEMU_SHA=a572a673e9acebd4e9f0a592d114116570cb16d6a5342ecdd760b1131edab53f ;;
 	*) echo "QEMUSEL=approvato|sipi"; exit 4 ;;
 esac
 [ "$(sha256 -q $QEMU)" = "$QEMU_SHA" ] || { echo "QEMU diverso"; exit 4; }
@@ -39,7 +39,8 @@ cat $D/registro >> $L/STORIA; sync
 # battito: un marcatore al secondo con fsync (dd conv=fsync), e sync di tutto
 ( while :; do date '+%T' | dd of=$D/battito conv=fsync status=none 2>/dev/null; sync; sleep 1; done ) &
 B=$!
-timeout -k 5 $SECONDI $QEMU -L /mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios \
+QE=""; [ $QEMUDEBUG = 1 ] && QE="BHYVE_DEBUG=1"	# messaggi diagnostici dell'acceleratore nello stderr
+env $QE timeout -k 5 $SECONDI $QEMU -L /mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios \
 	$ACC -cpu max -machine $MACCHINA -m $MEM -smp $SMP -display none -monitor none \
 	-serial file:$D/seriale.txt $DBG -snapshot -parallel none -no-reboot \
 	-drive if=pflash,format=raw,readonly=on,file=$CODE \
