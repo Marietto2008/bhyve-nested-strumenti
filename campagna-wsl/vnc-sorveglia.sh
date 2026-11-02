@@ -17,15 +17,18 @@ while :; do
 				[ -n "$w" ] && break
 				i=$((i + 1)); sleep 1
 			done
-			# TigerVNC rimappa la finestra quando l'ospite cambia risoluzione (avvio di Windows): per 90 s dopo
-			# l'apertura si riminimizza ogni finestra che torna visibile
-			[ -n "${pid:-}" ] && { k=0; while [ $k -lt 45 ]; do
-				for x in $(xdotool search --pid "$pid" 2>/dev/null); do
-					xwininfo -id "$x" 2>/dev/null | grep -q 'IsViewable' && xdotool windowminimize "$x" 2>/dev/null
-				done
-				k=$((k + 1)); sleep 2
-			done; }
+			sleep 2
+			[ -n "${pid:-}" ] && for x in $(xdotool search --pid "$pid" 2>/dev/null); do xdotool windowminimize "$x" 2>/dev/null; done
 		fi
+		pid=$(pgrep -f "vncviewer localhost:$N\$" | head -1)
+		for x in $( [ -n "$pid" ] && xdotool search --pid "$pid" 2>/dev/null ); do
+			g=$(xwininfo -id "$x" 2>/dev/null | awk '/Width:/ {w=$2} /Height:/ {h=$2} END {print w "x" h}')
+			eval "prima=\${dim_$x:-}"
+			if [ -n "$prima" ] && [ "$g" != "$prima" ] && xwininfo -id "$x" 2>/dev/null | grep -q IsViewable; then
+				xdotool windowminimize "$x" 2>/dev/null	# rimappata da un cambio di risoluzione, non dall'utente
+			fi
+			eval "dim_$x=$g"
+		done
 	else
 		# fra un riavvio e l'altro l'istanza manca per pochi secondi: si esce solo dopo 60 s di assenza
 		assente=$((assente + 1)); [ $assente -gt 20 ] && exit 0
