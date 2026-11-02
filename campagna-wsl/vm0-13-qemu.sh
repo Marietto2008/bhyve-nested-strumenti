@@ -10,8 +10,10 @@
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; SNAP=on
-SIPI=0
-for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;; *) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi]"; exit 4;; esac; done
+SIPI=0; NICOPT=""
+for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;;
+	--nic-noeventidx) NICOPT=",event_idx=off";;	# 02/11: prova diagnostica della ricezione virtio-net bloccata
+	*) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi] [--nic-noeventidx]"; exit 4;; esac; done
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina-vm13.conf
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
@@ -48,7 +50,7 @@ set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-drive file="$IMG",format=raw,if=none,id=d0,cache=none,snapshot=$SNAP \
 	-device ide-hd,drive=d0,bus=ide.0,bootindex=1 \
 	-netdev tap,id=n0,ifname="$(v tap)",script=no,downscript=no \
-	-device virtio-net-pci,netdev=n0,mac=00:a0:98:a1:73:65 \
+	-device virtio-net-pci,netdev=n0,mac=00:a0:98:a1:73:65$NICOPT \
 	-device VGA,xres=1600,yres=950 -display vnc=127.0.0.1:13 \
 	-device qemu-xhci -device usb-tablet \
 	-monitor none -serial none
