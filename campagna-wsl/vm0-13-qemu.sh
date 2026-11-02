@@ -27,7 +27,8 @@ if [ $SIPI = 1 ]; then
 	QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
 	# 02/11 23:21: qemu-sipi 813525873c (poll OSS solo con arretrato: prima, a flusso audio aperto, il ciclo
 	# principale girava a vuoto a ~270.000 ppoll/s su /dev/dsp sempre scrivibile). Il precedente era a572a673.
-	QEMU_SHA=e82942cc6ea616ca6e073664c20dba02a8187c2fffc0877b0bfa34f1d1eb5366
+	# 02/11 23:59: + 4c34d01767 (tracce MSI-X: scartata/mascherata/inviata/maschera), sezione 7.2 di Opus.
+	QEMU_SHA=f5902afb6e52f4f96cbd28bf0c8187ab39bd51c5f92134d70dc5c894e158bcb6
 fi
 PCBIOS=/mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios
 OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
@@ -55,6 +56,8 @@ N=$(v cpu | sed -n 's/.*cores=\([0-9]*\).*/\1/p'); [ -n "$N" ] || N=8
 # 02/11 23:4x: cache=writeback come bhyve in B (ahci-hd senza direct = cache dell'host; i FLUSH dell'ospite
 # diventano fdatasync). Con cache=none (O_DIRECT) ogni lettura andava al disco USB: preadv da 65-130 ms, ~70 IOPS
 # saturi, e in Windows una creazione di processo costava 0,5-1,3 s (login SSH 4-11 s).
+# 03/11: socket QMP per spegnere Windows con ACPI (system_powerdown) quando la rete non c'e' e per
+# interrogare QEMU senza rete; uccidere QEMU staccherebbe la corrente al clone, che si scrive davvero.
 set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-machine q35,hpet=off -accel bhyve,nested=on -cpu max \
 	-smp "$N",sockets=1,cores="$N",threads=1 -m "$(v memoria)" \
@@ -66,12 +69,14 @@ set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-device virtio-net-pci,netdev=n0,mac=00:a0:98:a1:73:65$NICOPT \
 	-device VGA,xres=1600,yres=950 -display vnc=127.0.0.1:13 \
 	-device qemu-xhci -device usb-tablet \
-	-monitor none -serial none
+	-monitor none -qmp unix:/mnt/linuxulator2/vm/wsl2-freebsd-work/vm0-13-qmp.sock,server=on,wait=off -serial none
 echo "vm0-13 (A, QEMU): immagine $IMG snapshot=$SNAP, $N vCPU, rete $(v tap), VNC 127.0.0.1:5913"
 if [ $TRACCIA = 1 ]; then
 	TF=/mnt/linuxulator2/vm/wsl2-freebsd-work/logs/vm0-13-qemu-trace-$(date +%Y%m%d-%H%M%S).txt
 	set -- "$@" -D "$TF" -trace enable=virtio_set_status -trace enable=virtio_queue_notify -trace enable=virtio_notify \
-		-trace enable=msix_write_config -trace enable=virtio_pci_notify_write
+		-trace enable=msix_write_config -trace enable=virtio_pci_notify_write \
+		-trace enable=msix_notify_unused -trace enable=msix_notify_masked -trace enable=msix_notify_send \
+		-trace enable=msix_mask_update
 	echo "traccia virtio: $TF"
 fi
 if [ $AUDIO = 1 ]; then
