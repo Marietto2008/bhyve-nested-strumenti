@@ -10,10 +10,12 @@
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; SNAP=on
-SIPI=0; NICOPT=""
+SIPI=0; NICOPT=""; TRACCIA=0; AUDIO=0
 for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --qemu-sipi) SIPI=1;;
-	--nic-noeventidx) NICOPT=",event_idx=off";;	# 02/11: prova diagnostica della ricezione virtio-net bloccata
-	*) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi] [--nic-noeventidx]"; exit 4;; esac; done
+	--nic-noeventidx) NICOPT=",event_idx=off";;
+	--trace-virtio) TRACCIA=1;;	# 02/11: eventi virtio/MSI-X dall'avvio in un file a parte (rete intermittente)
+	--audio) AUDIO=1;;		# 02/11: HDA di q35 (driver incluso in Windows) su /dev/dsp, come hda in B	# 02/11: prova diagnostica della ricezione virtio-net bloccata
+	*) echo "uso: $0 [--prova] [--scrivi] [--qemu-sipi] [--nic-noeventidx] [--trace-virtio] [--audio]"; exit 4;; esac; done
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina-vm13.conf
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
@@ -55,6 +57,17 @@ set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-device qemu-xhci -device usb-tablet \
 	-monitor none -serial none
 echo "vm0-13 (A, QEMU): immagine $IMG snapshot=$SNAP, $N vCPU, rete $(v tap), VNC 127.0.0.1:5913"
+if [ $TRACCIA = 1 ]; then
+	TF=/mnt/linuxulator2/vm/wsl2-freebsd-work/logs/vm0-13-qemu-trace-$(date +%Y%m%d-%H%M%S).txt
+	set -- "$@" -D "$TF" -trace enable=virtio_set_status -trace enable=virtio_queue_notify -trace enable=virtio_notify \
+		-trace enable=msix_write_config -trace enable=virtio_pci_notify_write
+	echo "traccia virtio: $TF"
+fi
+if [ $AUDIO = 1 ]; then
+	DSP=$(awk -F: '/^pcm[0-9]+:/ && /play/ {sub("pcm","",$1); print "/dev/dsp" $1; exit}' /dev/sndstat); [ -n "$DSP" ] || DSP=/dev/dsp
+	set -- "$@" -audiodev oss,id=snd0,dev="$DSP" -device ich9-intel-hda -device hda-duplex,audiodev=snd0
+	echo "audio: $DSP"
+fi
 [ $PROVA = 1 ] && { echo "PROVA, non avvio:"; echo "$@"; exit 0; }
 # 02/11: Windows+Hyper-V va lanciato con la EPT ombra in modalita' keep (collaudata, #81): si fissa alla CREAZIONE
 # dei vCPU. Con vept_keep=0 ogni ingresso in L2 butta via le foglie: 250.000 INVEPT e fault EPT02 al secondo, Windows
