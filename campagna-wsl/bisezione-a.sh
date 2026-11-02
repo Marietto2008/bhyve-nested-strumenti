@@ -2,14 +2,14 @@
 # bisezione-a.sh -- Claude 02/11/2026. Configurazione A (QEMU -accel bhyve) ha BLOCCATO l'host (02/11 02:27, nessun
 # dump). Bisezione dalla riga che ha FUNZIONATO il 18/10 (pc, BHYVE_UEFI.fd, 4G, smp 2, senza nested), una variabile
 # alla volta, con l'immagine FreeBSD 15.2 preparata per WSL (parte in secondi, la seriale dice fin dove arriva).
-# Uso (root): bisezione-a.sh <etichetta> [MACCHINA=pc|q35] [FW=bhyve|ovmf] [MEM=4G] [SMP=2] [NESTED=0|1] [SECONDI=90]
+# Uso (root): bisezione-a.sh <etichetta> [MACCHINA=pc|q35] [FW=bhyve|ovmf] [MEM=4G] [SMP=2] [NESTED=0|1] [SECONDI=90] [DEBUGCON=0|1]
 # Prova sopravvissuta = l'host risponde e il registro ha «FINE». Se l'host muore, il battito (fsync ogni secondo)
 # dice QUANDO, e l'ultima riga di inizio dice QUALE prova.
 set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 ET=$1; shift
-MACCHINA=pc FW=bhyve MEM=4G SMP=2 NESTED=0 SECONDI=90
-for a in "$@"; do case $a in MACCHINA=*|FW=*|MEM=*|SMP=*|NESTED=*|SECONDI=*) eval "$a";; *) echo "argomento sconosciuto: $a"; exit 4;; esac; done
+MACCHINA=pc FW=bhyve MEM=4G SMP=2 NESTED=0 SECONDI=90 DEBUGCON=0
+for a in "$@"; do case $a in MACCHINA=*|FW=*|MEM=*|SMP=*|NESTED=*|SECONDI=*|DEBUGCON=*) eval "$a";; *) echo "argomento sconosciuto: $a"; exit 4;; esac; done
 I=/home/marietto/claude-wsl2-immagini
 L=$I/bisezione                      # disco INTERNO: deve sopravvivere a un reset
 mkdir -p $L; D=$L/$(date +%Y%m%d-%H%M%S)-$ET; mkdir $D || exit 4
@@ -25,15 +25,17 @@ case $FW in
 esac
 cp $VARS0 $D/vars.fd || exit 4
 ACC="-accel bhyve"; [ $NESTED = 1 ] && ACC="-accel bhyve,nested=on"
+# DEBUGCON=1: il registro di debug di OVMF (porta 0x402), che sulla seriale non arriva
+DBG=""; [ $DEBUGCON = 1 ] && DBG="-debugcon file:$D/debugcon.txt -global isa-debugcon.iobase=0x402"
 # registro di inizio, SINCRONIZZATO prima di lanciare qualunque cosa
-{ echo "INIZIO $(date '+%F %T') $ET MACCHINA=$MACCHINA FW=$FW MEM=$MEM SMP=$SMP NESTED=$NESTED SECONDI=$SECONDI"; } > $D/registro
+{ echo "INIZIO $(date '+%F %T') $ET MACCHINA=$MACCHINA FW=$FW MEM=$MEM SMP=$SMP NESTED=$NESTED SECONDI=$SECONDI DEBUGCON=$DEBUGCON"; } > $D/registro
 cat $D/registro >> $L/STORIA; sync
 # battito: un marcatore al secondo con fsync (dd conv=fsync), e sync di tutto
 ( while :; do date '+%T' | dd of=$D/battito conv=fsync status=none 2>/dev/null; sync; sleep 1; done ) &
 B=$!
 timeout -k 5 $SECONDI $QEMU -L /mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios \
 	$ACC -cpu max -machine $MACCHINA -m $MEM -smp $SMP -display none -monitor none \
-	-serial file:$D/seriale.txt -snapshot -parallel none -no-reboot \
+	-serial file:$D/seriale.txt $DBG -snapshot -parallel none -no-reboot \
 	-drive if=pflash,format=raw,readonly=on,file=$CODE \
 	-drive if=pflash,format=raw,file=$D/vars.fd \
 	-device virtio-blk-pci,drive=hd0 \
