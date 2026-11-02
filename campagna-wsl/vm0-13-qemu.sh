@@ -25,7 +25,9 @@ QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
 # eseguivano il firmware dal vettore di reset fra INIT e SIPI (triple fault con nested, blocco con 32 GB)
 if [ $SIPI = 1 ]; then
 	QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
-	QEMU_SHA=a572a673e9acebd4e9f0a592d114116570cb16d6a5342ecdd760b1131edab53f
+	# 02/11 23:21: qemu-sipi 813525873c (poll OSS solo con arretrato: prima, a flusso audio aperto, il ciclo
+	# principale girava a vuoto a ~270.000 ppoll/s su /dev/dsp sempre scrivibile). Il precedente era a572a673.
+	QEMU_SHA=e82942cc6ea616ca6e073664c20dba02a8187c2fffc0877b0bfa34f1d1eb5366
 fi
 PCBIOS=/mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios
 OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
@@ -50,12 +52,15 @@ IMG=/mnt/${DI}p2/$(v immagine)
 [ -f "$IMG" ] || { echo "immagine assente: $IMG"; exit 4; }
 # 8 vCPU come la vm0:13 sotto bhyve (cpu=sockets=1,cores=8,threads=1 in macchina-vm13.conf)
 N=$(v cpu | sed -n 's/.*cores=\([0-9]*\).*/\1/p'); [ -n "$N" ] || N=8
+# 02/11 23:4x: cache=writeback come bhyve in B (ahci-hd senza direct = cache dell'host; i FLUSH dell'ospite
+# diventano fdatasync). Con cache=none (O_DIRECT) ogni lettura andava al disco USB: preadv da 65-130 ms, ~70 IOPS
+# saturi, e in Windows una creazione di processo costava 0,5-1,3 s (login SSH 4-11 s).
 set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-machine q35,hpet=off -accel bhyve,nested=on -cpu max \
 	-smp "$N",sockets=1,cores="$N",threads=1 -m "$(v memoria)" \
 	-drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
 	-drive if=pflash,format=raw,file="$OVMF_VARS" \
-	-drive file="$IMG",format=raw,if=none,id=d0,cache=none,snapshot=$SNAP \
+	-drive file="$IMG",format=raw,if=none,id=d0,cache=writeback,snapshot=$SNAP \
 	-device ide-hd,drive=d0,bus=ide.0,bootindex=1 \
 	-netdev tap,id=n0,ifname="$(v tap)",script=no,downscript=no \
 	-device virtio-net-pci,netdev=n0,mac=00:a0:98:a1:73:65$NICOPT \
