@@ -80,10 +80,11 @@ MC_S11L=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vm
 MC_S11L_SHA=2fd5019c86587756bfde0257434a8c6227fd7f9193457f26ced77b1938609d16
 MC_S11L_BID=edad32ad28103a5efca02c4f19920100cf469d46
 # STADIO 11 + IPI (Claude 02/11/2026): stadio11-lapic + IPI FIXED che sveglia il bersaglio fermo in QEMU. Copia CONGELATA
-# logs/stadio11-ipi-congelato-20261102. Nessun sysctl nuovo: firma 11111.
-MC_S11I=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi-congelato-20261102/vmm-restore.ko
-MC_S11I_SHA=7407e630d4fb6fc22781936a358c898aebe8547f2905d4945f1172cb214d9612
-MC_S11I_BID=5bd3554ce0790f719f9336c080c9e9a58cf8dc5f
+# logs/stadio11-ipi2-congelato-20261102 (+ vm_handle_ipi FIXED; la prima copia, ora stadio11-ipi-ROTTO, mandava in panic
+# l'host). Nessun sysctl nuovo: firma 11111.
+MC_S11I=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi2-congelato-20261102/vmm-restore.ko
+MC_S11I_SHA=3a8ca1157a79bae067fff8bdc4802964889587dff3a918b8e1f870dc41aef052
+MC_S11I_BID=451d47fc9153a87e793e2b2976889b316ed881e1
 MC_MODULI_ATTESI="acpi/ivhd pci/amdviiommu pci/ppt vmm"
 MC_KENV_VARS="boot_safe devmatch_blocklist"
 

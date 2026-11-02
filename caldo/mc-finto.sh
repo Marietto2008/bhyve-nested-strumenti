@@ -21,7 +21,7 @@ MC_S9_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-resto
 MC_S10_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko
 MC_S11_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
 MC_S11L_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vmm-restore.ko
-MC_S11I_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi-congelato-20261102/vmm-restore.ko
+MC_S11I_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi2-congelato-20261102/vmm-restore.ko
 # 02/11/2026: l'originale (modulo di boot) e' lo stadio 11. orig_vecchio = in /boot c'e' ancora il 149fa57e (sha, build-id,
 # nessun oid): lo strumento deve fermarsi. orig_senza_<r110|h2|fatal|opnd|p3>: l'originale caricato senza quell'oid.
 # s11l_ricompilato, fail_load_s11l: come per lo stadio 11.

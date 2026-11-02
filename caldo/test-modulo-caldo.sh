@@ -17,7 +17,7 @@ S9=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio9-congelato-20261031/vmm-restore.ko
 S10=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio10-congelato-20261031/vmm-restore.ko
 S11=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-congelato-20261101/vmm-restore.ko
 S11L=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/vmm-restore.ko
-S11I=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi-congelato-20261102/vmm-restore.ko
+S11I=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi2-congelato-20261102/vmm-restore.ko
 H2=/mnt/linuxulator2/vm/wsl2/fbsd/obj-h2-only/mnt/linuxulator2/vm/wsl2/fbsd/freebsd-h2-efault/sys/modules/vmm/vmm-restore.ko
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $*"; }
@@ -342,6 +342,9 @@ caso T145-s11i-cambiato s11l --esegui stadio11-lapic stadio11-ipi s11i_ricompila
 caso T146-s11i-non-carica s11l --esegui stadio11-lapic stadio11-ipi fail_load_s11i
 rc_e 5; kld_e "completo $ORIG"; frozen_e 0; pci_ppt; kenv_come_prima; mai_senza_freeze
 caso T147-prova-s11i s11l --prova stadio11-lapic stadio11-ipi;       rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11I"
+caso T148-orig-s11i orig --esegui originale stadio11-ipi
+rc_e 0; kld_e "completo $S11I"; frozen_e 0; pci_ppt; amdgpu_no; kenv_come_prima; mai_senza_freeze; nessuna_asta
+caso T149-prova-orig-s11i orig --prova originale stadio11-ipi;       rc_e 0; nessun_evento; nessun_diario; out_ha "kldload $S11I"
 # l'oid di P3 resta VIETATO nello stadio 10 (e in ogni altra identita')
 caso T130-s10-con-p3 s10 --esegui stadio10 originale oid_p3_finto;   rc_e 4; nessun_evento; stop_nel_diario
 
