@@ -42,6 +42,6 @@ timeout -k 5 $SECONDI $QEMU -L /mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bio
 rc=$?
 kill $B 2>/dev/null
 for v in $(ls /dev/vmm 2>/dev/null); do bhyvectl --destroy --vm=$v; done
-seg=$(tr -d '\r' < $D/seriale.txt | strings | grep -aoE 'CLAUDE-FBSD-WSL[^$]*|Fatal trap[^$]*|panic:[^$]*|X64 Exception[^$]*' | head -1)
+seg=$(LC_ALL=C tr -d '\r' < $D/seriale.txt | strings | grep -aoE 'CLAUDE-FBSD-WSL[^$]*|Fatal trap[^$]*|panic:[^$]*|X64 Exception[^$]*' | head -1)
 echo "FINE $(date '+%T') rc=$rc seriale: ${seg:-(nessun segnale, $(wc -c < $D/seriale.txt) byte)}" | tee -a $D/registro >> $L/STORIA
 sync; cat $D/registro
