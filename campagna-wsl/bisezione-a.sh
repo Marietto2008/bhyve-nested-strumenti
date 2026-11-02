@@ -10,8 +10,8 @@ PATH=/bin:/usr/bin:/sbin:/usr/sbin
 ET=$1; shift
 MACCHINA=pc FW=bhyve MEM=4G SMP=2 NESTED=0 SECONDI=90 DEBUGCON=0
 for a in "$@"; do case $a in MACCHINA=*|FW=*|MEM=*|SMP=*|NESTED=*|SECONDI=*|DEBUGCON=*) eval "$a";; *) echo "argomento sconosciuto: $a"; exit 4;; esac; done
-I=/home/marietto/claude-wsl2-immagini
-L=$I/bisezione                      # disco INTERNO: deve sopravvivere a un reset
+I=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini
+L=$I/bisezione                      # registri sincronizzati (fsync): sopravvivono a un reset
 mkdir -p $L; D=$L/$(date +%Y%m%d-%H%M%S)-$ET; mkdir $D || exit 4
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
