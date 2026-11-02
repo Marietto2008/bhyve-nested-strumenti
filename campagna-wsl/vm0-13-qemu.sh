@@ -19,7 +19,7 @@ QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
 # eseguivano il firmware dal vettore di reset fra INIT e SIPI (triple fault con nested, blocco con 32 GB)
 if [ $SIPI = 1 ]; then
 	QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/qemu-sipi/qemu-system-x86_64
-	QEMU_SHA=836c86831fd61292db1ea6d7a1de59a2138c98b951402398a43f04e634929435
+	QEMU_SHA=23417b2d39756a1602e3f55d62ee2f5f1b0300e7183ce290c044ce1376059335
 fi
 PCBIOS=/mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios
 OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
