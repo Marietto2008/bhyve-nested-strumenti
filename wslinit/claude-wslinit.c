@@ -35,6 +35,8 @@
 #include <sys/wait.h>
 #include <net/if.h>
 #include <net/if_dl.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <ifaddrs.h>
 #include <err.h>
@@ -92,6 +94,12 @@ struct sockaddr_hvs {
 #define MSG_GNS_RESULT			54
 #define MSG_GNS_NOTIFICATION		55
 #define MSG_GNS_CONNECT_TEST_REQUEST	74
+#define MSG_START_SOCKET_RELAY		15
+#define MSG_GNS_SET_PORT_LISTENER	58
+#define MSG_GNS_PORT_RELAY_START	59
+#define MSG_GNS_PORT_RELAY_STOP		60
+#define LX_AF_INET			2	/* famiglie come le vede il servizio: valori di Linux */
+#define LX_AF_INET6			10
 #define MSG_RESULT_BOOL			76
 #define MSG_RESULT_INT32		77
 #define MSG_RESULT_UINT32		78
@@ -292,11 +300,12 @@ struct exit_status {
 	int32_t exit_code;
 };
 
-/* un canale: il socket e il contatore dei messaggi fuori transazione mandati */
+/* un canale: il socket, il contatore dei messaggi fuori transazione mandati, quello delle transazioni avviate */
 struct chan {
 	int fd;
 	uint32_t sent;
 	const char *name;
+	uint32_t tx;
 };
 
 static int
@@ -651,7 +660,7 @@ relay_pty(const char *msg, int sockets[], int master, pid_t child)
 	}
 	ctl_pid = fork();
 	if (ctl_pid == 0) {
-		struct chan tctl = { sockets[3], 0, "terminale" };
+		struct chan tctl = { sockets[3], 0, "terminale", 0 };
 		char *m;
 
 		while ((m = chan_recv(&tctl)) != NULL) {
@@ -804,7 +813,7 @@ create_process(struct chan *c, const char *msg)
 	 * svccomm.cpp) e lo rimanda indietro come conferma. Il quarto (controllo del terminale) porta solo i cambi di
 	 * dimensione della finestra.
 	 */
-	ctl = (struct chan){ sockets[4], 0, "interop" };
+	ctl = (struct chan){ sockets[4], 0, "interop", 0 };
 	chan_send(&ctl, &es, sizeof(es), NULL);
 	while ((m = chan_recv(&ctl)) != NULL) {
 		uint32_t type = ((struct msg_header *)m)->type;
@@ -820,7 +829,7 @@ create_process(struct chan *c, const char *msg)
 static void
 session_leader(int fd)
 {
-	struct chan c = { fd, 0, "sessione" };
+	struct chan c = { fd, 0, "sessione", 0 };
 	char *m;
 
 	warnx("sessione: capo sessione pid %d", getpid());
@@ -1172,7 +1181,7 @@ import_inplace(int fd, const char *msg)
 	const struct launch_init *li = (const struct launch_init *)msg;
 	struct create_instance_result res;
 	struct import_result *ir;
-	struct chan c = { fd, 0, "importazione" };
+	struct chan c = { fd, 0, "importazione", 0 };
 	const char flavor[] = "freebsd";
 	char version[64];
 	uint32_t port;
@@ -1384,7 +1393,7 @@ gns_notification(const char *json, const char *ifname)
 static void
 gns_engine(int fd)
 {
-	struct chan c = { fd, 0, "gns" };
+	struct chan c = { fd, 0, "gns", 0 };
 	struct gns_result r;
 	char ifname[IFNAMSIZ] = "";
 	char *m;
@@ -1416,6 +1425,228 @@ gns_engine(int fd)
 	_exit(0);
 }
 
+/*
+ * Inoltro di localhost (port tracker di tipo Relay, modalita' NAT; localhost.cpp in Linux, wslrelay/localhost.cpp
+ * in Windows). Sul canale del port tracker:
+ *   - SET_PORT_LISTENER (58) {HvSocketPort}: la porta hvsock su cui Windows si collega per ogni connessione;
+ *   - ogni secondo, le porte TCP in ascolto: transazioni PortListenerRelayStart/Stop (59/60) {Family, Port, Address}
+ *     con le famiglie di LINUX (2, 10); Windows inoltra solo quelle su any o loopback.
+ * Ogni connessione da Windows porta un START_SOCKET_RELAY (15) {Family, Port, BufferSize}: ci si collega a
+ * 127.0.0.1:Port (o ::1) e si copiano i byte. Un processo per direzione, letture bloccanti: niente kqueue su hv_sock.
+ */
+struct port_listener {
+	struct msg_header h;
+	int32_t hv_socket_port;
+};
+
+struct port_relay {
+	struct msg_header h;
+	uint16_t family;
+	uint16_t port;
+	uint32_t address[4];
+};
+_Static_assert(sizeof(struct port_relay) == 36, "LX_GNS_PORT_LISTENER_RELAY");
+
+struct start_socket_relay {
+	struct msg_header h;
+	uint16_t family;
+	uint16_t port;
+	uint64_t buffer_size;
+};
+_Static_assert(sizeof(struct start_socket_relay) == 32, "LX_INIT_START_SOCKET_RELAY");
+
+/* manda una RICHIESTA di transazione a cui non si aspetta risposta (come transaction.Send in localhost.cpp) */
+static void
+chan_send_request(struct chan *c, void *m, uint32_t size)
+{
+	struct msg_header *h = m;
+
+	h->size = size;
+	h->transaction_id = ++c->tx;
+	h->transaction_step = 1;
+	write_all(c->fd, m, size);
+}
+
+/* copia da a b finche' a non chiude, poi chiude in scrittura b */
+static void
+copy_until_eof(int a, int b)
+{
+	char buf[16384];
+	ssize_t n;
+
+	while ((n = read(a, buf, sizeof(buf))) > 0)
+		if (!write_some(b, buf, n))
+			break;
+	(void)shutdown(b, SHUT_WR);
+}
+
+static void
+socket_relay(int hv)
+{
+	struct start_socket_relay sr;
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	pid_t pid;
+	int tcp;
+
+	if (!read_all(hv, &sr, sizeof(sr)) || sr.h.type != MSG_START_SOCKET_RELAY)
+		_exit(1);
+	if (sr.family == LX_AF_INET) {
+		memset(&sin, 0, sizeof(sin));
+		sin.sin_len = sizeof(sin);
+		sin.sin_family = AF_INET;
+		sin.sin_port = htons(sr.port);
+		sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		tcp = socket(AF_INET, SOCK_STREAM, 0);
+		if (tcp < 0 || connect(tcp, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+			warn("porte: connect 127.0.0.1:%u", sr.port);
+			_exit(1);
+		}
+	} else if (sr.family == LX_AF_INET6) {
+		memset(&sin6, 0, sizeof(sin6));
+		sin6.sin6_len = sizeof(sin6);
+		sin6.sin6_family = AF_INET6;
+		sin6.sin6_port = htons(sr.port);
+		sin6.sin6_addr = in6addr_loopback;
+		tcp = socket(AF_INET6, SOCK_STREAM, 0);
+		if (tcp < 0 || connect(tcp, (struct sockaddr *)&sin6, sizeof(sin6)) < 0) {
+			warn("porte: connect [::1]:%u", sr.port);
+			_exit(1);
+		}
+	} else
+		_exit(1);
+	pid = fork();
+	if (pid == 0) {
+		copy_until_eof(hv, tcp);
+		_exit(0);
+	}
+	copy_until_eof(tcp, hv);
+	if (pid > 0)
+		(void)waitpid(pid, NULL, 0);
+	_exit(0);
+}
+
+/* le porte TCP in ascolto: "root  sshd  123  4  tcp4  *:22  *:*" (sockstat del sistema, allineato al kernel) */
+#define MAX_PORTS 256
+static int
+listening_ports(struct port_relay *out, int max)
+{
+	char buf[65536], *line, *rest, *f[16], *local, *colon;
+	int n = 0, nf;
+
+	if (run_out((const char *const[]){ "/usr/bin/sockstat", "-46", "-l", "-q", "-P", "tcp", NULL }, buf,
+	    sizeof(buf), 10) != 0)
+		return (-1);
+	for (rest = buf; (line = strsep(&rest, "\n")) != NULL && n < max; ) {
+		for (nf = 0; nf < 16 && (f[nf] = strsep(&line, " \t")) != NULL; )
+			if (*f[nf] != '\0')
+				nf++;
+		if (nf < 6)
+			continue;
+		local = f[nf - 2];
+		if ((colon = strrchr(local, ':')) == NULL)
+			continue;
+		*colon = '\0';
+		memset(&out[n], 0, sizeof(out[n]));
+		out[n].port = (uint16_t)atoi(colon + 1);
+		if (strcmp(f[nf - 3], "tcp4") == 0 || strcmp(f[nf - 3], "tcp46") == 0) {
+			struct in_addr a;
+
+			out[n].family = LX_AF_INET;
+			if (strcmp(local, "*") != 0) {
+				if (inet_pton(AF_INET, local, &a) != 1)
+					continue;
+				out[n].address[0] = a.s_addr;
+			}
+		} else if (strcmp(f[nf - 3], "tcp6") == 0) {
+			struct in6_addr a6;
+
+			out[n].family = LX_AF_INET6;
+			if (strcmp(local, "*") != 0) {
+				if (*local == '[')
+					local++;
+				local[strcspn(local, "]")] = '\0';
+				if (inet_pton(AF_INET6, local, &a6) != 1)
+					continue;
+				memcpy(out[n].address, &a6, sizeof(a6));
+			}
+		} else
+			continue;
+		n++;
+	}
+	return (n);
+}
+
+static bool
+same_port(const struct port_relay *a, const struct port_relay *b)
+{
+	return (a->family == b->family && a->port == b->port && memcmp(a->address, b->address, sizeof(a->address)) == 0);
+}
+
+static void
+port_tracker(int fd)
+{
+	static struct port_relay cur[MAX_PORTS], prev[MAX_PORTS];
+	struct chan c = { fd, 0, "porte", 0 };
+	struct port_listener pl;
+	uint32_t port;
+	int lfd, s, ncur, nprev = 0, i, j;
+	bool found;
+
+	lfd = listen_any(&port, 16);
+	memset(&pl, 0, sizeof(pl));
+	pl.h.type = MSG_GNS_SET_PORT_LISTENER;
+	pl.hv_socket_port = (int32_t)port;
+	chan_send(&c, &pl, sizeof(pl), NULL);
+	warnx("porte: inoltro di localhost sulla porta hvsock %u", port);
+
+	if (fork() == 0) {
+		/* chi accetta le connessioni da Windows */
+		close(fd);
+		for (;;) {
+			s = accept(lfd, NULL, NULL);
+			if (s < 0) {
+				if (errno == EINTR)
+					continue;
+				err(1, "porte: accept");
+			}
+			if (fork() == 0) {
+				close(lfd);
+				socket_relay(s);
+			}
+			close(s);
+		}
+	}
+	close(lfd);
+
+	for (;;) {
+		ncur = listening_ports(cur, MAX_PORTS);
+		if (ncur >= 0) {
+			for (i = 0; i < nprev; i++) {
+				for (found = false, j = 0; j < ncur && !found; j++)
+					found = same_port(&prev[i], &cur[j]);
+				if (!found) {
+					prev[i].h.type = MSG_GNS_PORT_RELAY_STOP;
+					chan_send_request(&c, &prev[i], sizeof(prev[i]));
+					warnx("porte: %u (famiglia %u) non piu' in ascolto", prev[i].port, prev[i].family);
+				}
+			}
+			for (j = 0; j < ncur; j++) {
+				for (found = false, i = 0; i < nprev && !found; i++)
+					found = same_port(&prev[i], &cur[j]);
+				if (!found) {
+					cur[j].h.type = MSG_GNS_PORT_RELAY_START;
+					chan_send_request(&c, &cur[j], sizeof(cur[j]));
+					warnx("porte: %u (famiglia %u) in ascolto: inoltro da Windows", cur[j].port, cur[j].family);
+				}
+			}
+			memcpy(prev, cur, sizeof(cur[0]) * (size_t)ncur);
+			nprev = ncur;
+		}
+		sleep(1);
+	}
+}
+
 /* l'init della distro, processo figlio per ogni istanza (anche la distro di sistema, se chiesta) */
 static void
 distro_init(int fd, const char *launch, const char *what, bool distro_disk)
@@ -1423,7 +1654,7 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 	const struct launch_init *li = (const struct launch_init *)launch;
 	struct create_instance_result res;
 	struct result_bool rb;
-	struct chan c = { fd, 0, what };
+	struct chan c = { fd, 0, what, 0 };
 	char *m;
 
 	warnx("%s: pid %d, distro '%s', disco lun %u (%s, %s), flag 0x%x", what, getpid(),
@@ -1517,7 +1748,7 @@ launch_init(struct chan *mainc, int notify, const char *msg, bool gui)
 int
 main(void)
 {
-	struct chan mainc = { -1, 0, "principale" };
+	struct chan mainc = { -1, 0, "principale", 0 };
 	char *msg;
 	int notify, extra;
 	bool gui = false;
@@ -1565,6 +1796,12 @@ main(void)
 			if (c->net.port_tracker_type == 1 || c->net.port_tracker_type == 2) {
 				extra = connect_host(WSL_INIT_PORT);
 				warnx("canale port tracker fd %d", extra);
+				if (c->net.port_tracker_type == 2 && fork() == 0) {
+					close(mainc.fd);
+					close(notify);
+					port_tracker(extra);
+				}
+				close(extra);
 			}
 			warnx("I1: inizializzazione della VM completata dal lato FreeBSD");
 			break;

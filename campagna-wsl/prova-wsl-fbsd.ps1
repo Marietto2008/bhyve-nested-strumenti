@@ -9,7 +9,8 @@ param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (
       [string]$Distro = "FreeBSD",             # 03/11 (I2): la distro FreeBSD, registrata con --import-in-place
       [string]$DistroVhd = "C:\claude\wsl-fbsd\distro\FreeBSD.vhd",
       [switch]$Interattivo,                    # 03/11: alla fine la shell di FreeBSD in questa finestra (exit per uscire)
-      [string]$ComandoFile = "")               # 03/11: script sh (senza virgolette doppie) eseguito con sh -c
+      [string]$ComandoFile = "",               # 03/11: script sh (senza virgolette doppie) eseguito con sh -c
+      [string]$Url = "")                       # 03/11: dopo il comando, curl.exe da Windows (inoltro di localhost)
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -46,6 +47,11 @@ try {
     Write-Host "[claude] comando: wsl.exe -d $Distro -e $($Comando -join ' ')"
     & wsl.exe -d $Distro -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE
+    if ($Url) {
+        Write-Host "[claude] da Windows: curl.exe --http0.9 $Url"
+        & curl.exe -s -S --http0.9 -m 15 $Url 2>&1 | ForEach-Object { "$_" } | Out-Host
+        Write-Host "[claude] curl.exe: codice $LASTEXITCODE"
+    }
     Write-Host "[claude] wsl -l -v:"; & wsl.exe -l -v 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     if ($Interattivo) {
         Passo "shell interattiva: wsl.exe -d $Distro (exit per uscire)"
