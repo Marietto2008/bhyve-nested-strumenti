@@ -24,6 +24,10 @@
  * messaggio; gli elenchi di stringhe sono coppie {int32 lunghezza, byte} chiuse da -1 (message.h, WriteStringArray).
  */
 #include <sys/types.h>
+#include <sys/event.h>
+#include <sys/file.h>
+#include <sys/ioctl.h>
+#include <sys/procctl.h>
 #include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -31,7 +35,11 @@
 #include <sys/wait.h>
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <libutil.h>
 #include <limits.h>
+#include <poll.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -39,6 +47,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifndef AF_HYPERV
@@ -81,6 +90,7 @@ struct sockaddr_hvs {
 
 #define LAUNCH_FLAG_READ_ONLY		0x1	/* LxMiniInitMessageFlagMountReadOnly */
 #define LAUNCH_FLAG_SYSTEM_DISTRO	0x4	/* LxMiniInitMessageFlagLaunchSystemDistro */
+#define PROCESS_FLAGS_CONSOLE		0x7	/* LxInitCreateProcessFlagsStd{In,Out,Err}Console: bit i = fd i */
 #define PROCESS_FLAG_ALLOW_OOBE		0x20	/* LxInitCreateProcessFlagAllowOOBE */
 #define SHELL_OPTIONS_LOGIN		0x1	/* ShellOptionsLogin */
 #define PROCESS_SOCKETS			5	/* LX_INIT_UTILITY_VM_CREATE_PROCESS_SOCKET_COUNT */
@@ -261,6 +271,12 @@ struct create_process {
 	char buffer[];
 };
 _Static_assert(offsetof(struct create_process, rows) == 56, "LX_INIT_CREATE_PROCESS_UTILITY_VM");
+
+struct window_size_changed {
+	struct msg_header h;
+	uint16_t rows;
+	uint16_t columns;
+};
 
 struct exit_status {
 	struct msg_header h;
@@ -507,19 +523,31 @@ send_capabilities(struct chan *c)
  * con la riga di comando cosi' com'e'.
  */
 static void
-exec_command(const char *msg, int sockets[])
+exec_command(const char *msg, int fds[])
 {
 	const struct create_process *cp = (const struct create_process *)msg;
-	const char *filename, *cwd;
+	const char *filename, *cwd, *shell, *base;
+	struct passwd *pw;
 	char **argv, **env, **full;
+	char login[64];
 	int argc, envc, i;
 
 	for (i = 0; i < 3; i++)
-		if (dup2(sockets[i], i) < 0)
+		if (dup2(fds[i], i) < 0)
 			err(1, "dup2");
 	for (i = 3; i < 64; i++)
 		close(i);
 	setsid();
+	/* il comando vede come radice la distro FreeBSD dell'utente (l'istanza resta fuori, per smontarla alla fine) */
+	if (chroot(DISTRO_PATH) < 0 || chdir("/") < 0)
+		err(126, "chroot(%s)", DISTRO_PATH);
+	/* il terminale (se c'e') diventa quello di controllo: ^C, job control, stty */
+	for (i = 0; i < 3; i++)
+		if ((cp->flags & (1 << i)) != 0) {
+			if (ioctl(i, TIOCSCTTY, 0) < 0)
+				warn("TIOCSCTTY");
+			break;
+		}
 
 	filename = msg_str(msg, cp->filename_offset);
 	cwd = msg_str(msg, cp->cwd_offset);
@@ -539,14 +567,20 @@ exec_command(const char *msg, int sockets[])
 			(void)chdir("/");
 
 	if (*filename == '\0') {
+		/* la shell dell'utente (root) dal passwd della distro; "-sh" come argv[0] per la shell di login */
+		pw = getpwuid(0);
+		shell = (pw != NULL && pw->pw_shell != NULL && *pw->pw_shell != '\0') ? pw->pw_shell : "/bin/sh";
+		setenv("SHELL", shell, 1);
+		base = strrchr(shell, '/') != NULL ? strrchr(shell, '/') + 1 : shell;
+		snprintf(login, sizeof(login), "-%s", base);
 		full = calloc((size_t)argc + 2, sizeof(*full));
 		if (full == NULL)
 			err(1, "calloc");
-		full[0] = (cp->shell_options & SHELL_OPTIONS_LOGIN) ? "-sh" : "/bin/sh";
+		full[0] = (cp->shell_options & SHELL_OPTIONS_LOGIN) ? login : (char *)shell;
 		for (i = 0; i < argc; i++)
 			full[i + 1] = argv[i];
-		execv("/bin/sh", full);
-		err(127, "execv(/bin/sh)");
+		execv(shell, full);
+		err(127, "execv(%s)", shell);
 	}
 	if (argc == 0) {
 		argv = realloc(argv, 2 * sizeof(*argv));
@@ -555,6 +589,117 @@ exec_command(const char *msg, int sockets[])
 	}
 	execvp(filename, argv);
 	err(127, "execvp(%s)", filename);
+}
+
+/* scrive tutto; false se l'altra parte ha chiuso */
+static bool
+write_some(int fd, const char *p, ssize_t n)
+{
+	ssize_t w;
+
+	while (n > 0) {
+		w = write(fd, p, (size_t)n);
+		if (w < 0) {
+			if (errno == EINTR)
+				continue;
+			return (false);
+		}
+		p += w;
+		n -= w;
+	}
+	return (true);
+}
+
+/*
+ * Il ponte del terminale (come init.cpp con le console di Windows): i fd che wsl.exe dichiara console finiscono su un
+ * pty; il socket stdin alimenta il master, l'uscita del master va al socket stdout (o stderr), il canale di controllo
+ * porta i cambi di dimensione (TIOCSWINSZ).
+ * I socket hvsock NON si guardano con kqueue: in hv_sock i dati stanno nell'anello VMBus e non nel sockbuf, e
+ * EVFILT_READ scattava senza dati, lasciando il ponte fermo in read() per sempre (prova del 03/11 18:03: comando
+ * finito e mai raccolto). Stdin e controllo hanno quindi un processo ciascuno, con letture bloccanti; qui si guardano
+ * solo il master (un pty: kqueue affidabile) e la fine del comando.
+ */
+static int
+relay_pty(const char *msg, int sockets[], int master, pid_t child)
+{
+	const struct create_process *cp = (const struct create_process *)msg;
+	struct kevent ev[2], got;
+	struct winsize ws;
+	char buf[4096];
+	ssize_t n;
+	pid_t in_pid = -1, ctl_pid;
+	int kq, out, status = 0;
+
+	out = (cp->flags & 0x2) ? sockets[1] : (cp->flags & 0x4) ? sockets[2] : -1;
+	if ((cp->flags & 0x1) != 0) {
+		in_pid = fork();
+		if (in_pid == 0) {
+			while ((n = read(sockets[0], buf, sizeof(buf))) > 0)
+				if (!write_some(master, buf, n))
+					break;
+			_exit(0);
+		}
+	}
+	ctl_pid = fork();
+	if (ctl_pid == 0) {
+		struct chan tctl = { sockets[3], 0, "terminale" };
+		char *m;
+
+		while ((m = chan_recv(&tctl)) != NULL) {
+			if (((struct msg_header *)m)->type == MSG_WINDOW_SIZE_CHANGED) {
+				const struct window_size_changed *w = (const struct window_size_changed *)m;
+
+				memset(&ws, 0, sizeof(ws));
+				ws.ws_row = w->rows;
+				ws.ws_col = w->columns;
+				(void)ioctl(master, TIOCSWINSZ, &ws);
+			}
+			free(m);
+		}
+		_exit(0);
+	}
+
+	kq = kqueue();
+	if (kq < 0)
+		err(1, "kqueue");
+	EV_SET(&ev[0], master, EVFILT_READ, EV_ADD, 0, 0, NULL);
+	EV_SET(&ev[1], child, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, NULL);
+	if (kevent(kq, ev, 2, NULL, 0, NULL) < 0)
+		err(1, "kevent");
+	fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK);
+	for (;;) {
+		if (kevent(kq, NULL, 0, &got, 1, NULL) < 0) {
+			if (errno == EINTR)
+				continue;
+			err(1, "kevent");
+		}
+		if (got.filter == EVFILT_PROC) {
+			while (waitpid(child, &status, 0) < 0 && errno == EINTR)
+				;
+			/* svuota quel che resta sul master */
+			while ((n = read(master, buf, sizeof(buf))) > 0)
+				if (out >= 0)
+					(void)write_some(out, buf, n);
+			break;
+		}
+		n = read(master, buf, sizeof(buf));
+		if (n > 0) {
+			if (out >= 0)
+				(void)write_some(out, buf, n);
+		} else if (n == 0 || errno != EAGAIN) {
+			/* nessuno tiene piu' aperto lo slave: resta solo da aspettare la fine del comando */
+			EV_SET(&ev[0], master, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+			(void)kevent(kq, ev, 1, NULL, 0, NULL);
+		}
+	}
+	close(kq);
+	if (in_pid > 0)
+		kill(in_pid, SIGKILL);
+	kill(ctl_pid, SIGKILL);
+	if (in_pid > 0)
+		(void)waitpid(in_pid, NULL, 0);
+	(void)waitpid(ctl_pid, NULL, 0);
+	return (status);
 }
 
 /* CreateProcessUtilityVm sul canale della sessione */
@@ -568,7 +713,9 @@ create_process(struct chan *c, const char *msg)
 	char **argv;
 	char *m;
 	int sockets[PROCESS_SOCKETS + 1];
-	int argc, i, lfd, nsock, status;
+	struct winsize ws;
+	int fds[3];
+	int argc, i, lfd, nsock, status, master, slave;
 	pid_t relay, child;
 	uint32_t port;
 
@@ -604,16 +751,41 @@ create_process(struct chan *c, const char *msg)
 	/* il processo di appoggio: lancia il comando, ne aspetta la fine, manda lo stato d'uscita */
 	close(c->fd);
 	signal(SIGCHLD, SIG_DFL);
+	master = slave = -1;
+	if ((cp->flags & PROCESS_FLAGS_CONSOLE) != 0) {
+		memset(&ws, 0, sizeof(ws));
+		ws.ws_row = cp->rows;
+		ws.ws_col = cp->columns;
+		if (openpty(&master, &slave, NULL, NULL, &ws) < 0)
+			err(1, "openpty");
+		warnx("CreateProcess: terminale %s (%ux%u) per i fd console 0x%x", ttyname(slave), cp->columns, cp->rows,
+		    cp->flags & PROCESS_FLAGS_CONSOLE);
+	}
+	for (i = 0; i < 3; i++)
+		fds[i] = (cp->flags & (1 << i)) != 0 ? slave : sockets[i];
 	child = fork();
 	if (child < 0)
 		err(1, "fork");
 	if (child == 0)
-		exec_command(msg, sockets);
-	for (i = 0; i < 3; i++)
-		close(sockets[i]);
-	while (waitpid(child, &status, 0) < 0)
-		if (errno != EINTR)
-			err(1, "waitpid");
+		exec_command(msg, fds);
+	if (master >= 0) {
+		close(slave);
+		/* i socket dei fd non console li tiene solo il comando */
+		for (i = 0; i < 3; i++)
+			if ((cp->flags & (1 << i)) == 0)
+				close(sockets[i]);
+		status = relay_pty(msg, sockets, master, child);
+		close(master);
+		for (i = 0; i < 3; i++)
+			if ((cp->flags & (1 << i)) != 0)
+				close(sockets[i]);
+	} else {
+		for (i = 0; i < 3; i++)
+			close(sockets[i]);
+		while (waitpid(child, &status, 0) < 0)
+			if (errno != EINTR)
+				err(1, "waitpid");
+	}
 	memset(&es, 0, sizeof(es));
 	es.h.type = MSG_EXIT_STATUS;
 	es.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
@@ -723,34 +895,96 @@ create_session(struct chan *c, const char *msg)
 	close(fd);
 }
 
+static int run_out(const char *const argv[], char *out, size_t outlen, int timeout_s);
+
+/* esegue un programma e ne aspetta la fine (al massimo 120 s); il codice d'uscita, -1 se non e' partito o e' morto */
+static int
+run(const char *const argv[])
+{
+	return (run_out(argv, NULL, 0, 120));
+}
+
 /*
- * Esegue un programma e ne aspetta la fine; ritorna il codice d'uscita (-1 se non e' partito o e' morto).
+ * Esegue un programma; con out != NULL ne raccoglie lo stdout (troncato a outlen), altrimenti lo stdout va dove va il
+ * nostro (la console). Se non finisce entro timeout_s secondi: procstat -kk del processo sulla console (DOVE e'
+ * bloccato), poi SIGKILL. Prova del 03/11 17:46: l'istanza ferma in silenzio dentro camcontrol o gpart.
  * SIGCHLD torna SIG_DFL per la durata dell'attesa: con SIG_IGN (ereditato da main) il figlio verrebbe raccolto da
  * solo e waitpid darebbe ECHILD (prova del 03/11 17:16: fsck e mount riusciti ma riportati come -1).
  */
 static int
-run(const char *const argv[])
+run_out(const char *const argv[], char *out, size_t outlen, int timeout_s)
 {
 	void (*prev)(int);
-	pid_t pid;
-	int status, rc;
+	struct pollfd pfd;
+	char buf[512], spid[16];
+	size_t used = 0;
+	ssize_t n;
+	struct timespec t0, now;
+	pid_t pid, w;
+	int p[2], status, rc = -1;
+	bool eof = false, killed = false;
 
+	if (out != NULL && outlen > 0)
+		out[0] = '\0';
+	if (pipe(p) < 0)
+		return (-1);
 	prev = signal(SIGCHLD, SIG_DFL);
 	pid = fork();
 	if (pid < 0) {
+		close(p[0]);
+		close(p[1]);
 		signal(SIGCHLD, prev);
 		return (-1);
 	}
 	if (pid == 0) {
+		close(p[0]);
+		if (out != NULL)
+			dup2(p[1], STDOUT_FILENO);
+		close(p[1]);
 		execv(argv[0], (char *const *)argv);
 		_exit(127);
 	}
-	rc = -1;
-	while (waitpid(pid, &status, 0) < 0)
-		if (errno != EINTR)
-			goto out;
-	rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-out:
+	close(p[1]);
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	for (;;) {
+		if (!eof) {
+			pfd.fd = p[0];
+			pfd.events = POLLIN;
+			if (poll(&pfd, 1, 200) > 0) {
+				n = read(p[0], buf, sizeof(buf));
+				if (n <= 0)
+					eof = true;
+				else if (out != NULL && used + 1 < outlen) {
+					size_t k = MIN((size_t)n, outlen - 1 - used);
+
+					memcpy(out + used, buf, k);
+					used += k;
+					out[used] = '\0';
+				}
+			}
+		} else
+			usleep(100000);
+		w = waitpid(pid, &status, WNOHANG);
+		if (w == pid) {
+			rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+			break;
+		}
+		if (w < 0 && errno != EINTR)
+			break;
+		/*
+		 * Orologio MONOTONO: all'avvio la sincronizzazione dell'ora di Hyper-V sposta il tempo di sistema
+		 * (prova del 03/11 18:03: con time() il limite non scattava mai).
+		 */
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		if (!killed && now.tv_sec - t0.tv_sec >= timeout_s) {
+			warnx("%s: BLOCCATO da %d s (pid %d), pila nel kernel:", argv[0], timeout_s, pid);
+			snprintf(spid, sizeof(spid), "%d", pid);
+			(void)run_out((const char *const[]){ "/usr/bin/procstat", "-kk", spid, NULL }, NULL, 0, 20);
+			kill(pid, SIGKILL);
+			killed = true;
+		}
+	}
+	close(p[0]);
 	signal(SIGCHLD, prev);
 	return (rc);
 }
@@ -762,26 +996,21 @@ out:
 static bool
 lun_device(uint32_t lun, char *dev, size_t len)
 {
-	char line[256], key[32];
-	char *p, *q;
-	FILE *f;
+	char out[4096], key[32];
+	char *line, *rest, *p, *q;
 	int tries;
 
 	snprintf(key, sizeof(key), " lun %u (", lun);
 	for (tries = 0; tries < 60; tries++) {
-		f = popen("/sbin/camcontrol devlist", "r");
-		if (f != NULL) {
-			while (fgets(line, sizeof(line), f) != NULL) {
-				if ((p = strstr(line, key)) == NULL)
-					continue;
-				for (p += strlen(key); (q = strsep(&p, ",)")) != NULL; )
-					if (strncmp(q, "da", 2) == 0) {
-						snprintf(dev, len, "/dev/%s", q);
-						pclose(f);
-						return (true);
-					}
-			}
-			pclose(f);
+		(void)run_out((const char *const[]){ "/sbin/camcontrol", "devlist", NULL }, out, sizeof(out), 20);
+		for (rest = out; (line = strsep(&rest, "\n")) != NULL; ) {
+			if ((p = strstr(line, key)) == NULL)
+				continue;
+			for (p += strlen(key); (q = strsep(&p, ",)")) != NULL; )
+				if (strncmp(q, "da", 2) == 0) {
+					snprintf(dev, len, "/dev/%s", q);
+					return (true);
+				}
 		}
 		usleep(500000);
 	}
@@ -789,24 +1018,28 @@ lun_device(uint32_t lun, char *dev, size_t len)
 }
 
 /*
- * La partizione UFS del disco della distro: p4 (schema dell'installazione di FreeBSD), poi p2, p1. Il disco appena
- * collegato compare prima della sua tabella GPT (prova del 03/11 17:01: da2 c'era, da2p4 non ancora): si aspetta
- * fino a 10 s, e solo alla fine si ripiega sul disco intero.
+ * La partizione UFS del disco della distro: la prima di tipo freebsd-ufs in "gpart show -p <disco>"
+ * ("  2163891  10486413  da2p4  freebsd-ufs  (5.0G)"). Si legge il TIPO, non si indovina dal suffisso: il disco
+ * appena collegato compare prima delle sue partizioni e i nodi arrivano uno alla volta (prova del 03/11 17:38: c'era
+ * gia' da2p2, la EFI, e non ancora da2p4). Si aspetta fino a 10 s; un disco senza GPT si usa intero.
  */
 static bool
 distro_partition(const char *disk, char *part, size_t len)
 {
-	static const char *const suffixes[] = { "p4", "p2", "p1" };
+	char out[4096], name[64], type[64];
+	char *line, *rest;
 	struct stat st;
-	size_t i;
 	int tries;
 
 	for (tries = 0; tries < 20; tries++) {
-		for (i = 0; i < nitems(suffixes); i++) {
-			snprintf(part, len, "%s%s", disk, suffixes[i]);
-			if (stat(part, &st) == 0)
-				return (true);
-		}
+		(void)run_out((const char *const[]){ "/sbin/gpart", "show", "-p", disk + strlen("/dev/"), NULL }, out,
+		    sizeof(out), 20);
+		for (rest = out; (line = strsep(&rest, "\n")) != NULL; )
+			if (sscanf(line, "%*s %*s %63s %63s", name, type) == 2 && strcmp(type, "freebsd-ufs") == 0) {
+				snprintf(part, len, "/dev/%s", name);
+				if (stat(part, &st) == 0)
+					return (true);
+			}
 		usleep(500000);
 	}
 	snprintf(part, len, "%s", disk);
@@ -821,9 +1054,50 @@ is_mounted(const char *path)
 	return (statfs(path, &sf) == 0 && strcmp(sf.f_mntonname, path) == 0);
 }
 
-/* monta il disco della distro su DISTRO_PATH (fsck prima: wsl --shutdown spegne la VM senza smontare); 0 o errno */
+static int mount_distro_locked(uint32_t lun, bool ro, bool with_devfs);
+
+/*
+ * Monta il disco della distro su DISTRO_PATH; 0 o errno. Sotto lucchetto: due istanze (un wsl.exe ancora fermo e uno
+ * nuovo) facevano fsck e mount sullo stesso disco insieme (prova del 03/11 18:00: WSL_E_DISK_CORRUPTED).
+ */
 static int
 mount_distro(uint32_t lun, bool ro, bool with_devfs)
+{
+	int fd, rc;
+
+	fd = open("/var/run/claude-wslinit-distro.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+	if (fd < 0 || flock(fd, LOCK_EX) < 0)
+		warn("distro: lucchetto");
+	rc = mount_distro_locked(lun, ro, with_devfs);
+	if (fd >= 0)
+		close(fd);
+	return (rc);
+}
+
+/* fine dell'istanza: chiude tutti i suoi discendenti, poi smonta devfs e la distro (con sync) */
+static void
+unmount_distro(const char *what)
+{
+	struct procctl_reaper_kill rk;
+	int rc;
+
+	memset(&rk, 0, sizeof(rk));
+	rk.rk_sig = SIGKILL;
+	if (procctl(P_PID, getpid(), PROC_REAP_KILL, &rk) < 0)
+		warn("%s: PROC_REAP_KILL", what);
+	else
+		warnx("%s: chiusi %u processi", what, rk.rk_killed);
+	usleep(200000);
+	sync();
+	if (is_mounted(DISTRO_PATH "/dev"))
+		(void)run((const char *const[]){ "/sbin/umount", DISTRO_PATH "/dev", NULL });
+	rc = is_mounted(DISTRO_PATH) ? run((const char *const[]){ "/sbin/umount", DISTRO_PATH, NULL }) : 0;
+	warnx("%s: distro smontata (%d)", what, rc);
+}
+
+/* monta il disco della distro su DISTRO_PATH (fsck prima: wsl --shutdown spegne la VM senza smontare); 0 o errno */
+static int
+mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 {
 	char disk[64], part[80];
 	int rc;
@@ -832,10 +1106,12 @@ mount_distro(uint32_t lun, bool ro, bool with_devfs)
 		warnx("distro: %s gia' montato", DISTRO_PATH);
 		return (0);
 	}
+	warnx("distro: cerco il disco al lun %u", lun);
 	if (!lun_device(lun, disk, sizeof(disk))) {
 		warnx("distro: nessun disco al lun %u", lun);
 		return (ENODEV);
 	}
+	warnx("distro: disco %s, cerco la partizione UFS", disk);
 	if (!distro_partition(disk, part, sizeof(part))) {
 		warnx("distro: nessuna partizione su %s", disk);
 		return (ENODEV);
@@ -951,11 +1227,14 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 		/* la distro FreeBSD dell'utente: il suo disco diventa la radice di tutto quello che l'istanza lancia */
 		res.result = mount_distro(li->device_id, (li->flags & LAUNCH_FLAG_READ_ONLY) != 0, true);
 		res.failure_step = 1;		/* LxInitCreateInstanceStepMountDisk */
-		if (res.result == 0 && (chroot(DISTRO_PATH) < 0 || chdir("/") < 0)) {
-			warn("%s: chroot(%s)", what, DISTRO_PATH);
-			res.result = errno;
+		if (res.result == 0 && access(DISTRO_PATH "/bin/sh", X_OK) < 0) {
+			warn("%s: %s/bin/sh", what, DISTRO_PATH);
+			res.result = ENOENT;
 			res.failure_step = 3;	/* LxInitCreateInstanceStepLaunchInit */
 		}
+		/* tutti i discendenti (sessioni, comandi, loro figli) restano sotto l'istanza: alla fine si chiudono tutti */
+		if (procctl(P_PID, getpid(), PROC_REAP_ACQUIRE, NULL) < 0)
+			warn("%s: PROC_REAP_ACQUIRE", what);
 	}
 	chan_send(&c, &res, sizeof(res), NULL);
 	warnx("%s: CreateInstanceResult mandato (risultato %d)", what, res.result);
@@ -977,6 +1256,8 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 			    msg_str(m, *(uint32_t *)(m + sizeof(*h))));
 			break;
 		case MSG_TERMINATE_INSTANCE:
+			if (distro_disk)
+				unmount_distro(what);
 			memset(&rb, 0, sizeof(rb));
 			rb.h.type = MSG_RESULT_BOOL;
 			rb.result = true;

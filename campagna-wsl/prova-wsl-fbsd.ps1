@@ -7,7 +7,8 @@ param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (
       [string]$Riga = "console=comconsole rootdev=disk0p4:",
       [string[]]$Comando = @("uname", "-a"),   # 03/11 (I2): eseguito con wsl.exe -e; l'uscita dice chi ha risposto
       [string]$Distro = "FreeBSD",             # 03/11 (I2): la distro FreeBSD, registrata con --import-in-place
-      [string]$DistroVhd = "C:\claude\wsl-fbsd\distro\FreeBSD.vhd")
+      [string]$DistroVhd = "C:\claude\wsl-fbsd\distro\FreeBSD.vhd",
+      [switch]$Interattivo)                    # 03/11: alla fine la shell di FreeBSD in questa finestra (exit per uscire)
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -44,6 +45,11 @@ try {
     & wsl.exe -d $Distro -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE
     Write-Host "[claude] wsl -l -v:"; & wsl.exe -l -v 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+    if ($Interattivo) {
+        Passo "shell interattiva: wsl.exe -d $Distro (exit per uscire)"
+        & wsl.exe -d $Distro
+        Write-Host "[claude] shell interattiva chiusa, codice $LASTEXITCODE"
+    }
     $ErrorActionPreference = $vecchio
     Passo ("wsl.exe uscito con codice {0} dopo {1:N0} s" -f $rc, ((Get-Date) - $t0).TotalSeconds)
     Write-Host "ESITO: FATTO (vedi la console di debug di WSL)" -ForegroundColor Green
