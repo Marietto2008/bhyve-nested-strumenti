@@ -8,7 +8,8 @@ param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (
       [string[]]$Comando = @("uname", "-a"),   # 03/11 (I2): eseguito con wsl.exe -e; l'uscita dice chi ha risposto
       [string]$Distro = "FreeBSD",             # 03/11 (I2): la distro FreeBSD, registrata con --import-in-place
       [string]$DistroVhd = "C:\claude\wsl-fbsd\distro\FreeBSD.vhd",
-      [switch]$Interattivo)                    # 03/11: alla fine la shell di FreeBSD in questa finestra (exit per uscire)
+      [switch]$Interattivo,                    # 03/11: alla fine la shell di FreeBSD in questa finestra (exit per uscire)
+      [string]$ComandoFile = "")               # 03/11: script sh (senza virgolette doppie) eseguito con sh -c
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -41,6 +42,7 @@ try {
         & wsl.exe --import-in-place $Distro $DistroVhd 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
         Write-Host "[claude] import-in-place: codice $LASTEXITCODE"
     }
+    if ($ComandoFile) { $Comando = @("sh", "-c", ((Get-Content $ComandoFile) -join "; ")) }
     Write-Host "[claude] comando: wsl.exe -d $Distro -e $($Comando -join ' ')"
     & wsl.exe -d $Distro -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE

@@ -33,6 +33,10 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <net/if.h>
+#include <net/if_dl.h>
+#include <ctype.h>
+#include <ifaddrs.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -84,6 +88,10 @@ struct sockaddr_hvs {
 #define MSG_EARLY_CONFIG		36
 #define MSG_INITIAL_CONFIG		37
 #define MSG_GUEST_CAPABILITIES		43
+#define MSG_GNS_INTERFACE_CONFIGURATION	53
+#define MSG_GNS_RESULT			54
+#define MSG_GNS_NOTIFICATION		55
+#define MSG_GNS_CONNECT_TEST_REQUEST	74
 #define MSG_RESULT_BOOL			76
 #define MSG_RESULT_INT32		77
 #define MSG_RESULT_UINT32		78
@@ -95,6 +103,7 @@ struct sockaddr_hvs {
 #define SHELL_OPTIONS_LOGIN		0x1	/* ShellOptionsLogin */
 #define PROCESS_SOCKETS			5	/* LX_INIT_UTILITY_VM_CREATE_PROCESS_SOCKET_COUNT */
 #define DISTRO_PATH			"/distro"	/* qui si monta il disco della distro FreeBSD */
+#define RESOLV_CONF			"/var/run/claude-wslinit-resolv.conf"	/* DNS dal servizio, copiato nella distro */
 
 struct msg_header {
 	uint32_t type;
@@ -1126,6 +1135,8 @@ mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 	if (with_devfs && run((const char *const[]){ "/sbin/mount", "-t", "devfs", "devfs", DISTRO_PATH "/dev", NULL }) != 0)
 		warnx("distro: devfs su %s/dev non montato", DISTRO_PATH);
 	warnx("distro: %s montato su %s (%s)", part, DISTRO_PATH, ro ? "sola lettura" : "lettura e scrittura");
+	if (!ro && access(RESOLV_CONF, R_OK) == 0)
+		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
 	return (0);
 }
 
@@ -1204,6 +1215,204 @@ import_inplace(int fd, const char *msg)
 	    version);
 	close(s1);
 	close(s2);
+	_exit(0);
+}
+
+
+/*
+ * Rete (modalita' NAT): il motore GNS. Il servizio aggiunge a caldo una scheda di rete Hyper-V (hn in FreeBSD) e sul
+ * canale GNS manda, come transazioni, JSON da applicare (GnsEngine.cpp in Linux, NatNetworking.cpp nel servizio):
+ *   53 InterfaceConfiguration: l'endpoint HNS {IPAddress, PrefixLength, GatewayAddress, MacAddress, ...};
+ *   55 Notification: {AdapterId GUID} + ModifyGuestEndpointSettingRequest {RequestType, ResourceType, Settings}
+ *      con ResourceType "Route" {NextHop, DestinationPrefix, Family}, "DNS" {ServerList, Search}, "Interface" {NlMtu};
+ *   altri (61-75): niente da fare qui, ConnectTestRequest (74) serve solo alla telemetria.
+ * Ogni messaggio vuole in risposta LX_GNS_RESULT {Result}: senza, il servizio resta fermo nella creazione della VM.
+ */
+struct gns_result {
+	struct msg_header h;
+	int32_t result;
+};
+
+/* il valore di "chiave": stringa (senza virgolette) o numero; false se la chiave non c'e' */
+static bool
+json_get(const char *json, const char *key, char *val, size_t len)
+{
+	char pat[64];
+	const char *p, *e;
+
+	snprintf(pat, sizeof(pat), "\"%s\":", key);
+	if ((p = strstr(json, pat)) == NULL)
+		return (false);
+	p += strlen(pat);
+	while (*p == ' ')
+		p++;
+	if (*p == '"') {
+		p++;
+		e = strchr(p, '"');
+	} else
+		e = p + strcspn(p, ",}] ");
+	if (e == NULL)
+		return (false);
+	snprintf(val, len, "%.*s", (int)(e - p), p);
+	return (true);
+}
+
+/* l'interfaccia col MAC indicato ("00-15-5D-12-34-56"); la scheda arriva a caldo: si aspetta fino a 15 s */
+static bool
+iface_by_mac(const char *mac, char *name, size_t len)
+{
+	struct ifaddrs *ifa, *i;
+	struct sockaddr_dl *sdl;
+	unsigned int b[6];
+	unsigned char want[6];
+	int k, tries;
+
+	if (sscanf(mac, "%x%*[-:]%x%*[-:]%x%*[-:]%x%*[-:]%x%*[-:]%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6)
+		return (false);
+	for (k = 0; k < 6; k++)
+		want[k] = (unsigned char)b[k];
+	for (tries = 0; tries < 30; tries++) {
+		if (getifaddrs(&ifa) == 0) {
+			for (i = ifa; i != NULL; i = i->ifa_next) {
+				if (i->ifa_addr == NULL || i->ifa_addr->sa_family != AF_LINK)
+					continue;
+				sdl = (struct sockaddr_dl *)i->ifa_addr;
+				if (sdl->sdl_alen == 6 && memcmp(LLADDR(sdl), want, 6) == 0) {
+					snprintf(name, len, "%s", i->ifa_name);
+					freeifaddrs(ifa);
+					return (true);
+				}
+			}
+			freeifaddrs(ifa);
+		}
+		usleep(500000);
+	}
+	return (false);
+}
+
+/* resolv.conf dal JSON del DNS ("ServerList":"a,b", "Search":"x,y"); nella distro se e' montata */
+static int
+write_resolv_conf(const char *json)
+{
+	char servers[512], search[512], *p, *t;
+	FILE *f;
+
+	if (!json_get(json, "ServerList", servers, sizeof(servers)))
+		servers[0] = '\0';
+	if (!json_get(json, "Search", search, sizeof(search)))
+		search[0] = '\0';
+	if ((f = fopen(RESOLV_CONF, "w")) == NULL)
+		return (errno);
+	fprintf(f, "# generato da claude-wslinit con i DNS del servizio WSL\n");
+	for (p = search; *p == ','; p++)
+		;
+	if (*p != '\0') {
+		fprintf(f, "search");
+		for (t = strtok(p, ","); t != NULL; t = strtok(NULL, ","))
+			fprintf(f, " %s", t);
+		fprintf(f, "\n");
+	}
+	for (t = strtok(servers, ","); t != NULL; t = strtok(NULL, ","))
+		fprintf(f, "nameserver %s\n", t);
+	fclose(f);
+	if (is_mounted(DISTRO_PATH))
+		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
+	return (0);
+}
+
+static int
+gns_interface_configuration(const char *json, char *ifname, size_t len)
+{
+	char mac[64], ip[64], prefix[8], addr[80];
+
+	if (!json_get(json, "MacAddress", mac, sizeof(mac)) || !iface_by_mac(mac, ifname, len)) {
+		warnx("gns: nessuna scheda col MAC '%s'", json_get(json, "MacAddress", mac, sizeof(mac)) ? mac : "?");
+		return (ENODEV);
+	}
+	if (!json_get(json, "IPAddress", ip, sizeof(ip)) || *ip == '\0') {
+		warnx("gns: %s senza indirizzo (arrivera' con una notifica)", ifname);
+		return (run((const char *const[]){ "/sbin/ifconfig", ifname, "up", NULL }) == 0 ? 0 : EIO);
+	}
+	if (!json_get(json, "PrefixLength", prefix, sizeof(prefix)))
+		snprintf(prefix, sizeof(prefix), "24");
+	snprintf(addr, sizeof(addr), "%s/%s", ip, prefix);
+	warnx("gns: %s (MAC %s) -> inet %s", ifname, mac, addr);
+	return (run((const char *const[]){ "/sbin/ifconfig", ifname, "inet", addr, "up", NULL }) == 0 ? 0 : EIO);
+}
+
+static int
+gns_notification(const char *json, const char *ifname)
+{
+	char type[32], req[32], v[128], fam[8];
+
+	if (!json_get(json, "ResourceType", type, sizeof(type)))
+		return (EINVAL);
+	if (!json_get(json, "RequestType", req, sizeof(req)))
+		snprintf(req, sizeof(req), "Add");
+	if (strcmp(type, "Route") == 0) {
+		char hop[64], dest[64];
+
+		if (json_get(json, "Family", fam, sizeof(fam)) && strcmp(fam, "2") != 0) {
+			warnx("gns: rotta di famiglia %s ignorata (solo IPv4 per ora)", fam);
+			return (0);
+		}
+		if (!json_get(json, "NextHop", hop, sizeof(hop)) || !json_get(json, "DestinationPrefix", dest, sizeof(dest)))
+			return (EINVAL);
+		warnx("gns: rotta %s %s via %s", req, dest, hop);
+		if (strcmp(dest, "0.0.0.0/0") == 0)
+			snprintf(dest, sizeof(dest), "default");
+		if (strcmp(req, "Remove") == 0)
+			return (run((const char *const[]){ "/sbin/route", "-q", "delete", dest, hop, NULL }) == 0 ? 0 : EIO);
+		(void)run((const char *const[]){ "/sbin/route", "-q", "delete", dest, NULL });
+		return (run((const char *const[]){ "/sbin/route", "-q", "add", dest, hop, NULL }) == 0 ? 0 : EIO);
+	}
+	if (strcmp(type, "DNS") == 0) {
+		warnx("gns: DNS %s", json_get(json, "ServerList", v, sizeof(v)) ? v : "(nessuno)");
+		return (write_resolv_conf(json));
+	}
+	if (strcmp(type, "Interface") == 0) {
+		if (json_get(json, "NlMtu", v, sizeof(v)) && atoi(v) > 0 && *ifname != '\0') {
+			warnx("gns: %s mtu %s", ifname, v);
+			return (run((const char *const[]){ "/sbin/ifconfig", ifname, "mtu", v, NULL }) == 0 ? 0 : EIO);
+		}
+		return (0);
+	}
+	warnx("gns: risorsa %s (%s) non gestita", type, req);
+	return (0);
+}
+
+static void
+gns_engine(int fd)
+{
+	struct chan c = { fd, 0, "gns" };
+	struct gns_result r;
+	char ifname[IFNAMSIZ] = "";
+	char *m;
+
+	while ((m = chan_recv(&c)) != NULL) {
+		struct msg_header *h = (struct msg_header *)m;
+
+		memset(&r, 0, sizeof(r));
+		switch (h->type) {
+		case MSG_GNS_INTERFACE_CONFIGURATION:
+			warnx("gns: InterfaceConfiguration %s", m + sizeof(*h));
+			r.result = gns_interface_configuration(m + sizeof(*h), ifname, sizeof(ifname));
+			break;
+		case MSG_GNS_NOTIFICATION:
+			/* dopo l'intestazione: AdapterId (GUID, 16 byte), poi il JSON */
+			warnx("gns: Notification %s", m + sizeof(*h) + 16);
+			r.result = gns_notification(m + sizeof(*h) + 16, ifname);
+			break;
+		default:
+			warnx("gns: tipo %u (%s): niente da fare", h->type, m + sizeof(*h));
+			break;
+		}
+		r.h.type = MSG_GNS_RESULT;
+		chan_send(&c, &r, sizeof(r), h);
+		warnx("gns: risposto %d", r.result);
+		free(m);
+	}
+	warnx("gns: il servizio ha chiuso il canale");
 	_exit(0);
 }
 
@@ -1334,6 +1543,12 @@ main(void)
 			warnx("EarlyConfig: hostname '%s'", msg_str(msg, e->hostname_offset));
 			extra = connect_host(WSL_INIT_PORT);	/* canale GNS */
 			warnx("canale GNS fd %d", extra);
+			if (fork() == 0) {
+				close(mainc.fd);
+				close(notify);
+				gns_engine(extra);
+			}
+			close(extra);
 			if (e->enable_dns_tunneling) {
 				extra = connect_host(WSL_INIT_PORT);
 				warnx("canale DNS fd %d", extra);
