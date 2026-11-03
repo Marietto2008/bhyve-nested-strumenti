@@ -27,6 +27,8 @@
 #include <sys/event.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/un.h>
 #include <sys/procctl.h>
 #include <sys/mount.h>
 #include <sys/socket.h>
@@ -108,11 +110,14 @@ struct sockaddr_hvs {
 
 #define LAUNCH_FLAG_READ_ONLY		0x1	/* LxMiniInitMessageFlagMountReadOnly */
 #define LAUNCH_FLAG_SYSTEM_DISTRO	0x4	/* LxMiniInitMessageFlagLaunchSystemDistro */
+#define PROCESS_FLAG_INTEROP		0x10	/* LxInitCreateProcessFlagsInteropEnabled */
 #define PROCESS_FLAGS_CONSOLE		0x7	/* LxInitCreateProcessFlagsStd{In,Out,Err}Console: bit i = fd i */
 #define PROCESS_FLAG_ALLOW_OOBE		0x20	/* LxInitCreateProcessFlagAllowOOBE */
 #define SHELL_OPTIONS_LOGIN		0x1	/* ShellOptionsLogin */
 #define PROCESS_SOCKETS			5	/* LX_INIT_UTILITY_VM_CREATE_PROCESS_SOCKET_COUNT */
 #define DISTRO_PATH			"/distro"	/* qui si monta il disco della distro FreeBSD */
+#define TOOLS_DIR			"/usr/local/libexec/claude-wsl"	/* strumenti (wslexe), nel sistema */
+#define DISTRO_TOOLS			"/usr/lib/wsl"	/* ... visti nella distro (nullfs ro), come /usr/lib/wsl in Linux */
 #define RESOLV_CONF			"/var/run/claude-wslinit-resolv.conf"	/* DNS dal servizio, copiato nella distro */
 
 struct msg_header {
@@ -642,6 +647,9 @@ apply_timezone(const char *tz)
  * Nome vuoto = shell (come init.cpp: argv[0] "-sh" se e' chiesta la shell di login), altrimenti execvp del nome
  * con la riga di comando cosi' com'e'.
  */
+/* per il comando: il socket d'interop della sessione (vista dalla distro), se c'e' */
+static char interop_path[128];
+
 static void
 exec_command(const char *msg, int fds[])
 {
@@ -701,8 +709,19 @@ exec_command(const char *msg, int fds[])
 	clearenv();
 	for (i = 0; i < envc; i++)
 		putenv(env[i]);
-	setenv("PATH", pw->pw_uid == 0 ? "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin" :
-	    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin:/usr/local/sbin", 1);
+	setenv("PATH", pw->pw_uid == 0 ? "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" DISTRO_TOOLS "/bin" :
+	    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin:/usr/local/sbin:" DISTRO_TOOLS "/bin", 1);
+	if (*interop_path != '\0')
+		setenv("WSL_INTEROP", interop_path, 1);
+	{
+		/* la cartella di Windows (per wslexe): SystemRoot dall'ambiente di wsl.exe */
+		char **nt = msg_strarray(msg, cp->nt_environment_offset, NULL);
+		int k;
+
+		for (k = 0; nt[k] != NULL; k++)
+			if (strncasecmp(nt[k], "SystemRoot=", 11) == 0)
+				setenv("WSL_SYSTEMROOT", nt[k] + 11, 1);
+	}
 	setenv("HOME", pw->pw_dir, 1);
 	setenv("USER", pw->pw_name, 1);
 	setenv("LOGNAME", pw->pw_name, 1);
@@ -847,6 +866,46 @@ relay_pty(const char *msg, int sockets[], int master, pid_t child)
 	return (status);
 }
 
+/*
+ * Il server d'interop della sessione (init.cpp e ConfigHandleInteropMessage in Linux): un socket unix nella distro
+ * (WSL_INTEROP); i programmi (wslexe) vi mandano CreateProcessUtilityVm (8) per far partire un processo di Windows, e
+ * qui si inoltra tale e quale sul socket interop verso wsl.exe. Quel canale porta anche l'ExitStatus finale: il
+ * contatore dei messaggi fuori transazione sta in memoria condivisa tra questo processo e il processo di appoggio.
+ */
+static void
+interop_server(int lfd, struct chan *ic)
+{
+	struct msg_header h;
+	char *m;
+	int s;
+
+	for (;;) {
+		s = accept(lfd, NULL, NULL);
+		if (s < 0) {
+			if (errno == EINTR)
+				continue;
+			_exit(1);
+		}
+		if (read_all(s, &h, sizeof(h)) && h.size >= sizeof(h) && h.size < 1024 * 1024 &&
+		    (m = malloc(h.size)) != NULL) {
+			memcpy(m, &h, sizeof(h));
+			if (read_all(s, m + sizeof(h), h.size - sizeof(h))) {
+				if (h.type == MSG_CREATE_PROCESS_UVM) {
+					struct msg_header *mh = (struct msg_header *)m;
+
+					mh->transaction_id = __atomic_add_fetch(&ic->sent, 1, __ATOMIC_SEQ_CST);
+					mh->transaction_step = 0;
+					write_all(ic->fd, m, h.size);
+					warnx("interop: processo di Windows richiesto (%u byte)", h.size);
+				} else
+					warnx("interop: messaggio tipo %u non gestito", h.type);
+			}
+			free(m);
+		}
+		close(s);
+	}
+}
+
 /* CreateProcessUtilityVm sul canale della sessione */
 static void
 create_process(struct chan *c, const char *msg)
@@ -854,7 +913,10 @@ create_process(struct chan *c, const char *msg)
 	const struct create_process *cp = (const struct create_process *)msg;
 	struct result_uint32 r;
 	struct exit_status es;
-	struct chan ctl;
+	struct chan *ic;
+	struct sockaddr_un sun;
+	pid_t isrv = -1;
+	int ilfd = -1;
 	char **argv;
 	char *m;
 	int sockets[PROCESS_SOCKETS + 1];
@@ -896,6 +958,27 @@ create_process(struct chan *c, const char *msg)
 	/* il processo di appoggio: lancia il comando, ne aspetta la fine, manda lo stato d'uscita */
 	close(c->fd);
 	signal(SIGCHLD, SIG_DFL);
+	ic = mmap(NULL, sizeof(*ic), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+	if (ic == MAP_FAILED)
+		err(1, "mmap");
+	*ic = (struct chan){ sockets[4], 0, "interop", 0 };
+	if ((cp->flags & PROCESS_FLAG_INTEROP) != 0) {
+		(void)mkdir(DISTRO_PATH "/var/run/WSL", 0777);
+		(void)chmod(DISTRO_PATH "/var/run/WSL", 0777);
+		memset(&sun, 0, sizeof(sun));
+		sun.sun_family = AF_UNIX;
+		snprintf(sun.sun_path, sizeof(sun.sun_path), DISTRO_PATH "/var/run/WSL/%d_interop", getpid());
+		sun.sun_len = (uint8_t)SUN_LEN(&sun);
+		ilfd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (ilfd >= 0 && bind(ilfd, (struct sockaddr *)&sun, sizeof(sun)) == 0 && listen(ilfd, 16) == 0) {
+			(void)chmod(sun.sun_path, 0666);
+			snprintf(interop_path, sizeof(interop_path), "/var/run/WSL/%d_interop", getpid());
+			isrv = fork();
+			if (isrv == 0)
+				interop_server(ilfd, ic);
+		} else
+			warn("interop: %s", sun.sun_path);
+	}
 	master = slave = -1;
 	if ((cp->flags & PROCESS_FLAGS_CONSOLE) != 0) {
 		memset(&ws, 0, sizeof(ws));
@@ -911,8 +994,11 @@ create_process(struct chan *c, const char *msg)
 	child = fork();
 	if (child < 0)
 		err(1, "fork");
-	if (child == 0)
+	if (child == 0) {
+		if (ilfd >= 0)
+			close(ilfd);
 		exec_command(msg, fds);
+	}
 	if (master >= 0) {
 		close(slave);
 		/* i socket dei fd non console li tiene solo il comando */
@@ -940,9 +1026,14 @@ create_process(struct chan *c, const char *msg)
 	 * svccomm.cpp) e lo rimanda indietro come conferma. Il quarto (controllo del terminale) porta solo i cambi di
 	 * dimensione della finestra.
 	 */
-	ctl = (struct chan){ sockets[4], 0, "interop", 0 };
-	chan_send(&ctl, &es, sizeof(es), NULL);
-	while ((m = chan_recv(&ctl)) != NULL) {
+	if (isrv > 0) {
+		kill(isrv, SIGKILL);
+		(void)waitpid(isrv, NULL, 0);
+		close(ilfd);
+		(void)unlink(sun.sun_path);
+	}
+	chan_send(ic, &es, sizeof(es), NULL);
+	while ((m = chan_recv(ic)) != NULL) {
 		uint32_t type = ((struct msg_header *)m)->type;
 
 		free(m);
@@ -1263,6 +1354,8 @@ unmount_distro(const char *what)
 		warnx("%s: chiusi %u processi", what, rk.rk_killed);
 	usleep(200000);
 	sync();
+	if (is_mounted(DISTRO_PATH DISTRO_TOOLS))
+		(void)run((const char *const[]){ "/sbin/umount", DISTRO_PATH DISTRO_TOOLS, NULL });
 	if (is_mounted(DISTRO_PATH "/dev"))
 		(void)run((const char *const[]){ "/sbin/umount", DISTRO_PATH "/dev", NULL });
 	rc = is_mounted(DISTRO_PATH) ? run((const char *const[]){ "/sbin/umount", DISTRO_PATH, NULL }) : 0;
@@ -1299,6 +1392,14 @@ mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 	}
 	if (with_devfs && run((const char *const[]){ "/sbin/mount", "-t", "devfs", "devfs", DISTRO_PATH "/dev", NULL }) != 0)
 		warnx("distro: devfs su %s/dev non montato", DISTRO_PATH);
+	/* gli strumenti di WSL (wslexe) nella distro, in sola lettura, come /usr/lib/wsl in Linux */
+	if (with_devfs && !ro && access(TOOLS_DIR, X_OK) == 0) {
+		(void)mkdir(DISTRO_PATH "/usr/lib", 0755);
+		(void)mkdir(DISTRO_PATH DISTRO_TOOLS, 0755);
+		if (run((const char *const[]){ "/sbin/mount_nullfs", "-o", "ro", TOOLS_DIR, DISTRO_PATH DISTRO_TOOLS,
+		    NULL }) != 0)
+			warnx("distro: strumenti non montati su %s", DISTRO_TOOLS);
+	}
 	warnx("distro: %s montato su %s (%s)", part, DISTRO_PATH, ro ? "sola lettura" : "lettura e scrittura");
 	if (!ro && access(RESOLV_CONF, R_OK) == 0 && wslconf_bool(DISTRO_PATH, "network", "generateResolvConf", true))
 		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
@@ -2053,6 +2154,8 @@ main(void)
 			uint32_t lun = *(uint32_t *)(msg + sizeof(*h));
 			int rc = 0;
 
+			if (is_mounted(DISTRO_PATH DISTRO_TOOLS))
+				(void)run((const char *const[]){ "/sbin/umount", "-f", DISTRO_PATH DISTRO_TOOLS, NULL });
 			if (is_mounted(DISTRO_PATH "/dev"))
 				(void)run((const char *const[]){ "/sbin/umount", "-f", DISTRO_PATH "/dev", NULL });
 			if (is_mounted(DISTRO_PATH))

@@ -18,6 +18,10 @@ mount -t ufs /dev/${md}p4 "$R"
 install -m 555 "$W/claude-wslinit" "$R/usr/local/sbin/claude-wslinit"
 install -m 555 "$W/claude_wslinit.rc" "$R/usr/local/etc/rc.d/claude_wslinit"
 install -d -m 755 "$R/distro"	# (I2) punto di montaggio del disco della distro FreeBSD
+# (punto 4) gli strumenti di WSL per la distro (nullfs ro su /usr/lib/wsl): wslexe, l'interop verso Windows
+install -d -m 755 "$R/usr/local/libexec/claude-wsl/bin"
+install -m 555 "$W/wslexe" "$R/usr/local/libexec/claude-wsl/bin/wslexe"
+echo "wslexe: $(sha256 -q "$R/usr/local/libexec/claude-wsl/bin/wslexe")"
 # (I2) la debug shell di WSL: porta virtio-serial "hvc2" (LX_INIT_HVC_DEBUG_SHELL) = ttyV0.2; da Windows: wsl --debug-shell
 grep -q '^ttyV0.2' "$R/etc/ttys" || printf '%s\n' '# Claude 03/11/2026: debug shell di WSL (porta virtio hvc2, wsl --debug-shell)' \
 	'ttyV0.2	"/usr/libexec/getty Pc"	xterm	on  secure' >> "$R/etc/ttys"
