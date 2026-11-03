@@ -3,7 +3,12 @@
 # finestra mentre arriva, e i tasti vanno a FreeBSD (login sulla console seriale). F10 = spegne la VM ed esce.
 # Registro: dal-vivo-com1.txt (tutta la COM1) e dal-vivo-esito.txt (i passi). Va lanciato nella sessione di marietto,
 # da amministratore (schtasks /it /rl highest): computecore.dll richiede i privilegi.
-param([string]$Disco = "C:\claude\wsl-fbsd\fbsd152-wsl.vhdx", [int]$Cpu = 2, [int]$MemMB = 2048)
+# -Avvio VmbFs (03/11, ADR-001 opzione B): il firmware carica loader.efi da una CARTELLA di Windows (come WSL fa
+# su ARM64 col kernel), e OptionalData gli passa le variabili (rootdev=...) per trovare il kernel sul disco SCSI.
+param([string]$Disco = "C:\claude\wsl-fbsd\fbsd152-wsl.vhdx", [int]$Cpu = 2, [int]$MemMB = 2048,
+      [ValidateSet("ScsiDrive", "VmbFs")][string]$Avvio = "ScsiDrive",
+      [string]$VmbFsDir = "C:\claude\wsl-fbsd\vmbfs", [string]$VmbFsFile = "\loader.efi",
+      [string]$Opzioni = "console=comconsole rootdev=disk0p4:")
 $ErrorActionPreference = "Stop"
 $dir = "C:\claude\wsl-fbsd"; $log = "$dir\dal-vivo-com1.txt"; $esito = "$dir\dal-vivo-esito.txt"
 $Host.UI.RawUI.WindowTitle = "FreeBSD 15.2 come VM di Hyper-V (HCS) - console COM1 dal vivo - F10 spegne"
@@ -39,6 +44,12 @@ Write-Host "Disco $Disco, $Cpu CPU, $MemMB MB. Quello che segue e' la console se
 $id = [guid]::NewGuid().ToString()
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $pipe = "claude-fbsd-com1"
+if ($Avvio -eq "VmbFs") {
+    $bootThis = ConvertTo-Json -Compress @{ DeviceType = "VmbFs"; VmbFsRootPath = $VmbFsDir; DevicePath = $VmbFsFile; OptionalData = $Opzioni }
+} else {
+    $bootThis = '{ "DevicePath": "Primary disk", "DiskNumber": 0, "DeviceType": "ScsiDrive" }'
+}
+Write-Host "Avvio: $Avvio $bootThis" -ForegroundColor Yellow
 $json = @"
 {
   "Owner": "claude-fbsd",
@@ -46,7 +57,7 @@ $json = @"
   "ShouldTerminateOnLastHandleClosed": true,
   "VirtualMachine": {
     "StopOnReset": true,
-    "Chipset": { "Uefi": { "BootThis": { "DevicePath": "Primary disk", "DiskNumber": 0, "DeviceType": "ScsiDrive" } } },
+    "Chipset": { "Uefi": { "BootThis": $bootThis } },
     "ComputeTopology": {
       "Memory": { "SizeInMB": $MemMB, "AllowOvercommit": true, "BackingPageSize": "Small" },
       "Processor": { "Count": $Cpu }
