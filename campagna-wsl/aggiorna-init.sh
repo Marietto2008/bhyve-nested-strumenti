@@ -17,6 +17,7 @@ trap 'umount "$R" 2>/dev/null; mdconfig -d -u ${md#md} 2>/dev/null' EXIT
 mount -t ufs /dev/${md}p4 "$R"
 install -m 555 "$W/claude-wslinit" "$R/usr/local/sbin/claude-wslinit"
 install -m 555 "$W/claude_wslinit.rc" "$R/usr/local/etc/rc.d/claude_wslinit"
+install -d -m 755 "$R/distro"	# (I2) punto di montaggio del disco della distro FreeBSD
 echo "init aggiornato: $(sha256 -q "$R/usr/local/sbin/claude-wslinit")"
 umount "$R"; mdconfig -d -u ${md#md}; trap - EXIT
 qemu-img convert -O vpc -o subformat=fixed,force_size=on "$IMG/$SORG.raw" "$IMG/$NOME.vhd"

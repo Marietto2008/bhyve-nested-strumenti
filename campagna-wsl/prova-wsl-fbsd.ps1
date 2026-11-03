@@ -5,7 +5,9 @@
 param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (controprova del blocco su virtio_pci)
       [string]$SystemDistro = "C:\\claude\\wsl-fbsd\\fbsd152-wsl.vhd",   # 03/11: anche un disco di AVVIO di prova
       [string]$Riga = "console=comconsole rootdev=disk0p4:",
-      [string[]]$Comando = @("uname", "-a"))   # 03/11 (I2): eseguito con wsl.exe -e; l'uscita dice chi ha risposto
+      [string[]]$Comando = @("uname", "-a"),   # 03/11 (I2): eseguito con wsl.exe -e; l'uscita dice chi ha risposto
+      [string]$Distro = "FreeBSD",             # 03/11 (I2): la distro FreeBSD, registrata con --import-in-place
+      [string]$DistroVhd = "C:\claude\wsl-fbsd\distro\FreeBSD.vhd")
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -28,13 +30,21 @@ try {
     if (Test-Path C:\claude\wsl-fbsd\console-wsl.txt) { Remove-Item C:\claude\wsl-fbsd\console-wsl.txt }
     Passo "1. .wslconfig per FreeBSD"
     Set-Content -Path $cfg -Value ($conf + "`r`n" + ($Extra -join "`r`n")) -Encoding ascii; Get-Content $cfg | Out-Host
-    Passo "2. wsl --shutdown, poi wsl.exe -d Debian (la VM parte con FreeBSD; si apre la console di debug)"
+    Passo "2. wsl --shutdown, poi wsl.exe -d $Distro (la VM parte con FreeBSD; si apre la console di debug)"
     $vecchio = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     & wsl.exe --shutdown 2>&1 | Out-Null
     $t0 = Get-Date
-    Write-Host "[claude] comando: wsl.exe -d Debian -e $($Comando -join ' ')"
-    & wsl.exe -d Debian -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
-    $rc = $LASTEXITCODE; $ErrorActionPreference = $vecchio
+    $registrate = @(& wsl.exe -l -q 2>&1 | ForEach-Object { ("$_" -replace "`0", "").Trim() })
+    if ($registrate -notcontains $Distro) {
+        Passo "2b. la distro $Distro non e' registrata: wsl --import-in-place $Distro $DistroVhd"
+        & wsl.exe --import-in-place $Distro $DistroVhd 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+        Write-Host "[claude] import-in-place: codice $LASTEXITCODE"
+    }
+    Write-Host "[claude] comando: wsl.exe -d $Distro -e $($Comando -join ' ')"
+    & wsl.exe -d $Distro -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+    $rc = $LASTEXITCODE
+    Write-Host "[claude] wsl -l -v:"; & wsl.exe -l -v 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+    $ErrorActionPreference = $vecchio
     Passo ("wsl.exe uscito con codice {0} dopo {1:N0} s" -f $rc, ((Get-Date) - $t0).TotalSeconds)
     Write-Host "ESITO: FATTO (vedi la console di debug di WSL)" -ForegroundColor Green
 }
