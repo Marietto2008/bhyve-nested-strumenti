@@ -2,19 +2,21 @@
 # serie-rete.sh -- Claude 03/11/2026. Avvii ripetuti della configurazione A (vm0-13-qemu.sh) per catturare un avvio
 # in cui la rete virtio-net non parte. Riuscito = la porta 22 di Windows risponde (SYN-ACK: RX e TX funzionano) entro
 # 300 s; allora Windows si spegne via SSH e si riparte. Al PRIMO fallimento la serie si ferma e la VM resta accesa per
-# l'analisi (QMP: qmp.py). Uso: serie-rete.sh [numero di avvii, 6]
+# l'analisi (QMP: qmp.py). Uso: [OPZ="opzioni di vm0-13-qemu.sh"] serie-rete.sh [numero di avvii, 6]
 N=${1:-6}
+OPZ=${OPZ:-"--qemu-sipi --nic-noeventidx --audio"}
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl
 LOGD=/mnt/linuxulator2/vm/wsl2-freebsd-work/logs
 PW=/home/marietto/.config/claude-wsl2/password-windows
 H=IP-WINDOWS-B
 porta22() { python3 -c "import socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex(('$H',22))==0 else 1)"; }
-acceso() { pgrep -f qemu-sipi/qemu-system >/dev/null; }
+acceso() { pgrep -f -- '-name vm0-13-qemu ' >/dev/null; }
 i=1
 while [ $i -le $N ]; do
 	acceso && { echo "$(date +%T) QEMU gia' acceso: mi fermo"; exit 3; }
 	L=$LOGD/vm0-13-avvio-$(date +%Y%m%d-%H%M%S).txt
-	sudo -n daemon -o "$L" sh $C/vm0-13-qemu.sh --qemu-sipi --nic-noeventidx --audio
+	sudo -n daemon -o "$L" sh $C/vm0-13-qemu.sh $OPZ
+	echo "$(date +%T) avvio $i: opzioni $OPZ"
 	sleep 5
 	t0=$(date +%s); ok=0
 	while [ $(( $(date +%s) - t0 )) -lt 300 ]; do

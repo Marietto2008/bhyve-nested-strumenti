@@ -12,12 +12,15 @@ set -u
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 PROVA=0; SNAP=off
 # TRACCIA=1 di base (02/11): la rete virtio-net e' intermittente, ogni avvio fallito deve lasciare la sua traccia
-SIPI=0; NICOPT=""; TRACCIA=1; AUDIO=0
+SIPI=0; NICOPT=""; TRACCIA=1; AUDIO=0; CACHE=writeback; DIAGOSS=0
 for a in "$@"; do case $a in --prova) PROVA=1;; --scrivi) SNAP=off;; --snapshot) SNAP=on;; --qemu-sipi) SIPI=1;;
 	--nic-noeventidx) NICOPT=",event_idx=off";;
 	--trace-virtio) TRACCIA=1;;	# 02/11: eventi virtio/MSI-X dall'avvio in un file a parte (rete intermittente)
+	--diag-hlt-userspace) export BHYVE_HLT_USERSPACE=1;;	# 03/11: SOLO controprova del vecchio modello (HLT atteso in QEMU)
+	--diag-qemu-senza-fix-oss) DIAGOSS=1;;	# 03/11: SOLO controprova: QEMU f5902afb meno 813525873c (poll OSS)
+	--diag-cache-none) CACHE=none;;	# 03/11: SOLO controprova (la rete bloccata dipendeva dal disco lento?), non per l'uso
 	--audio) AUDIO=1;;		# 02/11: HDA di q35 (driver incluso in Windows) su /dev/dsp, come hda in B	# 02/11: prova diagnostica della ricezione virtio-net bloccata
-	*) echo "uso: $0 [--prova] [--snapshot] [--qemu-sipi] [--nic-noeventidx] [--trace-virtio] [--audio]"; exit 4;; esac; done
+	*) echo "uso: $0 [--prova] [--snapshot] [--qemu-sipi] [--nic-noeventidx] [--trace-virtio] [--audio] [--diag-cache-none] [--diag-hlt-userspace] [--diag-qemu-senza-fix-oss]"; exit 4;; esac; done
 C=/mnt/linuxulator2/vm/wsl2/fbsd/campagna-wsl/macchina-vm13.conf
 QEMU=/mnt/linuxulator2/vm/wsl2/fbsd/stage/current/bin/qemu-system-x86_64
 QEMU_SHA=650a2bdec6f0fb61ec19066dcd13edd0b647267fd0cec2d0ce8974124b08859a
@@ -29,6 +32,10 @@ if [ $SIPI = 1 ]; then
 	# principale girava a vuoto a ~270.000 ppoll/s su /dev/dsp sempre scrivibile). Il precedente era a572a673.
 	# 02/11 23:59: + 4c34d01767 (tracce MSI-X: scartata/mascherata/inviata/maschera), sezione 7.2 di Opus.
 	QEMU_SHA=f5902afb6e52f4f96cbd28bf0c8187ab39bd51c5f92134d70dc5c894e158bcb6
+fi
+if [ $DIAGOSS = 1 ]; then
+	QEMU=/mnt/linuxulator2/vm/wsl2-freebsd-work/build/diag/qemu-senza-fix-oss
+	QEMU_SHA=1e76227ebb1036ea2bb78e797464b078c850075a380e146b16600ee26cfd741a
 fi
 PCBIOS=/mnt/linuxulator2/vm/wsl2/fbsd/qemu-nested/pc-bios
 OVMF_CODE=/usr/local/share/qemu/edk2-x86_64-code.fd
@@ -63,7 +70,7 @@ set -- "$QEMU" -name vm0-13-qemu -L "$PCBIOS" \
 	-smp "$N",sockets=1,cores="$N",threads=1 -m "$(v memoria)" \
 	-drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
 	-drive if=pflash,format=raw,file="$OVMF_VARS" \
-	-drive file="$IMG",format=raw,if=none,id=d0,cache=writeback,snapshot=$SNAP \
+	-drive file="$IMG",format=raw,if=none,id=d0,cache=$CACHE,snapshot=$SNAP \
 	-device ide-hd,drive=d0,bus=ide.0,bootindex=1 \
 	-netdev tap,id=n0,ifname="$(v tap)",script=no,downscript=no \
 	-device virtio-net-pci,netdev=n0,mac=00:a0:98:a1:73:65$NICOPT \
