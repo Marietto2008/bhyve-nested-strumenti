@@ -24,6 +24,7 @@ MC_S11L_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-lapic-congelato-20261102/
 MC_S11I_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ipi2-congelato-20261102/vmm-restore.ko
 MC_S11C_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-ccr-congelato-20261102/vmm-restore.ko
 MC_S11H_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-hltk-congelato-20261102/vmm-restore.ko
+MC_S11S_T=/mnt/linuxulator2/vm/wsl2/fbsd/logs/stadio11-sveglia-congelato-20261103/vmm-restore.ko
 # 02/11/2026: l'originale (modulo di boot) e' lo stadio 11. orig_vecchio = in /boot c'e' ancora il 149fa57e (sha, build-id,
 # nessun oid): lo strumento deve fermarsi. orig_senza_<r110|h2|fatal|opnd|p3>: l'originale caricato senza quell'oid.
 # s11l_ricompilato, fail_load_s11l: come per lo stadio 11.
@@ -87,7 +88,7 @@ s_kld_loaded()  { f_on "carico_${1%.ko}"; }
 s_sha() {
 	case "$1" in
 	"$MC_ORIG_T") if f_has orig_vecchio; then echo 149fa57e4e38c765ece111601eaf94ea785627844db215d2285e27888733d6b9
-	              else echo 3bfc6ae8b8c938f131d428cc353dafcad4e99169fbe45cd6a288f9e7e70d4a43; fi;;
+	              else echo dcd051cde7ca563def9cd9a6bd75aa021306c2c21266686c7c5be8fdbab9ecfb; fi;;	# 03/11: il boot e' stadio11-sveglia
 	"$MC_NEW_T")  if f_has new_e_r109; then echo 4626c65e824dce3f86fbfac3a6e35228187c4dedf18b5fefd167b1f9600f0dec
 	              else echo d0465140490570335c295ee1c7d1584cf95a65aafaa0397b79bd78422ab86873; fi;;
 	"$MC_H2_T")   if f_has h2_e_p3; then echo 07013a445b19db76093c6719203be4f93db601f9e1dd5d7ed20bd6cbd9253934
@@ -109,33 +110,35 @@ s_sha() {
 	              else sha256 -q "$1"; fi;;
 	"$MC_S11H_T") if f_has s11h_ricompilato; then echo 7777777777777777777777777777777777777777777777777777777777777777
 	              else sha256 -q "$1"; fi;;
+	"$MC_S11S_T") if f_has s11s_ricompilato; then echo 8888888888888888888888888888888888888888888888888888888888888888
+	              else sha256 -q "$1"; fi;;
 	esac
 }
 s_bid() {
 	case "$1" in
-	"$MC_ORIG_T") if f_has orig_vecchio; then echo d30f6a7f6ea6c9259b5f39604c9399564aba5f49; else echo 7947f8af2c30b6a1e051ff067d265fe433490b83; fi;;
+	"$MC_ORIG_T") if f_has orig_vecchio; then echo d30f6a7f6ea6c9259b5f39604c9399564aba5f49; else echo 51ded135a3b064a95354c518e403892c3806851c; fi;;
 	"$MC_NEW_T")  echo 1ba0803c8165661c9e6b0a2c0c73c32182998341;;
 	"$MC_H2_T")   echo dcfb2ea8b50752a428f3152eb54b84050a95369b;;
 	"$MC_H2AD_T") echo 6df2856a10e94608a69a3844ff78965e25ad97fe;;
-	"$MC_RIPFIX_T"|"$MC_S9_T"|"$MC_S10_T"|"$MC_S11_T"|"$MC_S11L_T"|"$MC_S11I_T"|"$MC_S11C_T"|"$MC_S11H_T") readelf -n "$1" | sed -n 's/.*Build ID: *//p' | head -1;;
+	"$MC_RIPFIX_T"|"$MC_S9_T"|"$MC_S10_T"|"$MC_S11_T"|"$MC_S11L_T"|"$MC_S11I_T"|"$MC_S11C_T"|"$MC_S11H_T"|"$MC_S11S_T") readelf -n "$1" | sed -n 's/.*Build ID: *//p' | head -1;;
 	esac
 }
 s_sysctl_present() {
 	case "$1" in
 	hw.vmm.vmx.nested_ept12_viol_emul_reflected)	# r110 e h2 (h2 contiene r110)
-		case "$(f_get kld)" in "completo $MC_NEW_T"|"completo $MC_H2_T"|"completo $MC_H2AD_T"|"completo $MC_RIPFIX_T"|"completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T") ;;
+		case "$(f_get kld)" in "completo $MC_NEW_T"|"completo $MC_H2_T"|"completo $MC_H2AD_T"|"completo $MC_RIPFIX_T"|"completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T"|"completo $MC_S11S_T") ;;
 		"completo $MC_ORIG_T") ! f_has orig_vecchio && ! f_has orig_senza_r110;;
 		*) f_has oid_r110_finto;; esac;;
 	hw.vmm.vmx.vept_h2_viol_final)
-		case "$(f_get kld)" in "completo $MC_H2_T"|"completo $MC_H2AD_T"|"completo $MC_RIPFIX_T"|"completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T") ;;
+		case "$(f_get kld)" in "completo $MC_H2_T"|"completo $MC_H2AD_T"|"completo $MC_RIPFIX_T"|"completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T"|"completo $MC_S11S_T") ;;
 		"completo $MC_ORIG_T") ! f_has orig_vecchio && ! f_has orig_senza_h2;;
 		*) f_has oid_h2_finto;; esac;;
 	hw.vmm.fatal_latches)	# solo RIPFIX; ripfix_senza_fatal: il file caricato non e' il RIPFIX che dice di essere
-		case "$(f_get kld)" in "completo $MC_RIPFIX_T") ! f_has ripfix_senza_fatal;; "completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T") ;;
+		case "$(f_get kld)" in "completo $MC_RIPFIX_T") ! f_has ripfix_senza_fatal;; "completo $MC_S9_T"|"completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T"|"completo $MC_S11S_T") ;;
 		"completo $MC_ORIG_T") ! f_has orig_vecchio && ! f_has orig_senza_fatal;;
 		*) f_has oid_fatal_finto;; esac;;
 	hw.vmm.vmx.nested_operand_fatal)	# solo lo stadio 9; s9_senza_opnd: il file caricato non e' lo stadio 9
-		case "$(f_get kld)" in "completo $MC_S9_T") ! f_has s9_senza_opnd;; "completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T") ;;
+		case "$(f_get kld)" in "completo $MC_S9_T") ! f_has s9_senza_opnd;; "completo $MC_S10_T"|"completo $MC_S11_T"|"completo $MC_S11L_T"|"completo $MC_S11I_T"|"completo $MC_S11C_T"|"completo $MC_S11H_T"|"completo $MC_S11S_T") ;;
 		"completo $MC_ORIG_T") ! f_has orig_vecchio && ! f_has orig_senza_opnd;;
 		*) f_has oid_opnd_finto;; esac;;
 	hw.vmm.gla2gpa_restart_capped)	# solo la variante RITIRATA con P3: sempre, o solo una volta caricata come "h2"
@@ -145,6 +148,7 @@ s_sysctl_present() {
 		[ "$(f_get kld)" = "completo $MC_S11I_T" ] && return 0
 		[ "$(f_get kld)" = "completo $MC_S11C_T" ] && return 0
 		[ "$(f_get kld)" = "completo $MC_S11H_T" ] && return 0
+		[ "$(f_get kld)" = "completo $MC_S11S_T" ] && return 0
 		[ "$(f_get kld)" = "completo $MC_ORIG_T" ] && ! f_has orig_vecchio && ! f_has orig_senza_p3 && return 0
 		f_has oid_p3_finto || { f_has oid_p3_dopo && case "$(f_get kld)" in
 		    "completo $MC_H2_T"|"completo $MC_H2AD_T") true;; *) false;; esac; };;
@@ -217,6 +221,7 @@ s_kldload() {
 	"$MC_S11I_T") f_has fail_load_s11i && return 1;;
 	"$MC_S11C_T") f_has fail_load_s11c && return 1;;
 	"$MC_S11H_T") f_has fail_load_s11h && return 1;;
+	"$MC_S11S_T") f_has fail_load_s11s && return 1;;
 	*) return 1;;
 	esac
 	f_set kld "completo $1"
