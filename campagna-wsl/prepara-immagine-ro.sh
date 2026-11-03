@@ -50,6 +50,17 @@ printf '%s\n' '# Claude 03/11/2026: la console virtio di WSL (in GENERIC e'"'"' 
 	>> "$R/boot/loader.conf"
 tail -3 "$R/boot/loader.conf"; grep -v '^#' "$R/etc/fstab"
 
+# 3b. (03/11) l'init minimale che parla col servizio WSL, se compilato (wsl2/fbsd/wslinit)
+W=/mnt/linuxulator2/vm/wsl2/fbsd/wslinit
+if [ -x "$W/claude-wslinit" ]; then
+	install -d -m 755 "$R/usr/local/sbin"
+	install -m 555 "$W/claude-wslinit" "$R/usr/local/sbin/claude-wslinit"
+	install -d -m 755 "$R/usr/local/etc/rc.d"
+	install -m 555 "$W/claude_wslinit.rc" "$R/usr/local/etc/rc.d/claude_wslinit"
+	printf '%s\n' 'claude_wslinit_enable="YES"' >> "$R/etc/rc.conf"
+	echo "init WSL installato: $(sha256 -q "$R/usr/local/sbin/claude-wslinit")"
+fi
+
 echo "4. smonto e converto in VHD fixed"
 umount "$R"; mdconfig -d -u ${md#md}; trap - EXIT
 qemu-img convert -O vpc -o subformat=fixed,force_size=on "$IMG/$NOME.raw" "$IMG/$NOME.vhd"

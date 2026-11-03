@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# claude_wslinit -- Claude 03/11/2026. Avvia l'init minimale che parla col servizio WSL (hvsocket, porta 50000).
+# Il servizio aspetta la prima connessione entro wsl2.kernelBootTimeout: parte appena ci sono i file system.
+#
+# PROVIDE: claude_wslinit
+# REQUIRE: FILESYSTEMS
+# BEFORE: NETWORKING
+# KEYWORD: nojail
+
+. /etc/rc.subr
+
+name="claude_wslinit"
+rcvar="claude_wslinit_enable"
+command="/usr/sbin/daemon"
+procname="/usr/local/sbin/claude-wslinit"
+pidfile="/var/run/${name}.pid"
+command_args="-p ${pidfile} -o /dev/console ${procname}"
+
+load_rc_config $name
+: ${claude_wslinit_enable:="NO"}
+
+run_rc_command "$1"

@@ -4,7 +4,8 @@
 # (nessun init risponde ancora al protocollo di WSL). Alla fine .wslconfig torna com'era (assente): Debian riparte.
 param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (controprova del blocco su virtio_pci)
       [string]$SystemDistro = "C:\\claude\\wsl-fbsd\\fbsd152-wsl.vhd",   # 03/11: anche un disco di AVVIO di prova
-      [string]$Riga = "console=comconsole rootdev=disk0p4:")
+      [string]$Riga = "console=comconsole rootdev=disk0p4:",
+      [string[]]$Comando = @("uname", "-a"))   # 03/11 (I2): eseguito con wsl.exe -e; l'uscita dice chi ha risposto
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -31,7 +32,8 @@ try {
     $vecchio = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     & wsl.exe --shutdown 2>&1 | Out-Null
     $t0 = Get-Date
-    & wsl.exe -d Debian -- echo "se leggi questa riga, la VM era Linux" 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+    Write-Host "[claude] comando: wsl.exe -d Debian -e $($Comando -join ' ')"
+    & wsl.exe -d Debian -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE; $ErrorActionPreference = $vecchio
     Passo ("wsl.exe uscito con codice {0} dopo {1:N0} s" -f $rc, ((Get-Date) - $t0).TotalSeconds)
     Write-Host "ESITO: FATTO (vedi la console di debug di WSL)" -ForegroundColor Green
