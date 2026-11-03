@@ -13,7 +13,8 @@ param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (
       [string]$Url = "",                       # 03/11: dopo il comando, curl.exe da Windows (inoltro di localhost)
       [string]$Comando2File = "",              # 03/11: dopo wsl --terminate, un secondo script; poi wsl -u root -e id
       [int]$BootTimeout = 180000,              # 03/11 (punto 3): kernelBootTimeout in ms; 0 = predefinito di WSL
-      [string]$Utente = "")                    # 03/11: utente del primo comando (wsl -u); vuoto = predefinito
+      [string]$Utente = "",                    # 03/11: utente del primo comando (wsl -u); vuoto = predefinito
+      [string]$Ridimensiona = "")              # 03/11: prima dei comandi, wsl --manage <distro> --resize <dimensione>
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -48,6 +49,12 @@ try {
     }
     if ($ComandoFile) { $Comando = @("sh", "-c", ((Get-Content $ComandoFile) -join "; ")) }
     Write-Host "[claude] comando: wsl.exe -d $Distro -e $($Comando -join ' ')"
+    if ($Ridimensiona) {
+        Passo "wsl --manage $Distro --resize $Ridimensiona"
+        & wsl.exe --manage $Distro --resize $Ridimensiona 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+        Write-Host "[claude] resize: codice $LASTEXITCODE"
+        Get-Item $DistroVhd | ForEach-Object { Write-Host ("[claude] {0}: {1:N1} GB" -f $_.Name, ($_.Length / 1GB)) }
+    }
     $u = @(); if ($Utente) { $u = @("-u", $Utente) }
     & wsl.exe -d $Distro @u -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE

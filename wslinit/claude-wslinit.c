@@ -94,6 +94,8 @@ struct sockaddr_hvs {
 #define MSG_INITIAL_CONFIG		37
 #define MSG_GUEST_CAPABILITIES		43
 #define MSG_CHILD_EXIT			45
+#define MSG_RESIZE_DISTRIBUTION		50
+#define MSG_RESIZE_DISTRIBUTION_RESPONSE	51
 #define MSG_GNS_INTERFACE_CONFIGURATION	53
 #define MSG_GNS_RESULT			54
 #define MSG_GNS_NOTIFICATION		55
@@ -1912,6 +1914,81 @@ port_tracker(int fd)
 	}
 }
 
+/*
+ * wsl --manage <distro> --resize <dimensione>: il servizio allarga il VHD, lo collega e manda ResizeDistribution (50)
+ * {ScsiLun, NewSize}; poi accetta due connessioni: il canale del risultato (ResizeDistributionResponse, 51) e quello
+ * dei messaggi per l'utente (copiati nella console di wsl.exe). NewSize 0 = il disco e' gia' stato allargato: si
+ * allarga la partizione UFS fino in fondo. Restringere non e' supportato (UFS non si restringe).
+ */
+struct resize_message {
+	struct msg_header h;
+	uint32_t scsi_lun;
+	uint64_t new_size;
+};
+_Static_assert(sizeof(struct resize_message) == 32, "LX_MINI_INIT_RESIZE_DISTRIBUTION_MESSAGE");
+
+struct resize_response {
+	struct msg_header h;
+	uint32_t response_code;
+};
+
+static int
+resize_step(int out, const char *const argv[])
+{
+	char buf[8192];
+	int rc;
+
+	dprintf(out, "FreeBSD:");
+	for (int i = 0; argv[i] != NULL; i++)
+		dprintf(out, " %s", argv[i]);
+	dprintf(out, "\r\n");
+	rc = run_out(argv, buf, sizeof(buf), 600);
+	for (char *line, *rest = buf; (line = strsep(&rest, "\n")) != NULL; )
+		if (*line != '\0')
+			dprintf(out, "  %s\r\n", line);
+	warnx("ridimensionamento: %s -> %d", argv[0], rc);
+	return (rc);
+}
+
+static void
+resize_distro(int fd, int out, const char *msg)
+{
+	const struct resize_message *rm = (const struct resize_message *)msg;
+	struct resize_response r;
+	struct chan c = { fd, 0, "ridimensionamento", 0 };
+	char disk[64], part[80], idx[8], *pp;
+	int rc = 0;
+
+	warnx("ridimensionamento: lun %u, nuova dimensione %ju", rm->scsi_lun, (uintmax_t)rm->new_size);
+	if (rm->new_size != 0) {
+		dprintf(out, "FreeBSD: restringere un file system UFS non e' possibile\r\n");
+		rc = EINVAL;
+	} else if (!lun_device(rm->scsi_lun, disk, sizeof(disk)) || !distro_partition(disk, part, sizeof(part)) ||
+	    (pp = strrchr(part, 'p')) == NULL || strncmp(part, disk, strlen(disk)) != 0) {
+		dprintf(out, "FreeBSD: disco o partizione UFS non trovati al lun %u\r\n", rm->scsi_lun);
+		rc = ENODEV;
+	} else if (is_mounted(DISTRO_PATH)) {
+		dprintf(out, "FreeBSD: la distro e' ancora montata\r\n");
+		rc = EBUSY;
+	} else {
+		snprintf(idx, sizeof(idx), "%s", pp + 1);
+		/* la GPT di riserva va spostata in fondo al disco allargato, poi la partizione e il file system */
+		(void)resize_step(out, (const char *const[]){ "/sbin/gpart", "recover", disk + strlen("/dev/"), NULL });
+		if ((rc = resize_step(out, (const char *const[]){ "/sbin/gpart", "resize", "-i", idx,
+		    disk + strlen("/dev/"), NULL })) == 0 &&
+		    (rc = resize_step(out, (const char *const[]){ "/sbin/fsck", "-p", "-t", "ufs", part, NULL })) == 0)
+			rc = resize_step(out, (const char *const[]){ "/sbin/growfs", "-y", part, NULL });
+		(void)resize_step(out, (const char *const[]){ "/sbin/gpart", "show", disk + strlen("/dev/"), NULL });
+	}
+	close(out);
+	memset(&r, 0, sizeof(r));
+	r.h.type = MSG_RESIZE_DISTRIBUTION_RESPONSE;
+	r.response_code = (uint32_t)rc;
+	chan_send(&c, &r, sizeof(r), NULL);
+	warnx("ridimensionamento: risultato %d", rc);
+	_exit(0);
+}
+
 /* l'init della distro, processo figlio per ogni istanza (anche la distro di sistema, se chiesta) */
 static void
 distro_init(int fd, const char *launch, const char *what, bool distro_disk)
@@ -2176,6 +2253,20 @@ main(void)
 			r.h.type = MSG_RESULT_INT32;
 			r.result = rc == 0 ? 0 : EBUSY;
 			chan_send(&mainc, &r, sizeof(r), h);
+			break;
+		}
+		case MSG_RESIZE_DISTRIBUTION: {
+			int rfd = connect_host(WSL_INIT_PORT);
+			int ofd = connect_host(WSL_INIT_PORT);
+
+			if (fork() == 0) {
+				child_of_main();
+				close(mainc.fd);
+				close(notify);
+				resize_distro(rfd, ofd, msg);
+			}
+			close(rfd);
+			close(ofd);
 			break;
 		}
 		case MSG_IMPORT_INPLACE: {

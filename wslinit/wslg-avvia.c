@@ -5,6 +5,7 @@
  * Weston e' weston-mirror (ramo working di Microsoft) compilato per FreeBSD in /usr/local/wslg.
  * Uso: wslg-avvia [desktop|rail]     desktop (predefinito) = un desktop Weston in una finestra; rail = finestre singole
  * Variabili: WSL_VM_ID e WSL_INSTALL_PATH (le mette l'init), WSL_INTEROP (per wslexe).
+ * Le applicazioni: Wayland con WAYLAND_DISPLAY=wayland-0 e XDG_RUNTIME_DIR=/tmp/wslg-runtime, X11 con DISPLAY=:0.
  */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -42,6 +43,7 @@ main(int argc, char **argv)
 	pid_t weston, client;
 	int fd, status;
 
+	setvbuf(stdout, NULL, _IOLBF, 0);	/* le righe arrivano subito anche in un file o in una pipe */
 	mode = argc > 1 ? argv[1] : "desktop";
 	if ((vm = getenv("WSL_VM_ID")) == NULL || (inst = getenv("WSL_INSTALL_PATH")) == NULL)
 		errx(1, "WSL_VM_ID o WSL_INSTALL_PATH mancanti (li imposta claude-wslinit)");
@@ -81,7 +83,8 @@ main(int argc, char **argv)
 	if (weston < 0)
 		err(1, "fork");
 	if (weston == 0) {
-		execl(WESTON, "weston", "--backend=rdp-backend.so", "--socket=wayland-0", shell,
+		/* come WSLGd: Xwayland per le applicazioni X11 (DISPLAY=:0) */
+		execl(WESTON, "weston", "--backend=rdp-backend.so", "--xwayland", "--socket=wayland-0", shell,
 		    "--log=" RUNTIME_DIR "/weston.log", "--logger-scopes=log,rdp-backend", (char *)NULL);
 		err(127, "%s", WESTON);
 	}
