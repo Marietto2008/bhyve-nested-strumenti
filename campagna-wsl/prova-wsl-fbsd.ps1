@@ -2,7 +2,9 @@
 # kernel = loader.efi, distro di sistema = il VHD di FreeBSD (collegato via SCSI alla creazione della VM, quindi disk0
 # per il loader), console di debug. Atteso: FreeBSD che si avvia nella console di WSL, poi il TIMEOUT del servizio
 # (nessun init risponde ancora al protocollo di WSL). Alla fine .wslconfig torna com'era (assente): Debian riparte.
-param([string[]]$Extra = @())   # righe in piu' per [wsl2], es. "virtio=false" (controprova del blocco su virtio_pci)
+param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (controprova del blocco su virtio_pci)
+      [string]$SystemDistro = "C:\\claude\\wsl-fbsd\\fbsd152-wsl.vhd",   # 03/11: anche un disco di AVVIO di prova
+      [string]$Riga = "console=comconsole rootdev=disk0p4:")
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -13,15 +15,15 @@ $conf = @"
 [wsl2]
 kernel=C:\\claude\\wsl-fbsd\\vmbfs\\loader.efi
 uefiKernel=true
-systemDistro=C:\\claude\\wsl-fbsd\\fbsd152-wsl.vhd
-kernelCommandLine=console=comconsole rootdev=disk0p4:
+systemDistro=$SystemDistro
+kernelCommandLine=$Riga
 debugConsole=true
 debugConsoleLogFile=C:\\claude\\wsl-fbsd\\console-wsl.txt
 kernelBootTimeout=180000
 "@
 try {
     if (Test-Path $cfg) { throw ".wslconfig esiste gia': non lo tocco" }
-    if (-not (Test-Path C:\claude\wsl-fbsd\fbsd152-wsl.vhd)) { throw "manca fbsd152-wsl.vhd" }
+    if (-not (Test-Path ($SystemDistro -replace "\\\\", "\"))) { throw "manca $SystemDistro" }
     if (Test-Path C:\claude\wsl-fbsd\console-wsl.txt) { Remove-Item C:\claude\wsl-fbsd\console-wsl.txt }
     Passo "1. .wslconfig per FreeBSD"
     Set-Content -Path $cfg -Value ($conf + "`r`n" + ($Extra -join "`r`n")) -Encoding ascii; Get-Content $cfg | Out-Host

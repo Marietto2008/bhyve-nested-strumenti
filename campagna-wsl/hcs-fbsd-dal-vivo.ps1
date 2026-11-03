@@ -8,7 +8,13 @@
 param([string]$Disco = "C:\claude\wsl-fbsd\fbsd152-wsl.vhdx", [int]$Cpu = 2, [int]$MemMB = 2048,
       [ValidateSet("ScsiDrive", "VmbFs")][string]$Avvio = "ScsiDrive",
       [string]$VmbFsDir = "C:\claude\wsl-fbsd\vmbfs", [string]$VmbFsFile = "\loader.efi",
-      [string]$Opzioni = "console=comconsole rootdev=disk0p4:")
+      [string]$Opzioni = "console=comconsole rootdev=disk0p4:",
+      # -ConsoleVirtio (03/11): la stessa console virtio hvc0 che WSL aggiunge (VirtioSerial, su vPCI): riproduce il
+      # blocco di FreeBSD su virtio_pci visto con wsl.exe (ADR-002, prova 1)
+      [switch]$ConsoleVirtio,
+      # -Disco2 (03/11): secondo disco SCSI (LUN 1 = disk1 per il loader), es. un disco di AVVIO piccolo con un kernel
+      # di prova: rootdev=disk1p1: e vfs.root.mountfrom=ufs:/dev/gpt/rootfs per la radice del disco principale
+      [string]$Disco2 = "")
 $ErrorActionPreference = "Stop"
 $dir = "C:\claude\wsl-fbsd"; $log = "$dir\dal-vivo-com1.txt"; $esito = "$dir\dal-vivo-esito.txt"
 $Host.UI.RawUI.WindowTitle = "FreeBSD 15.2 come VM di Hyper-V (HCS) - console COM1 dal vivo - F10 spegne"
@@ -50,6 +56,12 @@ if ($Avvio -eq "VmbFs") {
     $bootThis = '{ "DevicePath": "Primary disk", "DiskNumber": 0, "DeviceType": "ScsiDrive" }'
 }
 Write-Host "Avvio: $Avvio $bootThis" -ForegroundColor Yellow
+$secondo = ""
+if ($Disco2) { $secondo = ', "1": { "Type": "VirtualDisk", "Path": "' + ($Disco2 -replace '\\','\\') + '" }'
+               Write-Host "Secondo disco: $Disco2" -ForegroundColor Yellow }
+$virtio = ""
+if ($ConsoleVirtio) { $virtio = ',' + "`n" + '      "VirtioSerial": { "Ports": { "0": { "Name": "hvc0", "NamedPipe": "\\\\.\\pipe\\claude-fbsd-hvc0", "ConsoleSupport": true } } }'
+                     Write-Host "Console virtio hvc0: SI'" -ForegroundColor Yellow }
 $json = @"
 {
   "Owner": "claude-fbsd",
@@ -67,7 +79,7 @@ $json = @"
       "HvSocket": { "HvSocketConfig": {
         "DefaultBindSecurityDescriptor": "D:P(A;;FA;;;SY)(A;;FA;;;$sid)",
         "DefaultConnectSecurityDescriptor": "D:P(A;;FA;;;SY)(A;;FA;;;$sid)" } },
-      "Scsi": { "Primary disk": { "Attachments": { "0": { "Type": "VirtualDisk", "Path": "$($Disco -replace '\\','\\')" } } } }
+      "Scsi": { "Primary disk": { "Attachments": { "0": { "Type": "VirtualDisk", "Path": "$($Disco -replace '\\','\\')" }$secondo } } }$virtio
     }
   }
 }
@@ -78,6 +90,8 @@ $cs = [IntPtr]::Zero; $op = [IntPtr]::Zero
 try {
     $hr = [Hcs]::HcsGrantVmAccess($id, $Disco); Di ("accesso al disco per la VM {0}: hr=0x{1:X8}" -f $id, $hr)
     if ($hr -ne 0) { throw "GrantVmAccess fallita" }
+    if ($Disco2) { $hr = [Hcs]::HcsGrantVmAccess($id, $Disco2); Di ("accesso al secondo disco: hr=0x{0:X8}" -f $hr)
+                   if ($hr -ne 0) { throw "GrantVmAccess (secondo disco) fallita" } }
     $op = [Hcs]::HcsCreateOperation([IntPtr]::Zero, [IntPtr]::Zero)
     $hr = [Hcs]::HcsCreateComputeSystem($id, $json, $op, [IntPtr]::Zero, [ref]$cs)
     $doc = [IntPtr]::Zero; $hr = [Hcs]::HcsWaitForOperationResult($op, 60000, [ref]$doc); [Hcs]::HcsCloseOperation($op)

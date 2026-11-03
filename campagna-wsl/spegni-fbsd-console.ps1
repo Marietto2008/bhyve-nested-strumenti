@@ -29,7 +29,7 @@ public static class Tasti {
   }
 }
 "@
-$p = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "powershell.exe" -and $_.CommandLine -like "*hcs-fbsd-dal-vivo.ps1*" } | Select-Object -First 1
+$p = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "powershell.exe" -and ($_.CommandLine -like "*hcs-fbsd-dal-vivo.ps1*" -or $_.CommandLine -like "*prova-virtio*") } | Select-Object -First 1
 if (-not $p) { "console FreeBSD non trovata" | Out-File $r; exit 1 }
 $esiti = @()
 $esiti += [Tasti]::Scrivi([uint32]$p.ProcessId, "`r"); Start-Sleep 2
