@@ -21,6 +21,7 @@ install -d -m 755 "$R/distro"	# (I2) punto di montaggio del disco della distro F
 # (punto 4) gli strumenti di WSL per la distro (nullfs ro su /usr/lib/wsl): wslexe, l'interop verso Windows
 install -d -m 755 "$R/usr/local/libexec/claude-wsl/bin"
 install -m 555 "$W/wslexe" "$R/usr/local/libexec/claude-wsl/bin/wslexe"
+install -m 555 "$W/wslg-avvia" "$R/usr/local/libexec/claude-wsl/bin/wslg-avvia"
 echo "wslexe: $(sha256 -q "$R/usr/local/libexec/claude-wsl/bin/wslexe")"
 # (I2) la debug shell di WSL: porta virtio-serial "hvc2" (LX_INIT_HVC_DEBUG_SHELL) = ttyV0.2; da Windows: wsl --debug-shell
 grep -q '^ttyV0.2' "$R/etc/ttys" || printf '%s\n' '# Claude 03/11/2026: debug shell di WSL (porta virtio hvc2, wsl --debug-shell)' \
@@ -30,6 +31,10 @@ grep '^ttyV0.2' "$R/etc/ttys"
 sed -i '' -e 's/^autoboot_delay=.*/autoboot_delay="0"/' "$R/boot/loader.conf"
 grep -q '^beastie_disable=' "$R/boot/loader.conf" || printf '%s\n' '# Claude 03/11/2026: avvio rapido in WSL' 'beastie_disable="YES"' >> "$R/boot/loader.conf"
 grep '^autoboot_delay\|^beastie_disable' "$R/boot/loader.conf"
+# la radice e' in sola lettura: rc non salvi l'entropia su /entropy e /boot/entropy (Hyper-V da' RDRAND e vmgenid)
+grep -q '^entropy_file=' "$R/etc/rc.conf" || printf '%s\n' '# Claude 03/11/2026: radice in sola lettura, niente file di entropia' \
+	'entropy_boot_file="NO"' 'entropy_file="NO"' >> "$R/etc/rc.conf"
+grep '^entropy' "$R/etc/rc.conf"
 echo "init aggiornato: $(sha256 -q "$R/usr/local/sbin/claude-wslinit")"
 umount "$R"; mdconfig -d -u ${md#md}; trap - EXIT
 qemu-img convert -O vpc -o subformat=fixed,force_size=on "$IMG/$SORG.raw" "$IMG/$NOME.vhd"

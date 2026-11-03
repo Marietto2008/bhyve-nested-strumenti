@@ -12,7 +12,8 @@ param([string[]]$Extra = @(),   # righe in piu' per [wsl2], es. "virtio=false" (
       [string]$ComandoFile = "",               # 03/11: script sh (senza virgolette doppie) eseguito con sh -c
       [string]$Url = "",                       # 03/11: dopo il comando, curl.exe da Windows (inoltro di localhost)
       [string]$Comando2File = "",              # 03/11: dopo wsl --terminate, un secondo script; poi wsl -u root -e id
-      [int]$BootTimeout = 180000)              # 03/11 (punto 3): kernelBootTimeout in ms; 0 = predefinito di WSL
+      [int]$BootTimeout = 180000,              # 03/11 (punto 3): kernelBootTimeout in ms; 0 = predefinito di WSL
+      [string]$Utente = "")                    # 03/11: utente del primo comando (wsl -u); vuoto = predefinito
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "Claude: primo avvio di FreeBSD da WSL (wsl2.uefiKernel)"
 try { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(150, 5000) } catch { }
@@ -47,7 +48,8 @@ try {
     }
     if ($ComandoFile) { $Comando = @("sh", "-c", ((Get-Content $ComandoFile) -join "; ")) }
     Write-Host "[claude] comando: wsl.exe -d $Distro -e $($Comando -join ' ')"
-    & wsl.exe -d $Distro -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
+    $u = @(); if ($Utente) { $u = @("-u", $Utente) }
+    & wsl.exe -d $Distro @u -e $Comando 2>&1 | ForEach-Object { "$_" -replace "`0", "" } | Out-Host
     $rc = $LASTEXITCODE
     if ($Url) {
         Write-Host "[claude] da Windows: curl.exe --http0.9 $Url"

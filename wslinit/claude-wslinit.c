@@ -649,6 +649,8 @@ apply_timezone(const char *tz)
  */
 /* per il comando: il socket d'interop della sessione (vista dalla distro), se c'e' */
 static char interop_path[128];
+/* dal LaunchInit: id della VM e cartella d'installazione di WSL (per msrdc.exe di WSLg) */
+static char wsl_vm_id[64], wsl_install_path[512];
 
 static void
 exec_command(const char *msg, int fds[])
@@ -713,6 +715,10 @@ exec_command(const char *msg, int fds[])
 	    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin:/usr/local/sbin:" DISTRO_TOOLS "/bin", 1);
 	if (*interop_path != '\0')
 		setenv("WSL_INTEROP", interop_path, 1);
+	if (*wsl_vm_id != '\0')
+		setenv("WSL_VM_ID", wsl_vm_id, 1);
+	if (*wsl_install_path != '\0')
+		setenv("WSL_INSTALL_PATH", wsl_install_path, 1);
 	{
 		/* la cartella di Windows (per wslexe): SystemRoot dall'ambiente di wsl.exe */
 		char **nt = msg_strarray(msg, cp->nt_environment_offset, NULL);
@@ -1348,9 +1354,11 @@ unmount_distro(const char *what)
 
 	memset(&rk, 0, sizeof(rk));
 	rk.rk_sig = SIGKILL;
-	if (procctl(P_PID, getpid(), PROC_REAP_KILL, &rk) < 0)
-		warn("%s: PROC_REAP_KILL", what);
-	else
+	if (procctl(P_PID, getpid(), PROC_REAP_KILL, &rk) < 0) {
+		/* ESRCH: non c'era piu' nessun discendente da chiudere */
+		if (errno != ESRCH)
+			warn("%s: PROC_REAP_KILL", what);
+	} else
 		warnx("%s: chiusi %u processi", what, rk.rk_killed);
 	usleep(200000);
 	sync();
@@ -1914,9 +1922,12 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 	struct chan c = { fd, 0, what, 0 };
 	char *m;
 
-	warnx("%s: pid %d, distro '%s', disco lun %u (%s, %s), flag 0x%x", what, getpid(),
+	warnx("%s: pid %d, distro '%s', disco lun %u (il servizio propone %s con opzioni %s), flag 0x%x", what, getpid(),
 	    msg_str(launch, li->distribution_name_offset), li->device_id, msg_str(launch, li->fs_type_offset),
 	    msg_str(launch, li->mount_options_offset), li->flags);
+	snprintf(wsl_vm_id, sizeof(wsl_vm_id), "%s", msg_str(launch, li->vm_id_offset));
+	snprintf(wsl_install_path, sizeof(wsl_install_path), "%s", msg_str(launch, li->install_path_offset));
+	warnx("%s: VM %s, WSL in '%s'", what, wsl_vm_id, wsl_install_path);
 	memset(&res, 0, sizeof(res));
 	res.h.type = MSG_CREATE_INSTANCE_RESULT;
 	res.pid = (uint64_t)getpid();
