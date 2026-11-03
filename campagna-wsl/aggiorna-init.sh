@@ -22,6 +22,10 @@ install -d -m 755 "$R/distro"	# (I2) punto di montaggio del disco della distro F
 grep -q '^ttyV0.2' "$R/etc/ttys" || printf '%s\n' '# Claude 03/11/2026: debug shell di WSL (porta virtio hvc2, wsl --debug-shell)' \
 	'ttyV0.2	"/usr/libexec/getty Pc"	xterm	on  secure' >> "$R/etc/ttys"
 grep '^ttyV0.2' "$R/etc/ttys"
+# (punto 3) avvio piu' rapido: niente menu beastie, niente attesa dell'autoboot (in WSL nessuno puo' premere un tasto)
+sed -i '' -e 's/^autoboot_delay=.*/autoboot_delay="0"/' "$R/boot/loader.conf"
+grep -q '^beastie_disable=' "$R/boot/loader.conf" || printf '%s\n' '# Claude 03/11/2026: avvio rapido in WSL' 'beastie_disable="YES"' >> "$R/boot/loader.conf"
+grep '^autoboot_delay\|^beastie_disable' "$R/boot/loader.conf"
 echo "init aggiornato: $(sha256 -q "$R/usr/local/sbin/claude-wslinit")"
 umount "$R"; mdconfig -d -u ${md#md}; trap - EXIT
 qemu-img convert -O vpc -o subformat=fixed,force_size=on "$IMG/$SORG.raw" "$IMG/$NOME.vhd"

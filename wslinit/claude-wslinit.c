@@ -45,6 +45,7 @@
 #include <libutil.h>
 #include <limits.h>
 #include <poll.h>
+#include <grp.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -90,6 +91,7 @@ struct sockaddr_hvs {
 #define MSG_EARLY_CONFIG		36
 #define MSG_INITIAL_CONFIG		37
 #define MSG_GUEST_CAPABILITIES		43
+#define MSG_CHILD_EXIT			45
 #define MSG_GNS_INTERFACE_CONFIGURATION	53
 #define MSG_GNS_RESULT			54
 #define MSG_GNS_NOTIFICATION		55
@@ -536,6 +538,106 @@ send_capabilities(struct chan *c)
 }
 
 /*
+ * /etc/wsl.conf della distro (formato INI, come in WslDistributionConfig.cpp): "[sezione]" poi "chiave = valore";
+ * commenti con # o ;. Chiavi usate: user.default, network.generateResolvConf, network.hostname,
+ * time.useWindowsTimezone, boot.command. root e' la radice della distro vista da chi chiama ("/distro" o "/").
+ */
+static bool
+wslconf_get(const char *root, const char *section, const char *key, char *val, size_t len)
+{
+	char path[128], line[1024], cur[64] = "";
+	char *p, *e, *eq;
+	FILE *f;
+	bool found = false;
+
+	snprintf(path, sizeof(path), "%s/etc/wsl.conf", root);
+	if ((f = fopen(path, "r")) == NULL)
+		return (false);
+	while (fgets(line, sizeof(line), f) != NULL) {
+		for (p = line; isspace((unsigned char)*p); p++)
+			;
+		if (*p == '#' || *p == ';' || *p == '\0')
+			continue;
+		for (e = p + strlen(p); e > p && isspace((unsigned char)e[-1]); )
+			*--e = '\0';
+		if (*p == '[') {
+			snprintf(cur, sizeof(cur), "%.*s", (int)strcspn(p + 1, "]"), p + 1);
+			continue;
+		}
+		if (strcasecmp(cur, section) != 0 || (eq = strchr(p, '=')) == NULL)
+			continue;
+		for (e = eq; e > p && isspace((unsigned char)e[-1]); e--)
+			;
+		if ((size_t)(e - p) != strlen(key) || strncasecmp(p, key, strlen(key)) != 0)
+			continue;
+		for (p = eq + 1; isspace((unsigned char)*p); p++)
+			;
+		if (*p == '"' && (e = strrchr(p + 1, '"')) != NULL) {
+			p++;
+			*e = '\0';
+		}
+		snprintf(val, len, "%s", p);
+		found = true;
+	}
+	fclose(f);
+	return (found);
+}
+
+/* un valore booleano di wsl.conf, def se assente */
+static bool
+wslconf_bool(const char *root, const char *section, const char *key, bool def)
+{
+	char v[16];
+
+	if (!wslconf_get(root, section, key, v, sizeof(v)))
+		return (def);
+	return (strcasecmp(v, "true") == 0 || strcmp(v, "1") == 0 || strcasecmp(v, "yes") == 0);
+}
+
+/* uid di un utente nel passwd della distro (letto come file: l'istanza non e' in chroot); -1 se non c'e' */
+static long
+distro_uid(const char *name)
+{
+	char line[1024], *f[4], *p;
+	long uid = -1;
+	FILE *fp;
+	int n;
+
+	if ((fp = fopen(DISTRO_PATH "/etc/passwd", "r")) == NULL)
+		return (-1);
+	while (uid < 0 && fgets(line, sizeof(line), fp) != NULL) {
+		for (n = 0, p = line; n < 4 && (f[n] = strsep(&p, ":")) != NULL; n++)
+			;
+		if (n == 4 && strcmp(f[0], name) == 0)
+			uid = strtol(f[2], NULL, 10);
+	}
+	fclose(fp);
+	return (uid);
+}
+
+/* fuso orario di Windows nella distro: /etc/localtime -> /usr/share/zoneinfo/<zona> (se time.useWindowsTimezone) */
+static void
+apply_timezone(const char *tz)
+{
+	char zone[256];
+
+	if (*tz == '\0' || strstr(tz, "..") != NULL || !wslconf_bool(DISTRO_PATH, "time", "useWindowsTimezone", true))
+		return;
+	snprintf(zone, sizeof(zone), DISTRO_PATH "/usr/share/zoneinfo/%s", tz);
+	if (access(zone, R_OK) < 0) {
+		warnx("fuso: zona '%s' assente nella distro", tz);
+		return;
+	}
+	/* il collegamento e' relativo alla radice della distro, come lo vedono i suoi processi */
+	snprintf(zone, sizeof(zone), "/usr/share/zoneinfo/%s", tz);
+	(void)unlink(DISTRO_PATH "/etc/localtime");
+	if (symlink(zone, DISTRO_PATH "/etc/localtime") < 0)
+		warn("fuso: symlink");
+	else
+		warnx("fuso: /etc/localtime -> %s", zone);
+}
+
+/*
  * Il processo del comando: stdin/stdout/stderr sui socket, ambiente dal servizio con PATH/HOME di FreeBSD.
  * Nome vuoto = shell (come init.cpp: argv[0] "-sh" se e' chiesta la shell di login), altrimenti execvp del nome
  * con la riga di comando cosi' com'e'.
@@ -544,7 +646,7 @@ static void
 exec_command(const char *msg, int fds[])
 {
 	const struct create_process *cp = (const struct create_process *)msg;
-	const char *filename, *cwd, *shell, *base;
+	const char *filename, *cwd, *shell, *base, *username;
 	struct passwd *pw;
 	char **argv, **env, **full;
 	char login[64];
@@ -572,23 +674,48 @@ exec_command(const char *msg, int fds[])
 	argv = msg_strarray(msg, cp->command_line_offset, &argc);
 	env = msg_strarray(msg, cp->environment_offset, &envc);
 
+	/*
+	 * L'utente: quello chiesto (wsl -u <nome>), altrimenti l'uid predefinito che il servizio rimanda (quello della
+	 * nostra risposta a Initialize: user.default di wsl.conf, o il valore registrato). Dal passwd della distro.
+	 */
+	username = msg_str(msg, cp->username_offset);
+	pw = *username != '\0' ? getpwnam(username) : getpwuid((uid_t)cp->default_uid);
+	if (pw == NULL) {
+		warnx("utente '%s' (uid %u) assente nella distro: root", username, cp->default_uid);
+		pw = getpwuid(0);
+	}
+	if (pw == NULL)
+		errx(126, "nessun utente root nella distro");
+	for (i = 0; i < 3; i++)
+		if ((cp->flags & (1 << i)) != 0) {
+			/* il terminale appartiene all'utente (gruppo tty), come fa login */
+			struct group *tty = getgrnam("tty");
+
+			(void)fchown(i, pw->pw_uid, tty != NULL ? tty->gr_gid : (gid_t)-1);
+			(void)fchmod(i, 0620);
+			break;
+		}
+	if (initgroups(pw->pw_name, pw->pw_gid) < 0 || setgid(pw->pw_gid) < 0 || setuid(pw->pw_uid) < 0)
+		err(126, "utente %s", pw->pw_name);
+
 	clearenv();
 	for (i = 0; i < envc; i++)
 		putenv(env[i]);
-	setenv("PATH", "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin", 1);
-	setenv("HOME", "/root", 1);
-	setenv("USER", "root", 1);
-	setenv("SHELL", "/bin/sh", 1);
+	setenv("PATH", pw->pw_uid == 0 ? "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin" :
+	    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin:/usr/local/sbin", 1);
+	setenv("HOME", pw->pw_dir, 1);
+	setenv("USER", pw->pw_name, 1);
+	setenv("LOGNAME", pw->pw_name, 1);
+	shell = (pw->pw_shell != NULL && *pw->pw_shell != '\0') ? pw->pw_shell : "/bin/sh";
+	setenv("SHELL", shell, 1);
 
+	/* la cartella di Windows (C:\...) non esiste qui: la home dell'utente */
 	if (*cwd == '\0' || *cwd == '~' || chdir(cwd) < 0)
-		if (chdir("/root") < 0)
+		if (chdir(pw->pw_dir) < 0)
 			(void)chdir("/");
 
 	if (*filename == '\0') {
-		/* la shell dell'utente (root) dal passwd della distro; "-sh" come argv[0] per la shell di login */
-		pw = getpwuid(0);
-		shell = (pw != NULL && pw->pw_shell != NULL && *pw->pw_shell != '\0') ? pw->pw_shell : "/bin/sh";
-		setenv("SHELL", shell, 1);
+		/* la shell dell'utente dal passwd della distro; "-sh" come argv[0] per la shell di login */
 		base = strrchr(shell, '/') != NULL ? strrchr(shell, '/') + 1 : shell;
 		snprintf(login, sizeof(login), "-%s", base);
 		full = calloc((size_t)argc + 2, sizeof(*full));
@@ -854,16 +981,45 @@ initialize_instance(struct chan *c, const char *msg)
 	const struct init_configuration *ic = (const struct init_configuration *)msg;
 	struct init_configuration_response *r;
 	const char *hostname;
-	char version[64];
+	char version[64], name[MAXHOSTNAMELEN], cmd[1024];
 	const char flavor[] = "freebsd";
+	uint32_t default_uid;
 	size_t size;
 
 	hostname = msg_str(msg, ic->hostname_offset);
 	warnx("Initialize: distro '%s', hostname '%s', dominio '%s', fuso '%s', funzioni 0x%x, proprietario drvfs %u",
 	    msg_str(msg, ic->distribution_name_offset), hostname, msg_str(msg, ic->domainname_offset),
 	    msg_str(msg, ic->timezone_offset), ic->feature_flags, ic->drvfs_default_owner);
+	if (wslconf_get(DISTRO_PATH, "network", "hostname", name, sizeof(name)))
+		hostname = name;
 	if (*hostname != '\0' && sethostname(hostname, (int)strlen(hostname)) < 0)
 		warn("sethostname");
+	apply_timezone(msg_str(msg, ic->timezone_offset));
+
+	/* utente predefinito: user.default di wsl.conf, altrimenti quello registrato nel servizio */
+	default_uid = ic->drvfs_default_owner;
+	if (wslconf_get(DISTRO_PATH, "user", "default", name, sizeof(name))) {
+		long uid = distro_uid(name);
+
+		if (uid >= 0)
+			default_uid = (uint32_t)uid;
+		else
+			warnx("Initialize: user.default '%s' assente nel passwd della distro", name);
+	}
+
+	/* boot.command: come root, staccato, nella distro (lo chiude TerminateInstance insieme al resto) */
+	if (wslconf_get(DISTRO_PATH, "boot", "command", cmd, sizeof(cmd)) && fork() == 0) {
+		int nul = open("/dev/null", O_RDWR);
+
+		setsid();
+		if (chroot(DISTRO_PATH) < 0 || chdir("/") < 0)
+			_exit(126);
+		dup2(nul, 0);
+		dup2(nul, 1);
+		dup2(nul, 2);
+		execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+		_exit(127);
+	}
 
 	os_version(version, sizeof(version));
 	size = sizeof(*r) + sizeof(flavor) + strlen(version) + 1;
@@ -872,7 +1028,7 @@ initialize_instance(struct chan *c, const char *msg)
 		err(1, "calloc");
 	r->h.type = MSG_INITIALIZE_RESPONSE;
 	r->plan9_port = WSL_INVALID_PORT;
-	r->default_uid = 0;
+	r->default_uid = default_uid;
 	r->interop_port = WSL_INVALID_PORT;
 	r->systemd_enabled = false;
 	r->pid_namespace = 0;
@@ -881,7 +1037,7 @@ initialize_instance(struct chan *c, const char *msg)
 	r->version_index = (uint32_t)(sizeof(*r) + sizeof(flavor));
 	memcpy(r->buffer + sizeof(flavor), version, strlen(version) + 1);
 	chan_send(c, r, (uint32_t)size, &ic->h);
-	warnx("Initialize: risposto (uid predefinito 0, %s %s)", flavor, version);
+	warnx("Initialize: risposto (uid predefinito %u, %s %s)", default_uid, flavor, version);
 	free(r);
 }
 
@@ -1144,7 +1300,7 @@ mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 	if (with_devfs && run((const char *const[]){ "/sbin/mount", "-t", "devfs", "devfs", DISTRO_PATH "/dev", NULL }) != 0)
 		warnx("distro: devfs su %s/dev non montato", DISTRO_PATH);
 	warnx("distro: %s montato su %s (%s)", part, DISTRO_PATH, ro ? "sola lettura" : "lettura e scrittura");
-	if (!ro && access(RESOLV_CONF, R_OK) == 0)
+	if (!ro && access(RESOLV_CONF, R_OK) == 0 && wslconf_bool(DISTRO_PATH, "network", "generateResolvConf", true))
 		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
 	return (0);
 }
@@ -1324,7 +1480,7 @@ write_resolv_conf(const char *json)
 	for (t = strtok(servers, ","); t != NULL; t = strtok(NULL, ","))
 		fprintf(f, "nameserver %s\n", t);
 	fclose(f);
-	if (is_mounted(DISTRO_PATH))
+	if (is_mounted(DISTRO_PATH) && wslconf_bool(DISTRO_PATH, "network", "generateResolvConf", true))
 		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
 	return (0);
 }
@@ -1692,8 +1848,8 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 			create_session(&c, m);
 			break;
 		case MSG_TIMEZONE_INFORMATION:
-			warnx("%s: fuso orario '%s' (radice in sola lettura: non applicato)", what,
-			    msg_str(m, *(uint32_t *)(m + sizeof(*h))));
+			if (distro_disk)
+				apply_timezone(msg_str(m, *(uint32_t *)(m + sizeof(*h))));
 			break;
 		case MSG_TERMINATE_INSTANCE:
 			if (distro_disk)
@@ -1715,6 +1871,55 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 	_exit(0);
 }
 
+/*
+ * ChildExit (45) sul canale delle notifiche quando muore l'init di un'istanza (main.cpp in Linux): il servizio lo
+ * aspetta per chiudere l'istanza; senza, wsl --terminate attendeva 60 s ("Timeout durante l'attesa della chiusura
+ * del processo di distribuzione", prova del 03/11 19:58). Lo manda il gestore di SIGCHLD del processo principale:
+ * write() e waitpid() si possono chiamare da un gestore; la tabella si tocca solo con SIGCHLD bloccato.
+ */
+struct child_exit {
+	struct msg_header h;
+	uint32_t child_pid;
+	uint8_t instance_id[16];
+};
+_Static_assert(sizeof(struct child_exit) == 36, "LX_MINI_INIT_CHILD_EXIT_MESSAGE");
+
+static struct {
+	pid_t pid;
+	uint8_t instance_id[16];
+} instances[64];
+static int notify_fd = -1;
+
+static void
+on_sigchld(int sig __unused)
+{
+	struct child_exit m;
+	int saved = errno, status;
+	size_t i;
+	pid_t p;
+
+	while ((p = waitpid(-1, &status, WNOHANG)) > 0)
+		for (i = 0; i < nitems(instances); i++)
+			if (instances[i].pid == p) {
+				memset(&m, 0, sizeof(m));
+				m.h.type = MSG_CHILD_EXIT;
+				m.h.size = sizeof(m);
+				m.child_pid = (uint32_t)p;
+				memcpy(m.instance_id, instances[i].instance_id, sizeof(m.instance_id));
+				if (notify_fd >= 0)
+					(void)write(notify_fd, &m, sizeof(m));
+				instances[i].pid = 0;
+			}
+	errno = saved;
+}
+
+/* nei figli del processo principale: niente gestore ereditato, i loro figli non lasciano zombi */
+static void
+child_of_main(void)
+{
+	signal(SIGCHLD, SIG_IGN);
+}
+
 static void
 launch_init(struct chan *mainc, int notify, const char *msg, bool gui)
 {
@@ -1726,10 +1931,18 @@ launch_init(struct chan *mainc, int notify, const char *msg, bool gui)
 	sysfd = -1;
 	if ((li->flags & LAUNCH_FLAG_SYSTEM_DISTRO) != 0 && gui)
 		sysfd = connect_host(WSL_INIT_PORT);
+	sigset_t block, old;
+	size_t i;
+
+	sigemptyset(&block);
+	sigaddset(&block, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &block, &old);
 	pid = fork();
 	if (pid < 0)
 		err(1, "fork");
 	if (pid == 0) {
+		sigprocmask(SIG_SETMASK, &old, NULL);
+		child_of_main();
 		close(mainc->fd);
 		close(notify);
 		if (sysfd >= 0 && fork() == 0) {
@@ -1740,6 +1953,13 @@ launch_init(struct chan *mainc, int notify, const char *msg, bool gui)
 			close(sysfd);
 		distro_init(fd, msg, "istanza", true);
 	}
+	for (i = 0; i < nitems(instances); i++)
+		if (instances[i].pid == 0) {
+			instances[i].pid = pid;
+			memcpy(instances[i].instance_id, li->instance_id, sizeof(li->instance_id));
+			break;
+		}
+	sigprocmask(SIG_SETMASK, &old, NULL);
 	close(fd);
 	if (sysfd >= 0)
 		close(sysfd);
@@ -1754,12 +1974,27 @@ main(void)
 	bool gui = false;
 
 	setvbuf(stderr, NULL, _IONBF, 0);
-	signal(SIGCHLD, SIG_IGN);	/* i figli (istanze, sessioni) non lasciano zombi */
-	warnx("avvio, pid %d", getpid());
+	struct sigaction sa;
+
+	/* SIGCHLD raccoglie i figli e segnala la fine delle istanze; SA_RESTART: le letture dei canali proseguono */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = on_sigchld;
+	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGCHLD, &sa, NULL);
+	{
+		/* (punto 3) quanto dopo l'avvio del kernel parte l'init: il servizio aspetta la prima connessione */
+		struct timespec up;
+
+		clock_gettime(CLOCK_UPTIME, &up);
+		warnx("avvio, pid %d, %ld.%01ld s dopo l'avvio del kernel", getpid(), (long)up.tv_sec,
+		    up.tv_nsec / 100000000);
+	}
 
 	mainc.fd = connect_host(WSL_INIT_PORT);
 	send_capabilities(&mainc);
 	notify = connect_host(WSL_INIT_PORT);
+	notify_fd = notify;
 
 	while ((msg = chan_recv(&mainc)) != NULL) {
 		struct msg_header *h = (struct msg_header *)msg;
@@ -1775,6 +2010,7 @@ main(void)
 			extra = connect_host(WSL_INIT_PORT);	/* canale GNS */
 			warnx("canale GNS fd %d", extra);
 			if (fork() == 0) {
+				child_of_main();
 				close(mainc.fd);
 				close(notify);
 				gns_engine(extra);
@@ -1797,6 +2033,7 @@ main(void)
 				extra = connect_host(WSL_INIT_PORT);
 				warnx("canale port tracker fd %d", extra);
 				if (c->net.port_tracker_type == 2 && fork() == 0) {
+					child_of_main();
 					close(mainc.fd);
 					close(notify);
 					port_tracker(extra);
@@ -1834,6 +2071,7 @@ main(void)
 			if (pid < 0)
 				err(1, "fork");
 			if (pid == 0) {
+				child_of_main();
 				close(mainc.fd);
 				close(notify);
 				import_inplace(fd, msg);
