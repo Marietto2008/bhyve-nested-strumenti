@@ -652,8 +652,11 @@ apply_timezone(const char *tz)
  */
 /* per il comando: il socket d'interop della sessione (vista dalla distro), se c'e' */
 static char interop_path[128];
-/* dal LaunchInit: id della VM e cartella d'installazione di WSL (per msrdc.exe di WSLg) */
-static char wsl_vm_id[64], wsl_install_path[512];
+/*
+ * dal LaunchInit: id della VM, cartella d'installazione di WSL (per msrdc.exe di WSLg) e cartella degli oggetti di
+ * Windows dietro il file system virtio "wslg" (la memoria condivisa delle finestre, /wslgsharedmemorypath di msrdc)
+ */
+static char wsl_vm_id[64], wsl_install_path[512], wsl_shm_root[256];
 
 static void
 exec_command(const char *msg, int fds[])
@@ -722,6 +725,8 @@ exec_command(const char *msg, int fds[])
 		setenv("WSL_VM_ID", wsl_vm_id, 1);
 	if (*wsl_install_path != '\0')
 		setenv("WSL_INSTALL_PATH", wsl_install_path, 1);
+	if (*wsl_shm_root != '\0')
+		setenv("WSL2_SHARED_MEMORY_OB_DIRECTORY", wsl_shm_root, 1);
 	{
 		/* la cartella di Windows (per wslexe): SystemRoot dall'ambiente di wsl.exe */
 		char **nt = msg_strarray(msg, cp->nt_environment_offset, NULL);
@@ -2011,7 +2016,8 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 	    msg_str(launch, li->mount_options_offset), li->flags);
 	snprintf(wsl_vm_id, sizeof(wsl_vm_id), "%s", msg_str(launch, li->vm_id_offset));
 	snprintf(wsl_install_path, sizeof(wsl_install_path), "%s", msg_str(launch, li->install_path_offset));
-	warnx("%s: VM %s, WSL in '%s'", what, wsl_vm_id, wsl_install_path);
+	snprintf(wsl_shm_root, sizeof(wsl_shm_root), "%s", msg_str(launch, li->shared_memory_root_offset));
+	warnx("%s: VM %s, WSL in '%s', memoria condivisa '%s'", what, wsl_vm_id, wsl_install_path, wsl_shm_root);
 	memset(&res, 0, sizeof(res));
 	res.h.type = MSG_CREATE_INSTANCE_RESULT;
 	res.pid = (uint64_t)getpid();

@@ -16,6 +16,6 @@ md=$(mdconfig -a -t vnode -f "$IMG/$SORG.raw")
 trap 'umount "$R" 2>/dev/null; mdconfig -d -u ${md#md} 2>/dev/null' EXIT
 mount -t ufs /dev/${md}p4 "$R"
 ( cd "$SRC" && env MAKEOBJDIRPREFIX=$OBJ make installkernel KERNCONF=$KC DESTDIR="$R" >/dev/null )
-strings "$R/boot/kernel/kernel" | grep -m1 'wsf/guest'
+strings "$R/boot/kernel/kernel" | grep -m1 'wsf/'
 umount "$R"; mdconfig -d -u ${md#md}; trap - EXIT
 sh "$(dirname "$0")/aggiorna-init.sh" "$SORG" "$NOME"

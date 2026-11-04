@@ -5,6 +5,9 @@
  * Weston e' weston-mirror (ramo working di Microsoft) compilato per FreeBSD in /usr/local/wslg.
  * Uso: wslg-avvia [desktop|rail]     desktop (predefinito) = un desktop Weston in una finestra; rail = finestre singole
  * Variabili: WSL_VM_ID e WSL_INSTALL_PATH (le mette l'init), WSL_INTEROP (per wslexe).
+ * Memoria condivisa (VAIL, finestre senza copie): se l'init ha messo WSL2_SHARED_MEMORY_OB_DIRECTORY e il kernel ha
+ * /dev/wslgshm (il file system virtio "wslg" in DAX), Weston alloca le superfici li' (WSL2_SHARED_MEMORY_MOUNT_POINT
+ * = il dispositivo) e msrdc le apre dal lato Windows (/wslgsharedmemorypath:<cartella degli oggetti>), come WSLGd.
  * Le applicazioni: Wayland con WAYLAND_DISPLAY=wayland-0 e XDG_RUNTIME_DIR=/tmp/wslg-runtime, X11 con DISPLAY=:0.
  */
 #include <sys/types.h>
@@ -32,13 +35,15 @@ struct sockaddr_hvs {
 #define WESTON		"/usr/local/wslg/bin/weston"
 #define RUNTIME_DIR	"/tmp/wslg-runtime"
 #define SERVICE_ID_FMT	"%08X-FACB-11E6-BD58-64006A7986D3"	/* come c_serviceIdTemplate di WSLGd */
+#define SHM_DEVICE	"/dev/wslgshm"
 
 int
 main(int argc, char **argv)
 {
 	struct sockaddr_hvs sa;
-	char fdenv[32], sid[64], sidenv[96], sidarg[96], remote[96], shell[64], rdp[600], msrdc[600];
-	const char *vm, *inst, *mode;
+	char fdenv[32], sid[64], sidenv[96], sidarg[96], remote[96], shell[64], rdp[600], msrdc[600], shmarg[300];
+	const char *vm, *inst, *mode, *obdir;
+	struct stat st;
 	unsigned int port;
 	pid_t weston, client;
 	int fd, status;
@@ -92,6 +97,18 @@ main(int argc, char **argv)
 	setenv("WAYLAND_DISPLAY", "wayland-0", 1);
 	setenv("LD_LIBRARY_PATH", "/usr/local/wslg/lib", 1);
 	setenv("WESTON_DISABLE_ABSTRACT_FD", "1", 1);
+	/* come WSLGd: senza la memoria condivisa Weston resta nella modalita' a copia (RAIL COPY MODE) */
+	*shmarg = '\0';
+	obdir = getenv("WSL2_SHARED_MEMORY_OB_DIRECTORY");
+	if (obdir != NULL && *obdir != '\0' && stat(SHM_DEVICE, &st) == 0 && S_ISCHR(st.st_mode)) {
+		setenv("WSL2_SHARED_MEMORY_MOUNT_POINT", SHM_DEVICE, 1);
+		snprintf(shmarg, sizeof(shmarg), "/wslgsharedmemorypath:%s", obdir);
+		printf("wslg-avvia: memoria condivisa %s, oggetti di Windows in %s\n", SHM_DEVICE, obdir);
+	} else {
+		unsetenv("WSL2_SHARED_MEMORY_MOUNT_POINT");
+		printf("wslg-avvia: niente memoria condivisa (%s), modalita' a copia\n",
+		    obdir == NULL || *obdir == '\0' ? "manca WSL2_SHARED_MEMORY_OB_DIRECTORY" : "manca " SHM_DEVICE);
+	}
 	snprintf(shell, sizeof(shell), "--shell=%s", strcmp(mode, "rail") == 0 ? "rdprail-shell.so" : "desktop-shell.so");
 
 	/*
@@ -129,11 +146,16 @@ main(int argc, char **argv)
 	snprintf(remote, sizeof(remote), "/v:%s", vm);
 	snprintf(sidarg, sizeof(sidarg), "/hvsocketserviceid:%s", sid);
 	snprintf(rdp, sizeof(rdp), "%s\\%s", inst, strcmp(mode, "rail") == 0 ? "wslg.rdp" : "wslg_desktop.rdp");
-	printf("wslg-avvia: %s /wslg /silent %s %s /plugin:WSLDVC_PACKAGE %s\n", msrdc, remote, sidarg, rdp);
+	printf("wslg-avvia: %s /wslg /silent %s %s /plugin:WSLDVC_PACKAGE %s %s\n", msrdc, remote, sidarg, shmarg, rdp);
 	client = fork();
 	if (client == 0) {
-		execlp("wslexe", "wslexe", msrdc, "/wslg", "/silent", remote, sidarg, "/plugin:WSLDVC_PACKAGE", rdp,
-		    (char *)NULL);
+		/* l'ordine di WSLGd: /wslg e /silent prima di tutto, il file .rdp per ultimo */
+		if (*shmarg != '\0')
+			execlp("wslexe", "wslexe", msrdc, "/wslg", "/silent", remote, sidarg, "/plugin:WSLDVC_PACKAGE",
+			    shmarg, rdp, (char *)NULL);
+		else
+			execlp("wslexe", "wslexe", msrdc, "/wslg", "/silent", remote, sidarg, "/plugin:WSLDVC_PACKAGE",
+			    rdp, (char *)NULL);
 		err(127, "wslexe");
 	}
 	/* finisce quando si chiude la finestra RDP; poi si chiude anche weston */
