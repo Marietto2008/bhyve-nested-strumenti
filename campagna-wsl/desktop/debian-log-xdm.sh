@@ -1,0 +1,1 @@
+tail -20 /var/log/claude-xdm.log; echo ====; tail -5 /var/log/claude-xephyr.log; echo ====; ls -la /home/marietto/.xsession-errors 2>&1; tail -20 /home/marietto/.xsession-errors 2>/dev/null; echo ====; ps ax | grep -e xfce -e xdm -e Xephyr | grep -v grep

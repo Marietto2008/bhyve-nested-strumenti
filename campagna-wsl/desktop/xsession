@@ -1,0 +1,7 @@
+#!/bin/sh
+# ~/.xsession -- Claude 04/11/2026. XFCE dentro Xephyr: le applicazioni GTK/Qt devono usare X11. Con il Wayland di
+# WSLg a disposizione lo sceglierebbero da sole: pannello e desktop uscirebbero come finestre a parte, fuori da Xephyr
+# (xfdesktop: "must support the zwlr_layer_shell_v1 protocol", prova del 04/11 07:54).
+unset WAYLAND_DISPLAY
+export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
+exec startxfce4

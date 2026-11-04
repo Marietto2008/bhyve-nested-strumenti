@@ -1,0 +1,1 @@
+tail -8 /var/log/claude-xdm.log; echo ====; ls -la /home/marietto/.xsession-errors; tail -25 /home/marietto/.xsession-errors; echo ====; cat /usr/local/etc/X11/xdm/Xstartup | grep -v "^#" | head; ls -l /home/marietto/.xsession

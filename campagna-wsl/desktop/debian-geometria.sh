@@ -1,0 +1,1 @@
+D=localhost:$(cat /run/claude-xephyr.display); echo D=$D; DISPLAY=$D xdpyinfo | grep -e dimensions -e XINERAMA -e RANDR; DISPLAY=$D xrandr 2>&1 | head -5; echo ====; tail -25 /home/marietto/.xsession-errors 2>&1; ls /usr/share/backgrounds/xfce 2>&1 | head -3; dpkg -l xfdesktop4-data desktop-base 2>/dev/null | grep ^ii

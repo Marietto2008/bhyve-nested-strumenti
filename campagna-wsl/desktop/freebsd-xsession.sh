@@ -1,0 +1,1 @@
+fetch -q -o /home/marietto/.xsession http://IP-HOST:8765/xsession; chmod 755 /home/marietto/.xsession; chown marietto:marietto /home/marietto/.xsession; grep GDK /home/marietto/.xsession; fetch -q -o /usr/local/sbin/claude-desktop http://IP-HOST:8765/claude-desktop-freebsd; grep -c displayfd /usr/local/sbin/claude-desktop

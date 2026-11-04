@@ -1,0 +1,21 @@
+#!/bin/sh
+# claude-desktop -- Claude 04/11/2026. Il desktop XFCE di Debian in una finestra di WSLg, con la schermata di login di
+# xdm: Xephyr fa da schermo dentro WSLg (:0), xdm ci mette il login, dopo il login parte ~/.xsession (XFCE).
+# Xephyr sceglie da se' il primo display libero (-displayfd): un lock X rimasto da una sessione precedente non ferma
+# niente. Ascolta solo su TCP locale: WSLg monta /tmp/.X11-unix in sola lettura ("failed to create listener for
+# unix", prova del 04/11 07:49), quindi il display e' localhost:N. Lo lancia Avvia-Debian.cmd sul Desktop di Windows (wsl -d Debian -u root -e /usr/local/sbin/claude-desktop).
+export DISPLAY=:0
+N=/run/claude-xephyr.display
+pkill -x xdm 2>/dev/null; pkill -x Xephyr 2>/dev/null; sleep 1
+: > $N
+Xephyr -displayfd 5 -nolisten unix -listen tcp -ac -screen 1536x800 -title 'Debian - XFCE' -resizeable -no-host-grab \
+	5> $N > /var/log/claude-xephyr.log 2>&1 &
+i=0; until [ -s $N ] || [ $i -ge 30 ]; do sleep 1; i=$((i + 1)); done
+D=localhost:$(cat $N)
+DISPLAY=$D xdpyinfo > /dev/null 2>&1 || { echo 'Xephyr non parte: vedi /var/log/claude-xephyr.log'; tail -5 /var/log/claude-xephyr.log; exit 1; }
+echo "Debian: schermata di login nella finestra 'Debian - XFCE' (display $D): utente marietto, password a."
+echo 'Non chiudere questa finestra: chiudendola si ferma il desktop.'
+# niente file del pid: xdm 1.1.14 lo crea con O_EXCL e non parte se esiste gia', e dopo un arresto brusco (panic,
+# wsl --shutdown) resta sul disco persistente ("Can't lock pid file", 04/11 08:18). Che ce ne sia uno solo lo
+# garantisce il pkill qui sopra.
+exec xdm -nodaemon -server "$D foreign" -udpPort 0 -xrm 'DisplayManager.pidFile:' -error /var/log/claude-xdm.log
