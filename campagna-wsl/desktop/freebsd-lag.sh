@@ -1,0 +1,1 @@
+fetch -q -o /usr/local/bin/claude-lag http://IP-HOST:8765/claude-lag; chmod 755 /usr/local/bin/claude-lag; sha256 -q /usr/local/bin/claude-lag; daemon -f -o /var/log/claude-lag.log /usr/local/bin/claude-lag 900 100; sleep 3; cat /var/log/claude-lag.log; pgrep -lf claude-lag

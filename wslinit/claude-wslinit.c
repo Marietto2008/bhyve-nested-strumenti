@@ -1408,8 +1408,15 @@ mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 		warnx("distro: nessuna partizione su %s", disk);
 		return (ENODEV);
 	}
-	rc = run((const char *const[]){ "/sbin/fsck", "-p", "-t", "ufs", part, NULL });
-	warnx("distro: fsck -p %s -> %d", part, rc);
+	/*
+	 * Come rc.d/fsck + rc.d/bgfsck di FreeBSD: in primo piano solo i file system che non si possono controllare in
+	 * background (fsck -F); uno con soft updates lasciato sporco da un arresto brusco si monta subito e si controlla
+	 * dopo, su un'istantanea (fsck_ffs -B, sotto). Col controllo completo in primo piano i 50 GB della distro, dopo
+	 * un panic, superavano il tempo che il servizio concede alla creazione dell'istanza (CreateInstance/
+	 * ERROR_TIMEOUT con l'istanza ferma in fsck, 04/11 10:55).
+	 */
+	rc = run((const char *const[]){ "/sbin/fsck", "-F", "-p", "-t", "ufs", part, NULL });
+	warnx("distro: fsck -F -p %s -> %d", part, rc);
 	rc = run((const char *const[]){ "/sbin/mount", "-t", "ufs", "-o", ro ? "ro" : "rw", part, DISTRO_PATH, NULL });
 	if (rc != 0) {
 		warnx("distro: mount %s su %s fallito (%d)", part, DISTRO_PATH, rc);
@@ -1426,6 +1433,13 @@ mount_distro_locked(uint32_t lun, bool ro, bool with_devfs)
 			warnx("distro: strumenti non montati su %s", DISTRO_TOOLS);
 	}
 	warnx("distro: %s montato su %s (%s)", part, DISTRO_PATH, ro ? "sola lettura" : "lettura e scrittura");
+	/* rc.d/bgfsck: su un file system pulito fsck_ffs -B -p esce subito; i figli dell'istanza si raccolgono da soli */
+	if (!ro && fork() == 0) {
+		setsid();
+		(void)nice(10);
+		execl("/sbin/fsck_ffs", "fsck_ffs", "-B", "-p", part, (char *)NULL);
+		_exit(127);
+	}
 	if (!ro && access(RESOLV_CONF, R_OK) == 0 && wslconf_bool(DISTRO_PATH, "network", "generateResolvConf", true))
 		(void)run((const char *const[]){ "/bin/cp", RESOLV_CONF, DISTRO_PATH "/etc/resolv.conf", NULL });
 	return (0);
