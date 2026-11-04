@@ -4,7 +4,7 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+$g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size, ([System.Drawing.CopyPixelOperation]::SourceCopy -bor [System.Drawing.CopyPixelOperation]::CaptureBlt))  # CaptureBlt: anche le finestre layered (RAIL di msrdc)
 $bmp.Save("C:\claude\schermo.png", [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose(); $bmp.Dispose()
 Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "{0} {1}: {2}" -f $_.ProcessName, $_.Id, $_.MainWindowTitle } |

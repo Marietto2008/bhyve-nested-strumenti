@@ -67,6 +67,21 @@ main(int argc, char **argv)
 	snprintf(sid, sizeof(sid), SERVICE_ID_FMT, port);
 	printf("wslg-avvia: server RDP sulla porta hvsock %u (%s), VM %s\n", port, sid, vm);
 
+	/*
+	 * Lock e socket X rimasti da una sessione precedente: /tmp della distro e' sul disco, e i pid si ripetono da un
+	 * avvio all'altro. Un /tmp/.X0-lock col pid del Weston nuovo gli faceva credere :0 occupato e prendeva :1, con
+	 * DISPLAY=:0 che non portava a nessuno (prova del 04/11 00:16). Qui nessun server X e' ancora vivo: via tutti.
+	 */
+	{
+		char path[64];
+
+		for (int d = 0; d < 10; d++) {
+			snprintf(path, sizeof(path), "/tmp/.X%d-lock", d);
+			(void)unlink(path);
+			snprintf(path, sizeof(path), "/tmp/.X11-unix/X%d", d);
+			(void)unlink(path);
+		}
+	}
 	(void)mkdir(RUNTIME_DIR, 0700);
 	(void)chmod(RUNTIME_DIR, 0700);
 	snprintf(fdenv, sizeof(fdenv), "%d", fd);
@@ -79,13 +94,29 @@ main(int argc, char **argv)
 	setenv("WESTON_DISABLE_ABSTRACT_FD", "1", 1);
 	snprintf(shell, sizeof(shell), "--shell=%s", strcmp(mode, "rail") == 0 ? "rdprail-shell.so" : "desktop-shell.so");
 
+	/*
+	 * La configurazione di WSLg (config/weston.ini nel repo wslg): niente controllo d'accesso per Xwayland, niente
+	 * metodo d'input (senza, rdprail cercava di eseguire 'dummy-entry'); in piu' il percorso di Xwayland in FreeBSD
+	 * (Weston cerca /usr/bin/Xwayland: "Failed to launch Xwayland", prova del 03/11 23:24).
+	 */
+	{
+		FILE *ini = fopen(RUNTIME_DIR "/weston.ini", "w");
+
+		if (ini == NULL)
+			err(1, RUNTIME_DIR "/weston.ini");
+		fprintf(ini, "[xwayland]\ndisable_access_control=true\npath=/usr/local/bin/Xwayland\n\n"
+		    "[input-method]\npath=\n");
+		fclose(ini);
+	}
+
 	weston = fork();
 	if (weston < 0)
 		err(1, "fork");
 	if (weston == 0) {
 		/* come WSLGd: Xwayland per le applicazioni X11 (DISPLAY=:0) */
 		execl(WESTON, "weston", "--backend=rdp-backend.so", "--xwayland", "--socket=wayland-0", shell,
-		    "--log=" RUNTIME_DIR "/weston.log", "--logger-scopes=log,rdp-backend", (char *)NULL);
+		    "--config=" RUNTIME_DIR "/weston.ini",
+		    "--log=" RUNTIME_DIR "/weston.log", "--logger-scopes=log,rdp-backend,rdprail-shell", (char *)NULL);
 		err(127, "%s", WESTON);
 	}
 	close(fd);

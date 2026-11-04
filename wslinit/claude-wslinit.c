@@ -40,6 +40,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <ifaddrs.h>
 #include <err.h>
 #include <errno.h>
@@ -977,6 +978,12 @@ create_process(struct chan *c, const char *msg)
 		sun.sun_family = AF_UNIX;
 		snprintf(sun.sun_path, sizeof(sun.sun_path), DISTRO_PATH "/var/run/WSL/%d_interop", getpid());
 		sun.sun_len = (uint8_t)SUN_LEN(&sun);
+		/*
+		 * Il disco della distro e' persistente (in Linux /run e' in memoria) e i pid si ripetono da un avvio
+		 * all'altro: un socket rimasto da una sessione con lo stesso pid faceva fallire bind() e l'interop
+		 * restava spento (prova del 03/11 23:56: "WSL_INTEROP non impostata", msrdc mai partito).
+		 */
+		(void)unlink(sun.sun_path);
 		ilfd = socket(AF_UNIX, SOCK_STREAM, 0);
 		if (ilfd >= 0 && bind(ilfd, (struct sockaddr *)&sun, sizeof(sun)) == 0 && listen(ilfd, 16) == 0) {
 			(void)chmod(sun.sun_path, 0666);
@@ -2016,6 +2023,21 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 			warn("%s: %s/bin/sh", what, DISTRO_PATH);
 			res.result = ENOENT;
 			res.failure_step = 3;	/* LxInitCreateInstanceStepLaunchInit */
+		}
+		/* i socket d'interop di sessioni passate: la cartella riparte vuota, come /run in Linux */
+		if (res.result == 0) {
+			DIR *dir = opendir(DISTRO_PATH "/var/run/WSL");
+			struct dirent *de;
+			char path[PATH_MAX];
+
+			if (dir != NULL) {
+				while ((de = readdir(dir)) != NULL)
+					if (strstr(de->d_name, "_interop") != NULL) {
+						snprintf(path, sizeof(path), DISTRO_PATH "/var/run/WSL/%s", de->d_name);
+						(void)unlink(path);
+					}
+				closedir(dir);
+			}
 		}
 		/* tutti i discendenti (sessioni, comandi, loro figli) restano sotto l'istanza: alla fine si chiudono tutti */
 		if (procctl(P_PID, getpid(), PROC_REAP_ACQUIRE, NULL) < 0)
