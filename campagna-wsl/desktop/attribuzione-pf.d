@@ -18,6 +18,16 @@ fbt:vmm-restore:vm_inject_fault:entry
 	printf("%Y vm_inject_fault #PF errvalid=%d err=%#x vcpu=%p\n", walltimestamp, arg2, arg3, arg0);
 	stack(16);
 }
+/* tutte le iniezioni software di L0 (vmx.c:3443 riflesso, ioctl VM_INJECT_EXCEPTION di QEMU, vm_inject_fault) */
+fbt:vmm-restore:vm_inject_exception:entry
+/arg1 == 14/
+{
+	printf("%Y vm_inject_exception #PF errvalid=%d err=%#x restart=%d vcpu=%p %s tid %d\n", walltimestamp, arg2, arg3,
+	    arg4, arg0, execname, tid);
+	stack(16);
+	ustack(12);
+}
+fbt:vmm-restore:vm_inject_exception:entry { @n["vm_inject_exception (tutte)"] = count(); }
 fbt:vmm-restore:_vm_gla2gpa:entry
 {
 	self->gf = arg5; self->gla = arg2; self->prot = arg3; self->pg = arg1; self->co = arg6;

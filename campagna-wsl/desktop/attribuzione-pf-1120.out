@@ -1,0 +1,55 @@
+2026 Nov  4 11:12:29 vivo
+  vmm_fetch_instruction      693304
+  _vm_gla2gpa                1168083
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:13:29 vivo
+  vmm_fetch_instruction      3090426
+  _vm_gla2gpa                4147192
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:14:29 vivo
+  vmm_fetch_instruction      2053755
+  _vm_gla2gpa                3646578
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:15:29 vivo
+  vmm_fetch_instruction      3461490
+  _vm_gla2gpa                15721500
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:16:29 vivo
+  vmm_fetch_instruction      3108561
+  _vm_gla2gpa                16713358
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:17:29 vivo
+  vmm_fetch_instruction      2903577
+  _vm_gla2gpa                15939144
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:18:29 vivo
+  vmm_fetch_instruction      2902567
+  _vm_gla2gpa                16033985
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:19:29 vivo
+  vmm_fetch_instruction      2977075
+  _vm_gla2gpa                16135392
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:20:29 vivo
+  vmm_fetch_instruction      3033188
+  _vm_gla2gpa                16264223
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:21:29 vivo
+  vmm_fetch_instruction      2443898
+  _vm_gla2gpa                12038287
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
+2026 Nov  4 11:22:29 vivo
+  vmm_fetch_instruction      1905613
+  _vm_gla2gpa                8678067
+  gla2gpa con fault/errore [rc fault prot check_only cpl pmode] -> conteggio:
+  fetch con fault/errore [rc fault cpl pmode] -> conteggio:
