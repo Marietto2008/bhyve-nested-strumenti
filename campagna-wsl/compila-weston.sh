@@ -2,7 +2,7 @@
 # compila-weston.sh -- Claude 03/11/2026. rdpapplist (repo wslg) e weston-mirror (ramo working) per WSLg su FreeBSD
 # 15.2, opzioni come nel Dockerfile di WSLg; dipende da FreeRDP-mirror in /usr/local/wslg. Nel chroot radice152.
 set -eu
-export PKG_CONFIG_PATH=/usr/local/wslg/lib/pkgconfig:/usr/local/wslg/share/pkgconfig:/usr/local/libdata/pkgconfig
+export PKG_CONFIG_PATH=/usr/local/wslg/libdata/pkgconfig:/usr/local/wslg/lib/pkgconfig:/usr/local/wslg/share/pkgconfig:/usr/local/libdata/pkgconfig
 export CFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib -lepoll-shim"
 cd /root/wslg/rdpapplist
 [ -d build ] || meson setup --prefix=/usr/local/wslg build > /root/wslg/rdpapplist-meson.log 2>&1 || { tail -20 /root/wslg/rdpapplist-meson.log; exit 1; }

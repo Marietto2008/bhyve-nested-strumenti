@@ -656,7 +656,7 @@ static char interop_path[128];
  * dal LaunchInit: id della VM, cartella d'installazione di WSL (per msrdc.exe di WSLg) e cartella degli oggetti di
  * Windows dietro il file system virtio "wslg" (la memoria condivisa delle finestre, /wslgsharedmemorypath di msrdc)
  */
-static char wsl_vm_id[64], wsl_install_path[512], wsl_shm_root[256];
+static char wsl_vm_id[64], wsl_install_path[512], wsl_shm_root[256], wsl_distro_name[128];
 
 static void
 exec_command(const char *msg, int fds[])
@@ -723,6 +723,9 @@ exec_command(const char *msg, int fds[])
 		setenv("WSL_INTEROP", interop_path, 1);
 	if (*wsl_vm_id != '\0')
 		setenv("WSL_VM_ID", wsl_vm_id, 1);
+	/* come init.cpp (LX_WSL_DISTRO_NAME_ENV): lo usano anche le applicazioni di WSLg (rdprail-shell di Weston) */
+	if (*wsl_distro_name != '\0')
+		setenv("WSL_DISTRO_NAME", wsl_distro_name, 1);
 	if (*wsl_install_path != '\0')
 		setenv("WSL_INSTALL_PATH", wsl_install_path, 1);
 	if (*wsl_shm_root != '\0')
@@ -2017,6 +2020,7 @@ distro_init(int fd, const char *launch, const char *what, bool distro_disk)
 	snprintf(wsl_vm_id, sizeof(wsl_vm_id), "%s", msg_str(launch, li->vm_id_offset));
 	snprintf(wsl_install_path, sizeof(wsl_install_path), "%s", msg_str(launch, li->install_path_offset));
 	snprintf(wsl_shm_root, sizeof(wsl_shm_root), "%s", msg_str(launch, li->shared_memory_root_offset));
+	snprintf(wsl_distro_name, sizeof(wsl_distro_name), "%s", msg_str(launch, li->distribution_name_offset));
 	warnx("%s: VM %s, WSL in '%s', memoria condivisa '%s'", what, wsl_vm_id, wsl_install_path, wsl_shm_root);
 	memset(&res, 0, sizeof(res));
 	res.h.type = MSG_CREATE_INSTANCE_RESULT;
