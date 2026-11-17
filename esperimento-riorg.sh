@@ -20,7 +20,7 @@ PF=/home/marietto/.config/claude-wsl2/password-windows
 Q=/mnt/linuxulator2/vm/wsl2-freebsd-work/vm0-13-qmp.sock
 OVD=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini/overlay
 VARS=/mnt/linuxulator2/vm/wsl2-freebsd-work/images/claude-wsl2-immagini/vm0-13-qemu-vars.fd
-IMG=/mnt/linuxulator2/vm/IMG/Windows11-wsl2-freebsd.img	# 17/11: immagine di lavoro su ZFS (prima il G-DRIVE da1p2)
+IMG=/mnt/da1p2/bhyve/img/Windows/11/Windows11-wsl2-freebsd.img	# 17/11 sera: di nuovo il G-DRIVE (decisione dell'utente)
 POFF=122683392; CL=4096
 # hive, LCN del primo cluster (fsutil file queryextents, 17/11 13:1x), ora attesa di 0xA8 (UTC, dai KG15 del 17/11)
 HIVE="SOFTWARE:0x1d72aa6:2026-11-17 07:21:44 DEFAULT:0xe2eda:2026-11-17 07:22:04"
