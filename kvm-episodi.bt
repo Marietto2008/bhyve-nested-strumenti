@@ -1,0 +1,68 @@
+/*
+ * kvm-episodi.bt -- Claude 11/11/2026, schema di Fable (risposta al 023, §3.2), NON ANCORA PROVATO.
+ * Sotto Linux/KVM, con Windows+Hyper-V come L1 e FreeBSD (WSL) come L2: conta gli episodi «scrittura dell'L2 sul LAPIC
+ * riflessa all'L1» e li classifica al primo rientro con lo stesso VMCS12 (chiave il VMCS12, come nel modulo bhyve 023):
+ *   classe 0 = RIP avanzato di ILEN, 1 = d'altro, 2 = fermo; ev = evento iniettato al rientro.
+ * PRIMA di usarlo: controllare i nomi dei campi in /sys/kernel/tracing/events/kvm/{kvm_nested_vmenter,
+ * kvm_nested_vmexit_inject,kvm_page_fault}/format (6.8: vmcb o vmcs12? nested_rip, event_inj, guest_cr3; exit_code,
+ * exit_info1, exit_info2; fault_address, guest_rip, error_code).
+ * ILEN: 6 per entrambe le scritture di lapic_et_start (b831 -> 0x320 e b847 -> 0x380), verificato sotto bhyve.
+ * Uso: sudo bpftrace kvm-episodi.bt > episodi-<ora>.txt   (stampa le mappe ogni 60 s e al termine)
+ */
+tracepoint:kvm:kvm_nested_vmenter
+{
+	$p = args->vmcb;
+	@cur[tid] = $p;
+	$r0 = @pend[$p];
+	if ($r0 != 0) {
+		$ev = (args->event_inj & 0x80000000) != 0 ? 1 : 0;
+		$cls = args->nested_rip == $r0 ? 2 : (args->nested_rip == $r0 + 6 ? 0 : 1);
+		@e0c[$cls, $ev] = count();
+		if ($cls == 2 && args->event_inj == 0x80000b0e) {
+			printf("%s #PF FERMO: vmcs12 %lx rip %lx cr3 %lx idtv_ultima_48 %x\n", strftime("%H:%M:%S", nsecs),
+			    $p, args->nested_rip, args->guest_cr3, @idtv[$p]);
+		}
+		delete(@pend[$p]);
+	}
+}
+
+tracepoint:kvm:kvm_page_fault
+/args->fault_address == 0xfee00380 || args->fault_address == 0xfee00320/
+{
+	@pfrip[tid] = args->guest_rip;
+	@pft[tid] = nsecs;
+}
+
+/* esposizione sulla pagina del codice di lapic_et_start (controllare prima che l'L2-GPA sia lo stesso) */
+tracepoint:kvm:kvm_page_fault
+/args->fault_address >= 0xefe0b000 && args->fault_address < 0xefe0c000/
+{
+	@esposizione_codice = count();
+}
+
+tracepoint:kvm:kvm_nested_vmexit_inject
+/args->exit_code == 48/
+{
+	$p = @cur[tid];
+	@idtv[$p] = args->exit_info2;
+	if (@pfrip[tid] != 0 && nsecs - @pft[tid] < 50000) {
+		@pend[$p] = @pfrip[tid];
+		@episodi = count();
+		@qual[args->exit_info1] = count();
+	}
+	delete(@pfrip[tid]);
+}
+
+interval:s:60
+{
+	time("%H:%M:%S ");
+	print(@episodi);
+	print(@e0c);
+	print(@esposizione_codice);
+}
+
+END
+{
+	print(@qual);
+	clear(@cur); clear(@pend); clear(@pfrip); clear(@pft); clear(@idtv);
+}

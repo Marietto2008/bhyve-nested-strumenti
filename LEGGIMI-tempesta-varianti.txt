@@ -1,0 +1,9 @@
+Claude 15/11/2026, prova (b), difetto del timer dell'L2. Comandi per CMDF= di tempesta-bhyve.sh (file in C:\claude,
+righe unite con «; » e passate a sh -c da prova-wsl-fbsd.ps1; niente virgolette doppie):
+- freebsd-tempesta.sh          claude-lag 1200 100 (di sempre; l'uscita arriva nella trascrizione solo quando wsl.exe esce)
+- freebsd-tempesta-console.sh  come sopra + | tee /dev/console: le righe dei buchi arrivano IN DIRETTA nella console di
+                               debug di WSL (dati-bhyve/console-<ora>.txt), anche se claude-lag resta appeso
+- freebsd-tempesta-hvet.sh     come -console, ma prima kern.eventtimer.timer=Hyper-V (timer sintetico via MSR, niente MMIO
+                               del LAPIC): braccio per localizzare il livello del timer perso
+- freebsd-tempesta-tc.sh       come -console, ma prima kern.timecounter.hardware=Hyper-V (contatore di riferimento via MSR,
+                               globale, niente TSC) al posto di Hyper-V-TSC; event timer LAPIC come di base. Braccio T.

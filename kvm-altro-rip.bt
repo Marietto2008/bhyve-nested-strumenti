@@ -1,0 +1,51 @@
+/*
+ * kvm-altro-rip.bt -- Claude 11/11/2026: controllo della classe «altro» (~21%) di kvm-episodi-linux.bt.
+ * Stesso accoppiamento (kvm_page_fault su fee00320/fee00380 + vmexit_inject 48 entro 50 us, chiave il VMCS12), ma
+ * stampa per OGNI RIP di partenza quanti episodi ci sono e, per quelli che non rientrano a rip0 ne' a rip0+6, di
+ * quanto si e' spostato il RIP. Ipotesi: «altro» = scritture da altri punti del kernel con ILEN != 6 (es. movl $imm,
+ * 0x320(%reg), 10 byte), che il registratore bhyve non conta (filtra la pagina 0xffffffff8120b000, usa l'ILEN vero).
+ * Gira 120 s ed esce. Uso: sudo bpftrace kvm-altro-rip.bt > ../dati-kvm/altro-rip-<ora>.txt
+ */
+tracepoint:kvm:kvm_nested_vmenter
+{
+	$p = args->vmcb;
+	@cur[tid] = $p;
+	$r0 = @pend[$p];
+	if ($r0 != 0) {
+		@rip0[$r0] = count();
+		if (args->nested_rip != $r0 && args->nested_rip != $r0 + 6) {
+			@altro[$r0, (int64)(args->nested_rip - $r0)] = count();
+		}
+		delete(@pend[$p]);
+	}
+}
+
+tracepoint:kvm:kvm_page_fault
+/args->fault_address == 0xfee00380 || args->fault_address == 0xfee00320/
+{
+	@pfrip[tid] = args->guest_rip;
+	@pft[tid] = nsecs;
+}
+
+tracepoint:kvm:kvm_nested_vmexit_inject
+/args->exit_code == 48/
+{
+	$p = @cur[tid];
+	if (@pfrip[tid] != 0 && nsecs - @pft[tid] < 50000) {
+		@pend[$p] = @pfrip[tid];
+	}
+	delete(@pfrip[tid]);
+}
+
+interval:s:120
+{
+	exit();
+}
+
+END
+{
+	clear(@cur); clear(@pend); clear(@pfrip); clear(@pft);
+	print(@rip0, 20);
+	print(@altro, 30);
+	clear(@rip0); clear(@altro);
+}

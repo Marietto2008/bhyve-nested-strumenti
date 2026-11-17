@@ -1,0 +1,12 @@
+# .gitignore -- claude 17/11/2026: strumenti della campagna nested/WSL2 sotto bhyve
+# copia di campagna-wsl del 10/11 (la storia del lanciatore e' gia' nel repository /mnt/linuxulator2/vm/wsl2/fbsd)
+campagna-wsl-originale/
+# binari compilati dai .c (si rifanno con cc)
+cammina-ept
+cammina-pt
+cerca-frame
+cerca-valori
+livello-annidato
+__pycache__/
+# copie di sicurezza fatte prima delle modifiche (precedenti al repository; da qui la storia e' in git)
+*.prima-*
