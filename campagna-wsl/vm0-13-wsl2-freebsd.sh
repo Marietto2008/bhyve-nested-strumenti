@@ -28,6 +28,8 @@ if [ $PROVA = 0 ]; then
 	mount | grep -q " on /mnt/${DI}p2 " || { mkdir -p "/mnt/${DI}p2" && mount -t ufs "/dev/${DI}p2" "/mnt/${DI}p2"; } || { echo "mount di /dev/${DI}p2 non riuscito"; exit 4; }
 fi
 IMG=/mnt/${DI}p2/$(v immagine)
+# 17/11 (utente): immagine di lavoro su ZFS se macchina-vm13.conf ha immagine_percorso; il G-DRIVE resta copia di sicurezza
+IP=$(v immagine_percorso); if [ -n "$IP" ]; then [ -f "$IP" ] || { echo "manca l'immagine $IP"; exit 4; }; IMG=$IP; fi
 [ -f "$IMG" ] || { echo "immagine assente: $IMG"; exit 4; }
 REC=$(awk -F: '/^pcm[0-9]+:/ && /rec/ {sub("pcm","",$1); print "/dev/dsp" $1; exit}' /dev/sndstat); [ -n "$REC" ] || REC=/dev/null
 set -- "$BHYVE" -S -c "$(v cpu)" -m "$(v memoria)" -w -H -A \
