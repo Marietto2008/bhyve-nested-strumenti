@@ -1,0 +1,338 @@
+diff --git a/sys/amd64/vmm/intel/vmx.c b/sys/amd64/vmm/intel/vmx.c
+index 546af01c160c..5215bc78caf7 100644
+--- a/sys/amd64/vmm/intel/vmx.c
++++ b/sys/amd64/vmm/intel/vmx.c
+@@ -277,6 +277,8 @@ VPID_CTR(vpid01_invvpid_pending,
+ VPID_CTR(vpid01_invvpid_nested_entry,
+     "VPID01 invalidato per il NOCPU di nested_vmlaunch (falsa migrazione)");
+ VPID_CTR(vpid01_invvpid_other, "VPID01 invalidato al primo vmx_run del vCPU");
++VPID_CTR(vpid01_invvpid_slow_reflect,
++    "VPID01 invalidato dopo una riflessione dal percorso lento (nested_d3_fix, Fable 038)");
+ VPID_CTR(vpid_invvpid_saved_eptgen,
+     "INVVPID risparmiati perche' segue un INVEPT (pm_eptgen cambiato)");
+ VPID_CTR(vmcs02_host_state_rewrites,
+@@ -1553,6 +1555,8 @@ vmx_invvpid(struct vmx *vmx, struct vmx_vcpu *vcpu, pmap_t pmap, int running)
+ 		invvpid_desc.linear_addr = 0;
+ 		invvpid(INVVPID_TYPE_SINGLE_CONTEXT, invvpid_desc);
+ 		vmm_stat_incr(vcpu->vcpu, VCPU_INVVPID_DONE, 1);
++		if (vcpu->nested != NULL)	/* Fable 038 §3.1 */
++			vmx_nested_vpid01_flushed(vcpu);
+ 	} else {
+ 		/*
+ 		 * The invvpid can be skipped if an invept is going to
+@@ -1635,6 +1639,8 @@ vmx_set_pcpu_defaults(struct vmx *vmx, struct vmx_vcpu *vcpu, pmap_t pmap)
+ 		atomic_add_long(&vpid_flush_completed, 1);
+ 	} else if (vmxstate->nocpu_why == VMX_NOCPU_NESTED_ENTRY)
+ 		atomic_add_long(&vpid01_invvpid_nested_entry, 1);
++	else if (vmxstate->nocpu_why == VMX_NOCPU_SLOW_REFLECT)
++		atomic_add_long(&vpid01_invvpid_slow_reflect, 1);
+ 	else
+ 		atomic_add_long(&vpid01_invvpid_other, 1);
+ 	vmxstate->nocpu_why = VMX_NOCPU_INIT;
+@@ -3748,7 +3754,8 @@ vmx_dr_leave_guest(struct vmxctx *vmxctx)
+ 	write_rflags(read_rflags() | vmxctx->host_tf);
+ }
+ 
+-static __inline void
++/* true se ha invalidato l'EPT01 su questa CPU (Fable 038 §3.1: vale anche per il VPID01) */
++static __inline bool
+ vmx_pmap_activate(struct vmx *vmx, pmap_t pmap)
+ {
+ 	long eptgen;
+@@ -3763,7 +3770,9 @@ vmx_pmap_activate(struct vmx *vmx, pmap_t pmap)
+ 		vmx->eptgen[cpu] = eptgen;
+ 		invept(INVEPT_TYPE_SINGLE_CONTEXT,
+ 		    (struct invept_desc){ .eptp = vmx->eptp, ._res = 0 });
++		return (true);
+ 	}
++	return (false);
+ }
+ 
+ static __inline void
+@@ -4121,7 +4130,8 @@ vmx_run(void *vcpui, register_t rip, pmap_t pmap, struct vm_eventinfo *evinfo)
+ 		 * Mark the EPT as active on this host CPU and invalidate
+ 		 * EPTP-tagged TLB entries if required.
+ 		 */
+-		vmx_pmap_activate(vmx, pmap);
++		if (vmx_pmap_activate(vmx, pmap) && vcpu->nested != NULL)
++			vmx_nested_vpid01_flushed(vcpu);	/* Fable 038 §3.1 */
+ 
+ 		vmx_run_trace(vcpu);
+ 		{
+@@ -4244,6 +4254,8 @@ vmx_run(void *vcpui, register_t rip, pmap_t pmap, struct vm_eventinfo *evinfo)
+ 			    vmx_vept_shadow_entry(vcpu, nested_diag58_gpa) : 0;
+ 			SDT_PROBE1(vmm, vmx, nested, diag58ent, &e);
+ 		}
++		if (vcpu->nested != NULL)	/* Fable 038 §3.1 e 036 §5.1, solo contatori */
++			vmx_nested_entry_check(vcpu);
+ 		rc = vmx_enter_guest(vmxctx, vmx, launched);
+ 		/*
+ 		 * VM-entry hardware fallito in L2 (parere #51 §9, caso B): rc
+diff --git a/sys/amd64/vmm/intel/vmx.h b/sys/amd64/vmm/intel/vmx.h
+index 3b09e18c63b5..04e6cc1b7478 100644
+--- a/sys/amd64/vmm/intel/vmx.h
++++ b/sys/amd64/vmm/intel/vmx.h
+@@ -104,6 +104,7 @@ struct vmxstate {
+ #define	VMX_NOCPU_INIT		0	/* vCPU nuovo */
+ #define	VMX_NOCPU_DEFERRED	1	/* vmx_invvpid(running=0): invalidazione differita */
+ #define	VMX_NOCPU_NESTED_ENTRY	2	/* nested_vmlaunch: riscrittura dei campi host del VMCS02 */
++#define	VMX_NOCPU_SLOW_REFLECT	3	/* Fable 038: riflessione L2->L1 dal percorso lento (D3) */
+ 
+ struct apic_page {
+ 	uint32_t reg[PAGE_SIZE / 4];
+diff --git a/sys/amd64/vmm/intel/vmx_nested.c b/sys/amd64/vmm/intel/vmx_nested.c
+index 5e8748f2b5b5..e0da48f300d7 100644
+--- a/sys/amd64/vmm/intel/vmx_nested.c
++++ b/sys/amd64/vmm/intel/vmx_nested.c
+@@ -357,13 +357,17 @@ SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, nested_diag_oprec_every, CTLFLAG_RWTUN,
+     "nested: copia anche un episodio normale ogni N (0 = mai)");
+ enum {
+ 	OPR_VMREAD = 1, OPR_VMWRITE, OPR_VMPTRLD, OPR_VMCLEAR, OPR_INVEPT,
+-	OPR_INVVPID, OPR_LAUNCH, OPR_RESUME, OPR_RIFL, OPR_RIFL_RIP, OPR_RIFL_INFO, OPR_RIFL_IDTV, OPR_INIEZ
++	OPR_INVVPID, OPR_LAUNCH, OPR_RESUME, OPR_RIFL, OPR_RIFL_RIP, OPR_RIFL_INFO, OPR_RIFL_IDTV, OPR_INIEZ,
++	OPR_RIVEND, OPR_VIOL01, OPR_MK2
+ };
+ static const char *const nested_oprec_nome[] = {
+ 	"?", "VMREAD", "VMWRITE", "VMPTRLD", "VMCLEAR", "INVEPT", "INVVPID",
+ 	"VMLAUNCH", "VMRESUME", "RIFLESSA", "  rip L2", "  info",	/* 18: RCX; 48: GPA */
+ 	"  idt-vect",	/* Fable 023 §2.1ii: campo = IDT-vectoring info valida, val = codice d'errore */
+-	"INIEZIONE L0->L1"	/* Fable 034 §4.1: campo = interruption info scritta nel VMCS01 */
++	"INIEZIONE L0->L1",	/* Fable 034 §4.1: campo = interruption info scritta nel VMCS01 */
++	"RIVENDICA CPU",	/* Fable 038 §3.1: riflessione lenta, campo = lastcpu di prima, val = curcpu */
++	"VIOLAZIONE VPID01",	/* Fable 038 §3.1: ingresso dell'L1, campo = CPU dell'ultima esecuzione + 1 */
++	"MK2"			/* Fable 038 §3.4: campo = 1 andata (val = CPU d'arrivo), 2 ritorno (val = CPU) */
+ };
+ static struct nested_pfrec nested_pfrec_norm;	/* ultimo episodio normale */
+ static volatile u_int nested_pfrec_norm_busy;
+@@ -506,6 +510,132 @@ nested_mk_ingresso(struct vmx_nested *n)
+ 		n->mk_ret = x + 1;
+ }
+ 
++/*
++ * Fable 038: il difetto D3 dell'audit VPID del 25/10. Senza vpid_track il passaggio VMCS02 -> VMCS01 della
++ * riflessione scrive lastcpu = curcpu anche dal percorso lento (nested_ept_slow: tutte le 48 riflesse). Se il thread
++ * e' su una CPU diversa da quella dell'ingresso in L2, il vmx_run successivo trova lastcpu == curcpu e non invalida
++ * il VPID01: l'L1 riparte con le traduzioni che aveva lasciato su quella CPU prima di girare altrove. Con
++ * nested_d3_fix=1 la riflessione lenta lascia lastcpu = NOCPU e decide il vmx_run successivo, sulla CPU vera.
++ * Spento di base: A e B sono lo stesso modulo.
++ */
++static int nested_d3_fix = 0;
++SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, nested_d3_fix, CTLFLAG_RWTUN, &nested_d3_fix, 0,
++    "nested: la riflessione dal percorso lento non rivendica la CPU (lastcpu = NOCPU; Fable 038, D3)");
++NESTED_CTR(vpid01_slowpath_noclaim, "nested: riflessioni dal percorso lento con lastcpu = NOCPU (nested_d3_fix)");
++/*
++ * Fable 038 §3.1, invariante del VPID01, sempre acceso, solo contatore: a ogni ingresso hardware dell'L1 sulla CPU
++ * c, o l'L1 ha girato per ultimo su c, o il VPID01 e' stato invalidato su c (INVVPID, o INVEPT dell'EPT01) dopo
++ * l'ultima esecuzione dell'L1. Senza la correzione deve salire; con la correzione, zero.
++ */
++NESTED_CTR(vpid01_invariant_viol, "nested: ingressi dell'L1 con il VPID01 non coerente su quella CPU (Fable 038)");
++/* Fable 036 §5.1: ingressi hardware in L2 con un interrupt dell'L1 pendente e consegnabile, con EXTINT exiting */
++NESTED_CTR(nested_l2entry_l1intr, "nested: ingressi in L2 con interrupt dell'L1 pendente, senza uscita immediata");
++NESTED_CTR(nested_l2entry_l1intr_imm, "nested: ingressi in L2 con interrupt dell'L1 pendente e uscita immediata armata");
++/* Fable 038 §4 punto 2: rinvii senza ripiego (l'uscita immediata non si arma) */
++NESTED_CTR(nested_immexit_noarm_l1timer, "nested: rinvio senza uscita immediata, l'L1 usa il suo timer di preemption");
++NESTED_CTR(nested_immexit_noarm_noimm, "nested: rinvio senza uscita immediata, timer di preemption non disponibile");
++
++/* le invalidazioni del VPID01 sulla CPU corrente (sezione critica di vmx_run) */
++void
++vmx_nested_vpid01_flushed(struct vmx_vcpu *vcpu)
++{
++	CPU_SET(curcpu, &vcpu->nested->l1_flushed);
++}
++
++/* subito prima dell'ingresso hardware, interrupt chiusi */
++void
++vmx_nested_entry_check(struct vmx_vcpu *vcpu)
++{
++	struct vmx_nested *n = vcpu->nested;
++	struct vmcs12_cache *c;
++	int me = curcpu, vec;
++
++	if (!n->in_l2) {
++		if (n->l1_last_cpu1 != 0 && n->l1_last_cpu1 != me + 1 &&
++		    !CPU_ISSET(me, &n->l1_flushed)) {
++			atomic_add_long(&vpid01_invariant_viol, 1);
++			nested_oprec_note(n, OPR_VIOL01, n->l1_last_cpu1, me);
++		}
++		n->l1_last_cpu1 = me + 1;
++		CPU_ZERO(&n->l1_flushed);
++		return;
++	}
++	c = nested_current_cache(n);
++	if (c == NULL ||
++	    (vmcs12_read_field(c, VMCS_PIN_BASED_CTLS) & PINBASED_EXTINT_EXITING) == 0 ||
++	    !vlapic_pending_intr(vm_lapic(vcpu->vcpu), &vec))
++		return;
++	atomic_add_long(n->imm_armed ? &nested_l2entry_l1intr_imm : &nested_l2entry_l1intr, 1);
++}
++
++/*
++ * Fable 038 §3.4, amplificatore Mk2 (controllo positivo di D3), solo diagnostica, spento di base. Durante
++ * l'emulazione di un episodio sorvegliato (riflessione 48 sulla pagina del LAPIC con RIP a ...ripoff), nel percorso
++ * lento di una VMREAD o VMWRITE dell'L1 scelta a caso (una su every), il thread passa su Y: Hyper-V finisce il gestore
++ * su Y, e l'L2 entra ed esce su Y. Al percorso lento della prossima EPT violation dell'L2 (nested_ept_slow, prima
++ * della riflessione) il thread torna su X. Modo 1: Y = l'altra CPU logica del core; modo 2: Y su un altro core.
++ */
++static u_int nested_diag_mk2 = 0;
++SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, nested_diag_mk2, CTLFLAG_RWTUN, &nested_diag_mk2, 0,
++    "nested, diagnostica: Mk2 (0 spento, 1 CPU sorella, 2 altro core; Fable 038 par. 3.4)");
++static u_int nested_diag_mk2_every = 4;
++SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, nested_diag_mk2_every, CTLFLAG_RWTUN, &nested_diag_mk2_every, 0,
++    "nested, diagnostica: Mk2 sposta il thread su una VMREAD/VMWRITE dell'emulazione ogni N (a caso)");
++static u_int nested_diag_mk2_ripoff = 0x831;
++SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, nested_diag_mk2_ripoff, CTLFLAG_RWTUN, &nested_diag_mk2_ripoff, 0,
++    "nested, diagnostica: Mk2 solo sugli episodi con RIP dell'L2 a questo offset nella pagina (0 = tutti)");
++NESTED_CTR(nested_diag_mk2_andate, "nested: Mk2, spostamenti su Y durante l'emulazione");
++NESTED_CTR(nested_diag_mk2_ritorni, "nested: Mk2, ritorni su X prima della riflessione lenta");
++NESTED_CTR(nested_diag_mk2_abbandoni, "nested: Mk2, ritorni non fatti (uscita dell'L2 riflessa dentro vmx_run)");
++
++/* all'apertura di un episodio (nested_pfrec_cap_e0) */
++static void
++nested_mk2_episodio(struct vmx_nested *n, uint64_t rip)
++{
++	n->mk2_ep = nested_diag_mk2 != 0 && n->mk2_ret == 0 &&
++	    (nested_diag_mk2_ripoff == 0 || (rip & PAGE_MASK) == nested_diag_mk2_ripoff);
++}
++
++/* all'inizio del percorso lento (nessun VMCS attivo, come Mk) */
++static void
++nested_mk2_percorso_lento(struct vmx_nested *n, uint32_t reason)
++{
++	int x, y;
++
++	if (n->mk2_ret != 0) {
++		if (!n->in_l2) {
++			/* ancora l'L1 su Y (resto dell'emulazione), oppure l'L2 e' gia' tornata in L1 dentro vmx_run */
++			if (n->mk2_in_l2) {
++				n->mk2_ret = 0;
++				n->mk2_in_l2 = false;
++				atomic_add_long(&nested_diag_mk2_abbandoni, 1);
++			}
++			return;
++		}
++		if (!n->ept_pending)	/* uscita dell'L2 che non sara' una riflessione lenta: si aspetta */
++			return;
++		nested_mk_sposta(n->mk2_ret - 1);
++		nested_oprec_note(n, OPR_MK2, 2, curcpu);
++		n->mk2_ret = 0;
++		n->mk2_in_l2 = false;
++		atomic_add_long(&nested_diag_mk2_ritorni, 1);
++		return;
++	}
++	if (!n->mk2_ep || n->in_l2 ||
++	    (reason != EXIT_REASON_VMREAD && reason != EXIT_REASON_VMWRITE))
++		return;
++	if (nested_diag_mk2_every > 1 && (rdtsc() >> 4) % nested_diag_mk2_every != 0)
++		return;
++	x = curcpu;
++	y = nested_diag_mk2 == 2 ? (x + 2) % mp_ncpus : (x ^ 1);
++	nested_mk_sposta(y);
++	n->mk2_ep = false;
++	n->mk2_ret = x + 1;
++	n->mk2_in_l2 = false;
++	nested_oprec_note(n, OPR_MK2, 1, curcpu);
++	atomic_add_long(&nested_diag_mk2_andate, 1);
++}
++
+ void
+ vmx_nested_oprec_inj(struct vmx_vcpu *vcpu, uint32_t info)
+ {
+@@ -3659,6 +3789,10 @@ nested_vmlaunch(struct vmx_vcpu *vcpu, bool is_resume)
+ 		nested_diag_pfinj_note(vcpu, c);
+ 	if (__predict_false(nested_diag_pfrec != 0))
+ 		nested_diag_pfrec_entry(vcpu, c);
++	/* Fable 038 §3.4: l'emulazione e' finita; da qui Mk2 aspetta l'uscita dell'L2 */
++	n->mk2_ep = false;
++	if (n->mk2_ret != 0)
++		n->mk2_in_l2 = true;
+ 
+ 	VMPTRLD(vmcs02);
+ 	nested_compose_vmcs02(vcpu);
+@@ -4156,9 +4290,25 @@ nested_reflect_to_l1(struct vmx_vcpu *vcpu, struct vm_exit *vmexit)
+ 	vmcs_write(VMCS_HOST_TR_BASE, vmm_get_host_trbase());
+ 	vmcs_write(VMCS_HOST_GDTR_BASE, vmm_get_host_gdtrbase());
+ 	vmcs_write(VMCS_HOST_GS_BASE, vmm_get_host_gsbase());
+-	if (!n->in_run && vcpu->state.lastcpu != curcpu)
++	if (!n->in_run && vcpu->state.lastcpu != curcpu) {
+ 		atomic_add_long(&vpid01_slowpath_claim, 1);	/* audit VPID, D3 */
+-	vcpu->state.lastcpu = curcpu;
++		nested_oprec_note(n, OPR_RIVEND, (uint32_t)vcpu->state.lastcpu,
++		    curcpu);				/* Fable 038 §3.1 */
++	}
++	if (!n->in_run && nested_d3_fix) {
++		/*
++		 * Fable 038 (D3): dal percorso lento la CPU non si rivendica.
++		 * Il VPID01 non e' stato invalidato su questa CPU, e il thread
++		 * puo' ancora spostarsi prima del prossimo ingresso: lo decide
++		 * vmx_set_pcpu_defaults nel vmx_run successivo, sulla CPU vera
++		 * (campi host e INVVPID), come per vpid_track.
++		 */
++		if (vcpu->state.lastcpu != NOCPU)	/* non coprire una richiesta differita */
++			vcpu->state.nocpu_why = VMX_NOCPU_SLOW_REFLECT;
++		vcpu->state.lastcpu = NOCPU;
++		atomic_add_long(&vpid01_slowpath_noclaim, 1);
++	} else
++		vcpu->state.lastcpu = curcpu;
+ 	}
+ 
+ 	/* 6. Loading Host State: host di VMCS12 -> guest di VMCS01 */
+@@ -4350,10 +4500,12 @@ nested_immexit_arm(struct vmx_vcpu *vcpu, int kind)
+ 	struct vmx_nested *n = vcpu->nested;
+ 
+ 	if (!n->imm_ok) {
++		atomic_add_long(&nested_immexit_noarm_noimm, 1);	/* Fable 038 §4 */
+ 		SDT_PROBE3(vmm, vmx, nested, immexit, vcpu->vcpuid, 4, kind);
+ 		return;
+ 	}
+ 	if (n->preempt_on) {
++		atomic_add_long(&nested_immexit_noarm_l1timer, 1);	/* Fable 038 §4 */
+ 		vmm_stat_incr(vcpu->vcpu, VMX_NESTED_IMMEXIT_L1TIMER, 1);
+ 		SDT_PROBE3(vmm, vmx, nested, immexit, vcpu->vcpuid, 3, kind);
+ 		return;
+@@ -5821,6 +5973,7 @@ nested_pfrec_cap_e0(struct vmx_vcpu *vcpu)
+ 	p->seq = ++n->pfrec_seq;
+ 	p->t0 = rdtsc();
+ 	p->rip0 = rip;
++	nested_mk2_episodio(n, rip);		/* Fable 038 §3.4 */
+ 	p->cr3_0 = vmcs_read(VMCS_GUEST_CR3);
+ 	p->gpa0 = n->ept_gpa;
+ 	p->gla0 = vmcs_read(VMCS_GUEST_LINEAR_ADDRESS);
+@@ -6429,6 +6582,8 @@ vmx_nested_exit(void *vcpui)
+ 	vmm_stat_incr(vcpu->vcpu, VMX_NESTED_SLOWPATH, 1);
+ 	if (vcpu->nested != NULL)		/* Fable 034 §4.3, amplificatore Mk */
+ 		nested_mk_percorso_lento(vcpu->nested);
++	if (vcpu->nested != NULL)		/* Fable 038 §3.4, Mk2 */
++		nested_mk2_percorso_lento(vcpu->nested, reason);
+ 	if (vcpu->nested != NULL)
+ 		nested_stats_flush(vcpu);
+ 
+diff --git a/sys/amd64/vmm/intel/vmx_nested.h b/sys/amd64/vmm/intel/vmx_nested.h
+index e55c6364d075..1a5b5a5789f8 100644
+--- a/sys/amd64/vmm/intel/vmx_nested.h
++++ b/sys/amd64/vmm/intel/vmx_nested.h
+@@ -266,6 +266,8 @@ int	vmx_vept_ad_policy(void);		/* hw.vmm.vmx.nested_ept_ad && host A/D */
+ bool	vmx_nested_apicacc_policy(void);	/* hw.vmm.vmx.nested_apic_access && host */
+ bool	vmx_nested_qualkvm_policy(void);	/* hw.vmm.vmx.nested_qual_kvm (Fable 032) */
+ void	vmx_nested_oprec_inj(struct vmx_vcpu *vcpu, uint32_t info);	/* Fable 034 §4.1 */
++void	vmx_nested_vpid01_flushed(struct vmx_vcpu *vcpu);		/* Fable 038 §3.1 */
++void	vmx_nested_entry_check(struct vmx_vcpu *vcpu);		/* Fable 038 §3.1, 036 §5.1 */
+ void	vmx_vept_memgen_sync(struct vmx_vcpu *vcpu);	/* slow path */
+ int	vmx_vept_cur_slot(struct vmx_nested *n);	/* parere #53 §8: slot corrente o -1 */
+ bool	vmx_vept_memgen_stale(struct vmx_vcpu *vcpu);	/* non dorme */
+@@ -678,6 +680,16 @@ struct vmx_nested {
+ 	int		mk_ret;		/* Fable 034 §4.3: CPU di partenza + 1 a cui tornare (0 = niente) */
+ 	bool		mk_slegare;	/* Mk: thread legato da sciogliere al prossimo percorso lento */
+ 	bool		mk_armato3;	/* Mk modo 3: spostamento fra la prossima uscita dell'L2 e la riflessione */
++	/*
++	 * Fable 038 §3.1, invariante del VPID01: CPU dell'ultima esecuzione dell'L1 (+1, 0 = mai) e CPU su cui il
++	 * VPID01 e' stato invalidato (INVVPID o INVEPT dell'EPT01) dopo quell'esecuzione.
++	 */
++	int		l1_last_cpu1;
++	cpuset_t	l1_flushed;
++	/* Fable 038 §3.4, Mk2: episodio sorvegliato aperto (emulazione in corso) e CPU di partenza + 1 */
++	bool		mk2_ep;
++	bool		mk2_in_l2;	/* Mk2: l'L2 e' rientrata dopo lo spostamento */
++	int		mk2_ret;
+ };
+ void	nested_stats_flush(struct vmx_vcpu *vcpu);
+ 
