@@ -1,0 +1,231 @@
+From 15ac8f39c6d586a5de54f2f2f03c4c815a2a645a Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 03:11:58 +0100
+Subject: [PATCH 2/5] virtio: expose the shared memory regions of a modern PCI
+ device
+
+A virtio device can describe shared memory regions with vendor capabilities
+of type VIRTIO_PCI_CAP_SHARED_MEMORY_CFG (virtio 1.2, 4.1.4.7): a BAR, a
+64-bit offset and a length, keyed by a region id.  virtio-fs uses region 0
+as its DAX window.  Add VIRTIO_BUS_GET_SHM_REGION() and its modern PCI
+implementation, which reserves the BAR (without mapping it) and returns the
+physical address of the region.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/dev/virtio/pci/virtio_pci_modern.c     | 71 ++++++++++++++++++++++
+ sys/dev/virtio/pci/virtio_pci_modern_var.h | 13 ++++
+ sys/dev/virtio/virtio.c                    |  9 +++
+ sys/dev/virtio/virtio.h                    |  2 +
+ sys/dev/virtio/virtio_bus_if.m             | 17 ++++++
+ 5 files changed, 112 insertions(+)
+
+diff --git a/sys/dev/virtio/pci/virtio_pci_modern.c b/sys/dev/virtio/pci/virtio_pci_modern.c
+index 4b16b198b..f0f39497a 100644
+--- a/sys/dev/virtio/pci/virtio_pci_modern.c
++++ b/sys/dev/virtio/pci/virtio_pci_modern.c
+@@ -83,6 +83,12 @@ struct vtpci_modern_softc {
+ 
+ #define VTPCI_MODERN_MAX_BARS		6
+ 	struct vtpci_modern_bar_resource vtpci_bar_res[VTPCI_MODERN_MAX_BARS];
++
++	/*
++	 * BARs holding shared memory regions: reserved, never mapped by us
++	 * (they can be gigabytes; the consumer maps pages write-back).
++	 */
++	struct resource			*vtpci_shm_res[VTPCI_MODERN_MAX_BARS];
+ };
+ 
+ static int	vtpci_modern_probe(device_t);
+@@ -135,6 +141,8 @@ static struct resource *vtpci_modern_get_bar_resource(
+ static struct resource *vtpci_modern_alloc_bar_resource(
+ 		    struct vtpci_modern_softc *, int, int);
+ static void	vtpci_modern_free_bar_resources(struct vtpci_modern_softc *);
++static int	vtpci_modern_get_shm_region(device_t, uint8_t, vm_paddr_t *,
++		    uint64_t *);
+ static int	vtpci_modern_alloc_resource_map(struct vtpci_modern_softc *,
+ 		    struct vtpci_modern_resource_map *);
+ static void	vtpci_modern_free_resource_map(struct vtpci_modern_softc *,
+@@ -234,6 +242,7 @@ static device_method_t vtpci_modern_methods[] = {
+ 	DEVMETHOD(virtio_bus_config_generation,	  vtpci_modern_config_generation),
+ 	DEVMETHOD(virtio_bus_read_device_config,  vtpci_modern_read_dev_config),
+ 	DEVMETHOD(virtio_bus_write_device_config, vtpci_modern_write_dev_config),
++	DEVMETHOD(virtio_bus_get_shm_region,	  vtpci_modern_get_shm_region),
+ 
+ 	DEVMETHOD_END
+ };
+@@ -777,6 +786,63 @@ vtpci_modern_find_cap(device_t dev, uint8_t cfg_type, int *cap_offset)
+ 	return (error);
+ }
+ 
++/*
++ * Shared memory region "id" (VIRTIO_PCI_CAP_SHARED_MEMORY_CFG), as Linux's
++ * vp_modern_get_shm_region(): physical address and length.  The BAR is
++ * reserved on first use and released on detach.
++ */
++static int
++vtpci_modern_get_shm_region(device_t dev, uint8_t id, vm_paddr_t *paddr,
++    uint64_t *len)
++{
++	struct vtpci_modern_softc *sc;
++	uint64_t offset, length;
++	uint32_t type, bar, capid;
++	int capreg, error, rid;
++
++	sc = device_get_softc(dev);
++
++	for (error = pci_find_cap(dev, PCIY_VENDOR, &capreg);
++	     error == 0;
++	     error = pci_find_next_cap(dev, PCIY_VENDOR, capreg, &capreg)) {
++		type = pci_read_config(dev, capreg + VIRTIO_PCI_CAP_CFG_TYPE, 1);
++		if (type != VIRTIO_PCI_CAP_SHARED_MEMORY_CFG)
++			continue;
++		capid = pci_read_config(dev, capreg + VIRTIO_PCI_CAP_ID, 1);
++		bar = pci_read_config(dev, capreg + VIRTIO_PCI_CAP_BAR, 1);
++		if (capid != id || bar >= VTPCI_MODERN_MAX_BARS)
++			continue;
++
++		offset = pci_read_config(dev, capreg + VIRTIO_PCI_CAP_OFFSET, 4);
++		offset |= (uint64_t)pci_read_config(dev, capreg +
++		    offsetof(struct virtio_pci_cap64, offset_hi), 4) << 32;
++		length = pci_read_config(dev, capreg + VIRTIO_PCI_CAP_LENGTH, 4);
++		length |= (uint64_t)pci_read_config(dev, capreg +
++		    offsetof(struct virtio_pci_cap64, length_hi), 4) << 32;
++
++		if (sc->vtpci_shm_res[bar] == NULL) {
++			rid = PCIR_BAR(bar);
++			sc->vtpci_shm_res[bar] = bus_alloc_resource_any(dev,
++			    SYS_RES_MEMORY, &rid, RF_PREFETCHABLE);
++			if (sc->vtpci_shm_res[bar] == NULL) {
++				device_printf(dev, "cannot reserve BAR %u of "
++				    "shared memory region %u\n", bar, id);
++				return (ENXIO);
++			}
++		}
++		if (offset + length > rman_get_size(sc->vtpci_shm_res[bar])) {
++			device_printf(dev, "shared memory region %u beyond "
++			    "BAR %u\n", id, bar);
++			return (ENXIO);
++		}
++		*paddr = rman_get_start(sc->vtpci_shm_res[bar]) + offset;
++		*len = length;
++		return (0);
++	}
++
++	return (ENOENT);
++}
++
+ static int
+ vtpci_modern_map_common_config(struct vtpci_modern_softc *sc)
+ {
+@@ -1049,6 +1115,11 @@ vtpci_modern_free_bar_resources(struct vtpci_modern_softc *sc)
+ 			sc->vtpci_bar_res[bar].vtbr_res = NULL;
+ 			sc->vtpci_bar_res[bar].vtbr_type = 0;
+ 		}
++		if (sc->vtpci_shm_res[bar] != NULL) {
++			bus_release_resource(dev, SYS_RES_MEMORY, PCIR_BAR(bar),
++			    sc->vtpci_shm_res[bar]);
++			sc->vtpci_shm_res[bar] = NULL;
++		}
+ 	}
+ }
+ 
+diff --git a/sys/dev/virtio/pci/virtio_pci_modern_var.h b/sys/dev/virtio/pci/virtio_pci_modern_var.h
+index af506ad38..2e5ebfc88 100644
+--- a/sys/dev/virtio/pci/virtio_pci_modern_var.h
++++ b/sys/dev/virtio/pci/virtio_pci_modern_var.h
+@@ -49,6 +49,8 @@
+ #define VIRTIO_PCI_CAP_DEVICE_CFG	4
+ /* PCI configuration access */
+ #define VIRTIO_PCI_CAP_PCI_CFG		5
++/* Shared memory region (virtio 1.2, 4.1.4.7): a virtio_pci_cap64 with an id. */
++#define VIRTIO_PCI_CAP_SHARED_MEMORY_CFG	8
+ 
+ /* This is the PCI capability header: */
+ struct virtio_pci_cap {
+@@ -62,6 +64,17 @@ struct virtio_pci_cap {
+ 	uint32_t length;		/* Length of the structure, in bytes. */
+ };
+ 
++/*
++ * 64-bit form, used by the shared memory capability.  Its region id is the
++ * byte after "bar" (padding[0] above, "id" in virtio 1.2).
++ */
++struct virtio_pci_cap64 {
++	struct virtio_pci_cap cap;
++	uint32_t offset_hi;
++	uint32_t length_hi;
++};
++#define VIRTIO_PCI_CAP_ID		5
++
+ struct virtio_pci_notify_cap {
+ 	struct virtio_pci_cap cap;
+ 	uint32_t notify_off_multiplier;	/* Multiplier for queue_notify_off. */
+diff --git a/sys/dev/virtio/virtio.c b/sys/dev/virtio/virtio.c
+index be5edcafa..d303988b1 100644
+--- a/sys/dev/virtio/virtio.c
++++ b/sys/dev/virtio/virtio.c
+@@ -319,6 +319,15 @@ virtio_config_generation(device_t dev)
+ 	return (VIRTIO_BUS_CONFIG_GENERATION(device_get_parent(dev)));
+ }
+ 
++int
++virtio_get_shm_region(device_t dev, uint8_t id, vm_paddr_t *paddr,
++    uint64_t *len)
++{
++
++	return (VIRTIO_BUS_GET_SHM_REGION(device_get_parent(dev), id, paddr,
++	    len));
++}
++
+ void
+ virtio_read_device_config(device_t dev, bus_size_t offset, void *dst, int len)
+ {
+diff --git a/sys/dev/virtio/virtio.h b/sys/dev/virtio/virtio.h
+index 6266dc29b..74a5da4fd 100644
+--- a/sys/dev/virtio/virtio.h
++++ b/sys/dev/virtio/virtio.h
+@@ -111,6 +111,8 @@ int	 virtio_setup_intr(device_t dev, enum intr_type type);
+ bool	 virtio_with_feature(device_t dev, uint64_t feature);
+ void	 virtio_stop(device_t dev);
+ int	 virtio_config_generation(device_t dev);
++int	 virtio_get_shm_region(device_t dev, uint8_t id, vm_paddr_t *paddr,
++	     uint64_t *len);
+ int	 virtio_reinit(device_t dev, uint64_t features);
+ void	 virtio_reinit_complete(device_t dev);
+ int	 virtio_child_pnpinfo(device_t busdev, device_t child, struct sbuf *sb);
+diff --git a/sys/dev/virtio/virtio_bus_if.m b/sys/dev/virtio/virtio_bus_if.m
+index 4181b641f..981df94cf 100644
+--- a/sys/dev/virtio/virtio_bus_if.m
++++ b/sys/dev/virtio/virtio_bus_if.m
+@@ -45,6 +45,13 @@ CODE {
+ 	{
+ 		return (0);
+ 	}
++
++	static int
++	virtio_bus_default_get_shm_region(device_t dev, uint8_t id,
++	    vm_paddr_t *paddr, uint64_t *len)
++	{
++		return (ENOENT);
++	}
+ };
+ 
+ METHOD uint64_t negotiate_features {
+@@ -109,3 +116,13 @@ METHOD void write_device_config {
+ 	int		len;
+ };
+ 
++#
++# Shared memory region "id" of the device (virtio 1.2, 2.10): its physical
++# address and length.  ENOENT if the device has no such region.
++#
++METHOD int get_shm_region {
++	device_t	dev;
++	uint8_t		id;
++	vm_paddr_t	*paddr;
++	uint64_t	*len;
++} DEFAULT virtio_bus_default_get_shm_region;
+-- 
+2.56.0
+

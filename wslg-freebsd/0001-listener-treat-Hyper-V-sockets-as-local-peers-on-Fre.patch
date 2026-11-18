@@ -1,0 +1,45 @@
+From a3d55f87025eca01f0eed4e0d387106f5ebf0dc4 Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 20:40:00 +0100
+Subject: [PATCH] listener: treat Hyper-V sockets as local peers on FreeBSD
+
+FreeBSD has no AF_VSOCK; in a Hyper-V guest (WSL) the host's connections
+arrive on AF_HYPERV sockets.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ libfreerdp/core/listener.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/libfreerdp/core/listener.c b/libfreerdp/core/listener.c
+index 256a12b..86c045d 100644
+--- a/libfreerdp/core/listener.c
++++ b/libfreerdp/core/listener.c
+@@ -46,6 +46,15 @@
+ 
+ #include "listener.h"
+ 
++#ifndef _WIN32
++#if defined(AF_VSOCK)
++#define FREERDP_AF_VM_SOCKET AF_VSOCK
++#elif defined(__FreeBSD__)
++/* FreeBSD as a Hyper-V guest (WSL): host connections arrive on Hyper-V sockets, AF_HYPERV. */
++#define FREERDP_AF_VM_SOCKET 43
++#endif
++#endif
++
+ #define TAG FREERDP_TAG("core.listener")
+ 
+ static BOOL freerdp_listener_open(freerdp_listener* instance, const char* bind_address, UINT16 port)
+@@ -359,7 +368,7 @@ static BOOL freerdp_listener_check_fds(freerdp_listener* instance)
+ 		}
+ 
+ #ifndef _WIN32
+-		else if (peer_addr.ss_family == AF_UNIX || peer_addr.ss_family == AF_VSOCK)
++		else if (peer_addr.ss_family == AF_UNIX || peer_addr.ss_family == FREERDP_AF_VM_SOCKET)
+ 			client->local = TRUE;
+ 
+ #endif
+-- 
+2.56.0
+

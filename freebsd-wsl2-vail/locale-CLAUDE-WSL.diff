@@ -1,0 +1,10 @@
+diff --git a/sys/amd64/conf/CLAUDE-WSL b/sys/amd64/conf/CLAUDE-WSL
+index c839d2b24..48846a066 100644
+--- a/sys/amd64/conf/CLAUDE-WSL
++++ b/sys/amd64/conf/CLAUDE-WSL
+@@ -4,3 +4,5 @@ include GENERIC
+ ident	CLAUDE-WSL
+ options 	DDB
+ options 	ALT_BREAK_TO_DEBUGGER
++# Memoria condivisa di WSLg (VAIL): il file system virtio "wslg" mappato in DAX, /dev/wslgshm.
++device		wslgshm

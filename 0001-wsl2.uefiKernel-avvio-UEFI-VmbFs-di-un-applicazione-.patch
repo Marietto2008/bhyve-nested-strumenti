@@ -1,0 +1,135 @@
+From 1af82b66424bc54bd210c6f19c15389c57c6835d Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 06:54:16 +0100
+Subject: [PATCH] wsl2.uefiKernel: avvio UEFI/VmbFs di un'applicazione EFI
+ anche su x86
+
+Nuova impostazione di .wslconfig `wsl2.uefiKernel=true`: il file indicato
+da `wsl2.kernel` e' un'applicazione EFI (loader.efi di FreeBSD) e la VM la
+avvia dal firmware UEFI con BootThis VmbFs, il ramo che WSL usa gia' su
+ARM64. Il file viene copiato in una cartella temporanea della VM (come per
+ARM64) e OptionalData riceve SOLO wsl2.kernelCommandLine: i parametri
+Linux costruiti dal servizio non servono al loader, che trasforma gli
+argomenti chiave=valore in variabili (rootdev=...).
+
+Senza l'impostazione, o senza un kernel privato, il comportamento non
+cambia. Provato a mano con HCS il 03/11/2026 (ADR-001, opzione B): il
+firmware Hyper-V x86 accetta VmbFs e loader.efi 15.2 avvia FreeBSD.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/windows/common/WslCoreConfig.cpp  |  1 +
+ src/windows/common/WslCoreConfig.h    |  4 ++++
+ src/windows/service/exe/WslCoreVm.cpp | 33 +++++++++++++++++++++++++--
+ src/windows/service/exe/WslCoreVm.h   |  1 +
+ 4 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/src/windows/common/WslCoreConfig.cpp b/src/windows/common/WslCoreConfig.cpp
+index 15107b06..f0b3c6f5 100644
+--- a/src/windows/common/WslCoreConfig.cpp
++++ b/src/windows/common/WslCoreConfig.cpp
+@@ -72,6 +72,7 @@ void wsl::core::Config::ParseConfigFile(_In_opt_ LPCWSTR ConfigFilePath, _In_opt
+     std::vector<ConfigKey> keys{
+         ConfigKey(ConfigSetting::Kernel, KernelPath),
+         ConfigKey(ConfigSetting::KernelCommandLine, KernelCommandLine),
++        ConfigKey(ConfigSetting::UefiKernel, EnableUefiKernel),
+         ConfigKey(ConfigSetting::KernelModules, KernelModulesPath),
+         ConfigKey(ConfigSetting::Memory, MemoryString(MemorySizeBytes)),
+         ConfigKey(ConfigSetting::Processors, ProcessorCount),
+diff --git a/src/windows/common/WslCoreConfig.h b/src/windows/common/WslCoreConfig.h
+index 6dad9e6d..32ca3fcb 100644
+--- a/src/windows/common/WslCoreConfig.h
++++ b/src/windows/common/WslCoreConfig.h
+@@ -236,6 +236,7 @@ struct FirewallConfiguration
+ namespace ConfigSetting {
+     static constexpr auto Kernel = "wsl2.kernel";
+     static constexpr auto KernelCommandLine = "wsl2.kernelCommandLine";
++    static constexpr auto UefiKernel = "wsl2.uefiKernel";
+     static constexpr auto KernelModules = "wsl2.kernelModules";
+     static constexpr auto Memory = "wsl2.memory";
+     static constexpr auto Processors = "wsl2.processors";
+@@ -312,6 +313,9 @@ struct Config
+ 
+     std::filesystem::path KernelPath;
+     std::wstring KernelCommandLine;
++    // wsl2.uefiKernel: wsl2.kernel e' un'applicazione EFI (es. loader.efi di FreeBSD), avviata via UEFI/VmbFs
++    // anche su x86; OptionalData = solo wsl2.kernelCommandLine.
++    bool EnableUefiKernel = false;
+     std::wstring KernelModulesList;
+     std::filesystem::path KernelModulesPath;
+     UINT64 MemorySizeBytes = 0;
+diff --git a/src/windows/service/exe/WslCoreVm.cpp b/src/windows/service/exe/WslCoreVm.cpp
+index cdf4c2e6..6eaf0f0c 100644
+--- a/src/windows/service/exe/WslCoreVm.cpp
++++ b/src/windows/service/exe/WslCoreVm.cpp
+@@ -215,6 +215,12 @@ void WslCoreVm::Initialize(const GUID& VmId, const wil::shared_handle& UserToken
+ 
+     // If a private kernel was not specified, use the default.
+     m_defaultKernel = m_vmConfig.KernelPath.empty();
++    if (m_defaultKernel && m_vmConfig.EnableUefiKernel)
++    {
++        WSL_LOG("UefiKernelIgnored", TraceLoggingValue("wsl2.uefiKernel requires wsl2.kernel", "reason"));
++        m_vmConfig.EnableUefiKernel = false;
++    }
++
+     if (m_defaultKernel)
+     {
+ #ifdef WSL_KERNEL_PATH
+@@ -248,9 +254,18 @@ void WslCoreVm::Initialize(const GUID& VmId, const wil::shared_handle& UserToken
+             THROW_WIN32_MSG(error, "Failed to open kernel: '%ls'", m_vmConfig.KernelPath.c_str());
+         }
+ 
++        // wsl2.uefiKernel: the private kernel is an EFI application (e.g. FreeBSD's loader.efi). As for ARM64 below,
++        // the VM boots it from a temporary directory shared over VmbFs, holding a copy of the file.
++        if (m_vmConfig.EnableUefiKernel)
++        {
++            m_uefiBootPath = m_tempPath / L"uefi";
++            wil::CreateDirectoryDeep(m_uefiBootPath.c_str());
++            const auto targetPath = m_uefiBootPath / m_vmConfig.KernelPath.filename();
++            THROW_IF_WIN32_BOOL_FALSE(CopyFileW(m_vmConfig.KernelPath.c_str(), targetPath.c_str(), TRUE));
++        }
+         // Direct boot is not supported on ARM64. Modify the rootfs directory to be a temporary directory that contains
+         // copies of the initrd file and private kernel.
+-        if constexpr (wsl::shared::Arm64)
++        else if constexpr (wsl::shared::Arm64)
+         {
+             m_rootFsPath = m_tempPath / LXSS_ROOTFS_DIRECTORY;
+             wil::CreateDirectoryDeep(m_rootFsPath.c_str());
+@@ -1817,7 +1832,21 @@ std::wstring WslCoreVm::GenerateConfigJson()
+     // Set up boot params.
+     //
+     // N.B. Linux kernel direct boot is not yet supported on ARM64.
+-    if constexpr (!wsl::shared::Arm64)
++    if (m_vmConfig.EnableUefiKernel)
++    {
++        // wsl2.uefiKernel: UEFI boot of the EFI application over VmbFs, with only the user's command line (the Linux
++        // parameters built above mean nothing to it). FreeBSD's loader.efi turns key=value arguments into variables
++        // (rootdev=...).
++        auto bootThis = hcs::UefiBootEntry{};
++        bootThis.DeviceType = hcs::UefiBootDevice::VmbFs;
++        bootThis.VmbFsRootPath = m_uefiBootPath.c_str();
++        bootThis.DevicePath = L"\\" + m_vmConfig.KernelPath.filename().wstring();
++        bootThis.OptionalData = m_vmConfig.KernelCommandLine;
++        hcs::Uefi uefiSettings{};
++        uefiSettings.BootThis = std::move(bootThis);
++        vmSettings.Chipset.Uefi = std::move(uefiSettings);
++    }
++    else if constexpr (!wsl::shared::Arm64)
+     {
+         auto linuxKernelDirect = hcs::LinuxKernelDirect{};
+         linuxKernelDirect.KernelFilePath = m_vmConfig.KernelPath.c_str();
+diff --git a/src/windows/service/exe/WslCoreVm.h b/src/windows/service/exe/WslCoreVm.h
+index 4ecff29b..3236b5b5 100644
+--- a/src/windows/service/exe/WslCoreVm.h
++++ b/src/windows/service/exe/WslCoreVm.h
+@@ -294,6 +294,7 @@ private:
+     WslTraceLoggingClient m_traceClient;
+     std::filesystem::path m_rootFsPath;
+     std::filesystem::path m_tempPath;
++    std::filesystem::path m_uefiBootPath; // wsl2.uefiKernel: cartella condivisa via VmbFs con la copia dell'applicazione EFI
+     wil::shared_handle m_userToken;
+     wil::unique_handle m_restrictedToken;
+     bool m_swapFileCreated = false;
+-- 
+2.56.0
+

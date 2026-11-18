@@ -1,0 +1,49 @@
+From 4e27fef307a54d77e32898071ae2b22357675fae Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 13:17:51 +0100
+Subject: [PATCH 3/4] pci: do not blacklist MSI in a VM that has no host bridge
+
+pci_msi_blacklisted() treats every chipset without PCI Express or PCI-X
+capabilities as unable to do MSI.  In a virtual machine it whitelists
+old host bridges known to work, looking at the device at 0:0:0, and
+otherwise blacklists MSI and MSI-X for the whole system.
+
+A Hyper-V generation 2 VM, and the WSL2 utility VM in particular, has
+no host bridge at all: its only PCI buses are the vPCI buses provided by
+the hypervisor, which support MSI and MSI-X only.  Unless one of the
+devices happens to have a PCI Express capability (as SR-IOV VFs do),
+every device was denied MSI-X; the conventional PCI virtio console that
+WSL2 attaches over vPCI then failed to set up its interrupts ("exhausted
+all interrupt allocation attempts").
+
+In a VM, do not blacklist MSI when there is no device at 0:0:0: there
+is no old chipset to distrust.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/dev/pci/pci.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/sys/dev/pci/pci.c b/sys/dev/pci/pci.c
+index ba28f2468..e05fc8e00 100644
+--- a/sys/dev/pci/pci.c
++++ b/sys/dev/pci/pci.c
+@@ -2602,6 +2602,15 @@ pci_msi_blacklisted(void)
+ 			if (dev != NULL)
+ 				return (!pci_has_quirk(pci_get_devid(dev),
+ 					PCI_QUIRK_ENABLE_MSI_VM));
++
++			/*
++			 * No host bridge at all: the only PCI buses are
++			 * provided by the hypervisor, as in a Hyper-V
++			 * generation 2 VM or the WSL2 utility VM, whose vPCI
++			 * buses support MSI and MSI-X only.  There is no old
++			 * chipset to distrust.
++			 */
++			return (0);
+ 		}
+ 		return (1);
+ 	}
+-- 
+2.56.0
+

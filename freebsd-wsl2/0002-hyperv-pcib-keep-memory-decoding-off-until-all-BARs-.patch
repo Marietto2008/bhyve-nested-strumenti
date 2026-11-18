@@ -1,0 +1,97 @@
+From ea0fc67ab0cfab6cbc4d53422d8683a4e4a58a87 Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 13:00:52 +0100
+Subject: [PATCH 2/3] hyperv/pcib: keep memory decoding off until all BARs are
+ assigned
+
+Hyper-V maps a vPCI device's BARs when memory decoding is enabled, and
+only if all of them hold valid addresses.  Otherwise the device is left
+unmapped: every MMIO read returns all ones, and enabling decoding again
+later does not help.
+
+The PCI bus assigns BARs lazily and enables decoding as soon as the
+first BAR is activated, so a device with several memory BARs never
+became accessible.  This hangs the boot under WSL2, which attaches a
+virtio console over vPCI: virtio_pci reads the device status as 0xff and
+vtpci_modern_reset() spins forever.  Linux avoids the problem by
+assigning all BARs before enabling decoding (prepopulate_bars() in
+pci-hyperv.c).
+
+Ignore requests to enable memory decoding in vmbus_pcib_write_config()
+until every memory BAR the host reported has been assigned; the PCI bus
+asks again each time a further BAR is activated.
+
+Tested on Windows 11 21H2 (Hyper-V nested under bhyve) with the WSL2
+utility VM: the virtio console attaches and the boot completes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/dev/hyperv/pcib/vmbus_pcib.c | 45 ++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/sys/dev/hyperv/pcib/vmbus_pcib.c b/sys/dev/hyperv/pcib/vmbus_pcib.c
+index c5ea1cd1e..e0ccbf8da 100644
+--- a/sys/dev/hyperv/pcib/vmbus_pcib.c
++++ b/sys/dev/hyperv/pcib/vmbus_pcib.c
+@@ -1788,6 +1788,33 @@ vmbus_pcib_read_config(device_t dev, u_int bus, u_int slot, u_int func,
+ 	return (data);
+ }
+ 
++/*
++ * Return true if every memory BAR the host reported for the device has been
++ * assigned an address.
++ */
++static bool
++vmbus_pcib_mem_bars_assigned(struct hv_pci_dev *hpdev)
++{
++	uint32_t lo, hi;
++	int i;
++
++	for (i = 0; i < MAX_NUM_BARS; i++) {
++		if (hpdev->probed_bar[i] == 0 ||
++		    (hpdev->probed_bar[i] & PCIM_BAR_SPACE) != PCIM_BAR_MEM_SPACE)
++			continue;
++		lo = hi = 0;
++		_hv_pcifront_read_config(hpdev, PCIR_BAR(i), 4, &lo);
++		if ((hpdev->probed_bar[i] & PCIM_BAR_MEM_TYPE) == PCIM_BAR_MEM_64 &&
++		    i + 1 < MAX_NUM_BARS) {
++			i++;
++			_hv_pcifront_read_config(hpdev, PCIR_BAR(i), 4, &hi);
++		}
++		if ((lo & PCIM_BAR_MEM_BASE) == 0 && hi == 0)
++			return (false);
++	}
++	return (true);
++}
++
+ static void
+ vmbus_pcib_write_config(device_t dev, u_int bus, u_int slot, u_int func,
+     u_int reg, uint32_t data, int bytes)
+@@ -1802,6 +1829,24 @@ vmbus_pcib_write_config(device_t dev, u_int bus, u_int slot, u_int func,
+ 	if (!hpdev)
+ 		return;
+ 
++	/*
++	 * Hyper-V maps a device's BARs when memory decoding is enabled, and
++	 * only if all of them hold valid addresses: otherwise it leaves the
++	 * device unmapped, every MMIO read returns all ones, and enabling
++	 * decoding again later does not help.  The PCI bus assigns BARs
++	 * lazily and enables decoding as soon as the first one is activated,
++	 * so a device with several memory BARs never became accessible (the
++	 * virtio console that WSL2 attaches over vPCI: virtio_pci read its
++	 * status as 0xff and vtpci_modern_reset() spun forever).  Linux
++	 * assigns all BARs before enabling decoding (prepopulate_bars()).
++	 * Keep decoding disabled until every memory BAR has an address; the
++	 * PCI bus requests it again as each further BAR is activated.
++	 */
++	if (reg == PCIR_COMMAND && bytes >= 2 &&
++	    (data & PCIM_CMD_MEMEN) != 0 &&
++	    !vmbus_pcib_mem_bars_assigned(hpdev))
++		data &= ~PCIM_CMD_MEMEN;
++
+ 	_hv_pcifront_write_config(hpdev, reg, bytes, data);
+ }
+ 
+-- 
+2.56.0
+

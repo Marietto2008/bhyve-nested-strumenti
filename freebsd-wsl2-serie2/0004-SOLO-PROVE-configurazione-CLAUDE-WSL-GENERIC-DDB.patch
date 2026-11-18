@@ -1,0 +1,26 @@
+From 7bb0f3c94c8560110b09cfb7389844af73099d0c Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 13:00:53 +0100
+Subject: [PATCH 4/5] SOLO PROVE: configurazione CLAUDE-WSL (GENERIC + DDB)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/amd64/conf/CLAUDE-WSL | 6 ++++++
+ 1 file changed, 6 insertions(+)
+ create mode 100644 sys/amd64/conf/CLAUDE-WSL
+
+diff --git a/sys/amd64/conf/CLAUDE-WSL b/sys/amd64/conf/CLAUDE-WSL
+new file mode 100644
+index 000000000..c839d2b24
+--- /dev/null
++++ b/sys/amd64/conf/CLAUDE-WSL
+@@ -0,0 +1,6 @@
++# CLAUDE-WSL -- Claude 03/11/2026. SOLO DIAGNOSI per FreeBSD nella VM di WSL2 (blocco di virtio_pci sul vPCI di
++# Hyper-V): GENERIC + DDB, con l'ingresso nel debugger dalla seriale (CR ~ ^B).
++include GENERIC
++ident	CLAUDE-WSL
++options 	DDB
++options 	ALT_BREAK_TO_DEBUGGER
+-- 
+2.56.0
+

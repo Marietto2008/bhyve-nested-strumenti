@@ -1,0 +1,445 @@
+From 52e50af61dfd37fdbf01736909febb0146ec8f03 Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 20:47:12 +0100
+Subject: [PATCH] Build on FreeBSD (WSL guest): Hyper-V sockets, no Linux-only
+ headers
+
+- backend-rdp: create_vsock_fd() with AF_HYPERV on FreeBSD (Hyper-V sockets
+  are what the WSL host connects to); gettid -> pthread_getthreadid_np(),
+  fallocate -> posix_fallocate(); environ dump only on Linux (FreeBSD keeps
+  environ in crt1.o, not visible to a -z defs shared object);
+- launcher-direct and launcher-weston-launch only on Linux (linux/vt.h); the
+  RDP backend uses no launcher;
+- rdprail-shell: no mount namespaces on FreeBSD (setns/unshare skipped);
+- portability: program_invocation_short_name -> getprogname(), ETIME,
+  CLOCK_MONOTONIC_RAW, values.h, linux/limits.h, linux/ioctl.h and
+  linux/types.h in the sync-file UAPI header, missing signal.h/float.h/libgen.h.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ clients/desktop-shell.c          |  5 ++++
+ clients/rdprail-shell.c          |  1 +
+ compositor/main.c                |  6 +++++
+ compositor/rdpaudio.c            |  2 ++
+ compositor/rdpaudioin.c          |  2 ++
+ libweston/backend-rdp/rdp.c      | 45 ++++++++++++++++++++++++++++++++
+ libweston/backend-rdp/rdputil.c  | 13 ++++++++-
+ libweston/compositor.c           |  2 ++
+ libweston/input.c                |  3 +++
+ libweston/launcher-util.c        |  2 ++
+ libweston/linux-sync-file-uapi.h | 11 ++++++++
+ libweston/meson.build            |  5 ++--
+ rdprail-shell/app-list.c         | 12 +++++++++
+ shared/file-util.c               |  3 +++
+ shared/xalloc.h                  |  4 +++
+ tests/surface-screenshot-test.c  |  3 +++
+ tools/zunitc/src/zunitc_impl.c   |  2 ++
+ 17 files changed, 118 insertions(+), 3 deletions(-)
+
+diff --git a/clients/desktop-shell.c b/clients/desktop-shell.c
+index bde5dc8..9b68eff 100644
+--- a/clients/desktop-shell.c
++++ b/clients/desktop-shell.c
+@@ -23,6 +23,11 @@
+  */
+ 
+ #include "config.h"
++#include <signal.h>
++#if defined(__FreeBSD__)
++#include <stdlib.h>
++#define program_invocation_short_name getprogname()
++#endif
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+diff --git a/clients/rdprail-shell.c b/clients/rdprail-shell.c
+index 69d6af8..e41f64d 100644
+--- a/clients/rdprail-shell.c
++++ b/clients/rdprail-shell.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "config.h"
++#include <signal.h>
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+diff --git a/compositor/main.c b/compositor/main.c
+index cc03a89..1099865 100644
+--- a/compositor/main.c
++++ b/compositor/main.c
+@@ -44,7 +44,11 @@
+ #include <libevdev/libevdev.h>
+ #include <linux/input.h>
+ #include <sys/time.h>
++#ifdef __linux__
+ #include <linux/limits.h>
++#else
++#include <limits.h>
++#endif
+ 
+ #include "weston.h"
+ #include <libweston/libweston.h>
+@@ -774,7 +778,9 @@ clock_name(clockid_t clk_id)
+ 	static const char *names[] = {
+ 		[CLOCK_REALTIME] =		"CLOCK_REALTIME",
+ 		[CLOCK_MONOTONIC] =		"CLOCK_MONOTONIC",
++#ifdef CLOCK_MONOTONIC_RAW
+ 		[CLOCK_MONOTONIC_RAW] =		"CLOCK_MONOTONIC_RAW",
++#endif
+ 		[CLOCK_REALTIME_COARSE] =	"CLOCK_REALTIME_COARSE",
+ 		[CLOCK_MONOTONIC_COARSE] =	"CLOCK_MONOTONIC_COARSE",
+ #ifdef CLOCK_BOOTTIME
+diff --git a/compositor/rdpaudio.c b/compositor/rdpaudio.c
+index bfb7638..5e4b69f 100644
+--- a/compositor/rdpaudio.c
++++ b/compositor/rdpaudio.c
+@@ -36,7 +36,9 @@
+ #include <time.h>
+ #include <sys/un.h>
+ #include <fcntl.h>
++#ifdef __linux__
+ #include <linux/vm_sockets.h>
++#endif
+ #include "rdpaudio.h"
+ #include <libweston/libweston.h>
+ #include <shared/xalloc.h>
+diff --git a/compositor/rdpaudioin.c b/compositor/rdpaudioin.c
+index af36770..e7f671e 100644
+--- a/compositor/rdpaudioin.c
++++ b/compositor/rdpaudioin.c
+@@ -37,7 +37,9 @@
+ #include <fcntl.h>
+ #include <poll.h>
+ #include <sys/eventfd.h>
++#ifdef __linux__
+ #include <linux/vm_sockets.h>
++#endif
+ #include "rdpaudio.h"
+ #include <libweston/libweston.h>
+ #include <shared/xalloc.h>
+diff --git a/libweston/backend-rdp/rdp.c b/libweston/backend-rdp/rdp.c
+index 64ec132..7200509 100644
+--- a/libweston/backend-rdp/rdp.c
++++ b/libweston/backend-rdp/rdp.c
+@@ -38,7 +38,18 @@
+ #include <sys/types.h>
+ #include <sys/eventfd.h>
+ #include <netdb.h>
++#ifdef __linux__
+ #include <linux/vm_sockets.h>
++#else
++/* FreeBSD as a Hyper-V guest (WSL): Hyper-V sockets (sys/dev/hyperv/hvsock/hv_sock.h) instead of vsock */
++#define AF_HYPERV 43
++struct sockaddr_hvs {
++	unsigned char	sa_len;
++	sa_family_t	sa_family;
++	unsigned int	hvs_port;
++	unsigned char	hvs_zero[sizeof(struct sockaddr) - sizeof(sa_family_t) - sizeof(unsigned char) - sizeof(unsigned int)];
++};
++#endif
+ #include <netinet/in.h>
+ #include <fcntl.h>
+ #include <arpa/inet.h>
+@@ -2037,6 +2048,33 @@ static const struct weston_rdp_output_api api = {
+ 	rdp_output_get_primary,
+ };
+ 
++#ifndef __linux__
++static int create_vsock_fd(int port)
++{
++	struct sockaddr_hvs socket_address;
++	int socket_fd = socket(AF_HYPERV, SOCK_STREAM | SOCK_CLOEXEC, 0);
++
++	if (socket_fd < 0) {
++		weston_log("Fail to create hvsocket");
++		return -1;
++	}
++	memset(&socket_address, 0, sizeof(socket_address));
++	socket_address.sa_len = sizeof(socket_address);
++	socket_address.sa_family = AF_HYPERV;
++	socket_address.hvs_port = port;
++	if (bind(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) < 0) {
++		weston_log("Fail to bind hvsocket");
++		close(socket_fd);
++		return -2;
++	}
++	if (listen(socket_fd, 1) < 0) {
++		weston_log("Fail to listen on hvsocket");
++		close(socket_fd);
++		return -4;
++	}
++	return socket_fd;
++}
++#else
+ static int create_vsock_fd(int port)
+ {
+ 	struct sockaddr_vm socket_address;
+@@ -2084,6 +2122,8 @@ static int create_vsock_fd(int port)
+ 	return socket_fd;
+ }
+ 
++#endif /* __linux__ */
++
+ static int use_vsock_fd(int port)
+ {
+ 	char *fd_str = getenv("USE_VSOCK");
+@@ -2106,7 +2146,9 @@ static int use_vsock_fd(int port)
+ 	return fd;
+ }
+ 
++#ifdef __linux__
+ extern char **environ; /* defined by libc */
++#endif
+ 
+ static struct rdp_backend *
+ rdp_backend_create(struct weston_compositor *compositor,
+@@ -2193,9 +2235,12 @@ rdp_backend_create(struct weston_compositor *compositor,
+ 	/* For diagnostics purpose, dump all enviroment to log file */
+ 	/* TODO: privacy review */
+ 	rdp_debug(b, "RDP backend: Environment dump - start\n");
++#ifdef __linux__
++	/* FreeBSD: environ lives in crt1.o, not in libc, so a shared object linked with -z defs cannot see it */
+ 	for (i = 0; environ[i]; i++) {
+ 		rdp_debug(b, "  %s\n", environ[i]);
+ 	}
++#endif
+ 	rdp_debug(b, "RDP backend: Environment dump - end\n");
+ 
+ #ifdef FREERDP_GIT_REVISION
+diff --git a/libweston/backend-rdp/rdputil.c b/libweston/backend-rdp/rdputil.c
+index 7817c98..68885bf 100644
+--- a/libweston/backend-rdp/rdputil.c
++++ b/libweston/backend-rdp/rdputil.c
+@@ -41,9 +41,15 @@
+ 
+ #include "rdp.h"
+ 
++#ifdef __FreeBSD__
++#include <pthread_np.h>
++#endif
++
+ pid_t rdp_get_tid()
+ {
+-#ifdef SYS_gettid
++#if defined(__FreeBSD__)
++	return pthread_getthreadid_np();
++#elif defined(SYS_gettid)
+ 	return syscall(SYS_gettid);
+ #else
+ 	return gettid();
+@@ -173,7 +179,12 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
+ 		goto error_exit;
+ 	}
+ 
++#ifdef __linux__
+ 	if (fallocate(fd, 0, 0, shared_memory->size) < 0) {
++#else
++	/* posix_fallocate() returns the error instead of setting errno */
++	if ((errno = posix_fallocate(fd, 0, shared_memory->size)) != 0) {
++#endif
+ 		rdp_debug_error(b, "%s: Failed to allocate %d: \"%s\" %ld bytes with error: %s\n",
+ 			__func__, fd, path, shared_memory->size, strerror(errno));
+ 		goto error_exit;
+diff --git a/libweston/compositor.c b/libweston/compositor.c
+index c3e4bd7..b0339d4 100644
+--- a/libweston/compositor.c
++++ b/libweston/compositor.c
+@@ -7656,7 +7656,9 @@ weston_compositor_set_presentation_clock_software(
+ {
+ 	/* In order of preference */
+ 	static const clockid_t clocks[] = {
++#ifdef CLOCK_MONOTONIC_RAW
+ 		CLOCK_MONOTONIC_RAW,	/* no jumps, no crawling */
++#endif
+ 		CLOCK_MONOTONIC_COARSE,	/* no jumps, may crawl, fast & coarse */
+ 		CLOCK_MONOTONIC,	/* no jumps, may crawl */
+ 		CLOCK_REALTIME_COARSE,	/* may jump and crawl, fast & coarse */
+diff --git a/libweston/input.c b/libweston/input.c
+index 3ed1ca4..70bdddb 100644
+--- a/libweston/input.c
++++ b/libweston/input.c
+@@ -34,7 +34,10 @@
+ #include <sys/mman.h>
+ #include <assert.h>
+ #include <unistd.h>
++#ifdef __linux__
+ #include <values.h>
++#endif
++#include <float.h>
+ #include <fcntl.h>
+ #include <limits.h>
+ #include <errno.h>
+diff --git a/libweston/launcher-util.c b/libweston/launcher-util.c
+index 5cbb0ab..8916824 100644
+--- a/libweston/launcher-util.c
++++ b/libweston/launcher-util.c
+@@ -39,8 +39,10 @@ static const struct launcher_interface *ifaces[] = {
+ #ifdef HAVE_SYSTEMD_LOGIN
+ 	&launcher_logind_iface,
+ #endif
++#ifdef __linux__
+ 	&launcher_weston_launch_iface,
+ 	&launcher_direct_iface,
++#endif
+ 	NULL,
+ };
+ 
+diff --git a/libweston/linux-sync-file-uapi.h b/libweston/linux-sync-file-uapi.h
+index cd30665..28f8904 100644
+--- a/libweston/linux-sync-file-uapi.h
++++ b/libweston/linux-sync-file-uapi.h
+@@ -3,8 +3,19 @@
+ #ifndef WESTON_LINUX_SYNC_FILE_UAPI_H
+ #define WESTON_LINUX_SYNC_FILE_UAPI_H
+ 
++#ifdef __linux__
+ #include <linux/ioctl.h>
++#else
++#include <sys/ioccom.h>
++#endif
++#ifdef __linux__
+ #include <linux/types.h>
++#else
++#include <stdint.h>
++typedef int32_t __s32;
++typedef uint32_t __u32;
++typedef uint64_t __u64;
++#endif
+ 
+ struct sync_fence_info {
+ 	char obj_name[32];
+diff --git a/libweston/meson.build b/libweston/meson.build
+index 08d23ec..e520979 100644
+--- a/libweston/meson.build
++++ b/libweston/meson.build
+@@ -66,6 +66,9 @@ srcs_libweston = [
+ 	weston_direct_display_protocol_c,
+ 	weston_direct_display_server_protocol_h,
+ ]
++if host_machine.system() == 'linux'
++	srcs_libweston += [ 'launcher-direct.c', 'launcher-weston-launch.c' ]
++endif
+ 
+ if get_option('renderer-gl')
+ 	dep_egl = dependency('egl', required: false)
+@@ -141,9 +144,7 @@ pkgconfig.generate(
+ )
+ 
+ srcs_session_helper = [
+-	'launcher-direct.c',
+ 	'launcher-util.c',
+-	'launcher-weston-launch.c',
+ ]
+ deps_session_helper = [ dep_libweston_private_h ]
+ 
+diff --git a/rdprail-shell/app-list.c b/rdprail-shell/app-list.c
+index 8c715b5..7ea20c5 100644
+--- a/rdprail-shell/app-list.c
++++ b/rdprail-shell/app-list.c
+@@ -201,6 +201,10 @@ append_string(char *d, size_t c, const char *s)
+ static void
+ attach_app_list_namespace(struct desktop_shell *shell)
+ {
++#ifndef __linux__
++	/* FreeBSD: no mount namespaces; the app list is read from the compositor's own view. */
++	(void)shell;
++#else
+ 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+ 	assert(false == context->isAppListNamespaceAttached);
+ 	if (context && context->app_list_pidfd >= 0) {
+@@ -218,11 +222,16 @@ attach_app_list_namespace(struct desktop_shell *shell)
+ 			context->isAppListNamespaceAttached = true;
+ 		}
+ 	}
++#endif
+ }
+ 
+ static void
+ detach_app_list_namespace(struct desktop_shell *shell)
+ {
++#ifndef __linux__
++	/* FreeBSD: no mount namespaces; the app list is read from the compositor's own view. */
++	(void)shell;
++#else
+ 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+ 	if (context && context->weston_pidfd >= 0 && context->isAppListNamespaceAttached) { 
+ 		if (setns(context->weston_pidfd, 0) == -1) {
+@@ -232,6 +241,7 @@ detach_app_list_namespace(struct desktop_shell *shell)
+ 			context->isAppListNamespaceAttached = false;
+ 		}
+ 	}
++#endif
+ }
+ 
+ static bool 
+@@ -961,8 +971,10 @@ app_list_monitor_thread(LPVOID arg)
+ 		/* running inside system-distro */
+ 		shell_rdp_debug(shell, "app_list_monitor_thread: running in system-distro with user-distro: %s\n", shell->distroName);
+ 
++#ifdef CLONE_FS
+ 		if (unshare(CLONE_FS) < 0)
+ 			shell_rdp_debug_error(shell, "app_list_monitor_thread: unshare(CLONE_FS) failed %s\n", strerror(errno));
++#endif
+ 
+ 		/* obtain pidfd for current process */
+ 		pidfd_path = "/proc/self/ns/mnt";
+diff --git a/shared/file-util.c b/shared/file-util.c
+index 151ef2a..746ea79 100644
+--- a/shared/file-util.c
++++ b/shared/file-util.c
+@@ -27,6 +27,9 @@
+ 
+ #include <stdio.h>
+ #include <errno.h>
++#ifndef ETIME
++#define ETIME ETIMEDOUT	/* FreeBSD has no ETIME */
++#endif
+ #include <time.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+diff --git a/shared/xalloc.h b/shared/xalloc.h
+index 15ad1fa..e6d2d55 100644
+--- a/shared/xalloc.h
++++ b/shared/xalloc.h
+@@ -31,6 +31,10 @@ extern "C" {
+ #endif
+ 
+ #include <errno.h>
++#if defined(__FreeBSD__)
++#include <stdlib.h>
++#define program_invocation_short_name getprogname()
++#endif
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/tests/surface-screenshot-test.c b/tests/surface-screenshot-test.c
+index 49b05ea..6bf4f1a 100644
+--- a/tests/surface-screenshot-test.c
++++ b/tests/surface-screenshot-test.c
+@@ -31,6 +31,9 @@
+ #include <ctype.h>
+ #include <string.h>
+ #include <errno.h>
++#ifndef ETIME
++#define ETIME ETIMEDOUT	/* FreeBSD has no ETIME */
++#endif
+ #include <linux/input.h>
+ 
+ #include <libweston/libweston.h>
+diff --git a/tools/zunitc/src/zunitc_impl.c b/tools/zunitc/src/zunitc_impl.c
+index 395bdd7..599c1dd 100644
+--- a/tools/zunitc/src/zunitc_impl.c
++++ b/tools/zunitc/src/zunitc_impl.c
+@@ -24,6 +24,8 @@
+  */
+ 
+ #include "config.h"
++#include <signal.h>
++#include <libgen.h>
+ 
+ #include <errno.h>
+ #include <fcntl.h>
+-- 
+2.56.0
+

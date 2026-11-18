@@ -1,0 +1,85 @@
+From 6fc2fb471afaa1600c47381a12c9edd980226605 Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 19:27:30 +0100
+Subject: [PATCH] hyperv/hvsock: send a FIN on shutdown(SHUT_WR)
+
+hvs_trans_shutdown() only sent the zero-length packet that tells the
+peer the stream has ended for SHUT_RDWR; SHUT_WR just marked the socket
+locally.  A half-close (shutdown(SHUT_WR), then keep reading) was thus
+never seen by the host, which kept waiting for more data.  WSL's
+localhost relay does exactly that when the local TCP side closes, so a
+Windows client never saw the end of the response.
+
+Send the FIN for SHUT_WR too, and only once: hvs_trans_close() used to
+send a second one after shutdown(SHUT_RDWR).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/dev/hyperv/hvsock/hv_sock.c | 22 +++++++++++++++-------
+ sys/dev/hyperv/hvsock/hv_sock.h |  2 ++
+ 2 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/sys/dev/hyperv/hvsock/hv_sock.c b/sys/dev/hyperv/hvsock/hv_sock.c
+index 5a69eaa2b..4154f5f6e 100644
+--- a/sys/dev/hyperv/hvsock/hv_sock.c
++++ b/sys/dev/hyperv/hvsock/hv_sock.c
+@@ -922,11 +922,12 @@ hvs_trans_close(struct socket *so)
+ 		return;
+ 	}
+ 
+-	if (so->so_state & SS_ISCONNECTED) {
+-		/* Send a FIN to peer */
++	if ((so->so_state & SS_ISCONNECTED) && !pcb->fin_sent) {
++		/* Send a FIN to peer, unless shutdown() already did */
+ 		HVSOCK_DBG(HVSOCK_DBG_VERBOSE,
+ 		    "%s: hvs_trans_close sending a FIN to host\n", __func__);
+ 		(void) hvsock_send_data(pcb->chan, NULL, 0, NULL);
++		pcb->fin_sent = true;
+ 	}
+ 
+ 	if (so->so_state &
+@@ -1002,16 +1003,23 @@ hvs_trans_shutdown(struct socket *so, enum shutdown_how how)
+ 		break;
+ 	case SHUT_RDWR:
+ 		socantrcvmore(so);
+-		if (so->so_state & SS_ISCONNECTED) {
+-			/* Send a FIN to peer */
++		/* FALLTHROUGH */
++	case SHUT_WR:
++		/*
++		 * Send a FIN to peer for SHUT_WR as well: the peer only learns
++		 * about the end of our stream from it.  Without it a half-close
++		 * (shutdown(SHUT_WR), then keep reading) was never seen by the
++		 * host, which kept waiting for more data.
++		 */
++		if ((so->so_state & SS_ISCONNECTED) && !pcb->fin_sent) {
+ 			SOCK_SENDBUF_LOCK(so);
+ 			(void) hvsock_send_data(pcb->chan, NULL, 0,
+ 			    &so->so_snd);
+ 			SOCK_SENDBUF_UNLOCK(so);
+-			soisdisconnecting(so);
++			pcb->fin_sent = true;
+ 		}
+-		/* FALLTHROUGH */
+-	case SHUT_WR:
++		if (how == SHUT_RDWR && (so->so_state & SS_ISCONNECTED))
++			soisdisconnecting(so);
+ 		socantsendmore(so);
+ 	}
+ 	wakeup(&so->so_timeo);
+diff --git a/sys/dev/hyperv/hvsock/hv_sock.h b/sys/dev/hyperv/hvsock/hv_sock.h
+index 32a6e7164..eb4c3e61f 100644
+--- a/sys/dev/hyperv/hvsock/hv_sock.h
++++ b/sys/dev/hyperv/hvsock/hv_sock.h
+@@ -83,6 +83,8 @@ struct hvs_pcb {
+ 	/* offset in the packet */
+ 	uint32_t			recv_data_off;
+ 	bool				rb_init;
++	/* A FIN (zero-length packet) has been sent to the peer */
++	bool				fin_sent;
+ 	/* Link lists for global bound and connected sockets */
+ 	LIST_ENTRY(hvs_pcb)		bound_next;
+ 	LIST_ENTRY(hvs_pcb)		connected_next;
+-- 
+2.56.0
+

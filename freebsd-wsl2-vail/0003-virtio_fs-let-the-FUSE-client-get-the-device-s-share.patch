@@ -1,0 +1,47 @@
+From b46b8994835cc138a950315c919cba50f94b90e7 Mon Sep 17 00:00:00 2001
+From: "Claude Opus 5.5" <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 03:11:58 +0100
+Subject: [PATCH 3/5] virtio_fs: let the FUSE client get the device's shared
+ memory regions
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ sys/dev/virtio/fs/virtio_fs.c | 8 ++++++++
+ sys/dev/virtio/fs/virtio_fs.h | 3 +++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/sys/dev/virtio/fs/virtio_fs.c b/sys/dev/virtio/fs/virtio_fs.c
+index 34159eefe..e70f4f817 100644
+--- a/sys/dev/virtio/fs/virtio_fs.c
++++ b/sys/dev/virtio/fs/virtio_fs.c
+@@ -412,6 +412,14 @@ vtfs_remove(struct vtfs_softc *sc)
+ 	VTFS_UNLOCK();
+ }
+ 
++int
++vtfs_get_shm_region(struct vtfs_softc *sc, uint8_t id, vm_paddr_t *paddr,
++    uint64_t *len)
++{
++
++	return (virtio_get_shm_region(sc->vtfs_dev, id, paddr, len));
++}
++
+ int
+ vtfs_find(char *tag, struct vtfs_softc **scp)
+ {
+diff --git a/sys/dev/virtio/fs/virtio_fs.h b/sys/dev/virtio/fs/virtio_fs.h
+index 86972fb09..4f3924b08 100644
+--- a/sys/dev/virtio/fs/virtio_fs.h
++++ b/sys/dev/virtio/fs/virtio_fs.h
+@@ -40,5 +40,8 @@ int vtfs_find(char *, vtfs_instance *);
+ void vtfs_release(vtfs_instance);
+ void vtfs_drain(vtfs_instance);
+ void vtfs_unregister_cb(vtfs_instance);
++/* Shared memory region "id" of the device (the DAX window is id 0). */
++int vtfs_get_shm_region(vtfs_instance, uint8_t, vm_paddr_t *, uint64_t *);
++#define VTFS_SHM_CACHE_ID	0
+ 
+ #endif /* _VIRTIO_FS_H */
+-- 
+2.56.0
+

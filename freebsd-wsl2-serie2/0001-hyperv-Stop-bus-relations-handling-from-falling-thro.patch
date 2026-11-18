@@ -1,0 +1,36 @@
+From a1f93f4813b91aea2064257d031d2c91d5b60192 Mon Sep 17 00:00:00 2001
+From: Kevin Bowling <kbowling@FreeBSD.org>
+Date: Mon, 14 Sep 2026 15:31:58 -0700
+Subject: [PATCH 1/5] hyperv: Stop bus relations handling from falling through
+ to eject
+
+The PCI_BUS_RELATIONS2 case lacks a break after queuing the reported
+devices.  It consequently processes the same packet as PCI_EJECT,
+interpreting device_count as the slot number.  If that value matches an
+existing child, the callback schedules an unintended device eject.
+
+End the relations case after processing the device list, matching the
+original PCI_BUS_RELATIONS handling.
+
+Fixes:	ea11861e434a ("arm64: Hyper-V: vPCI: Enabling v-PCI in FreeBSD in ARM64 Hyper-V")
+MFC after:	2 weeks
+Sponsored by:	BBOX.io
+---
+ sys/dev/hyperv/pcib/vmbus_pcib.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/sys/dev/hyperv/pcib/vmbus_pcib.c b/sys/dev/hyperv/pcib/vmbus_pcib.c
+index 7b755e5f9..c5ea1cd1e 100644
+--- a/sys/dev/hyperv/pcib/vmbus_pcib.c
++++ b/sys/dev/hyperv/pcib/vmbus_pcib.c
+@@ -1013,6 +1013,7 @@ vmbus_pcib_on_channel_callback(struct vmbus_channel *chan, void *arg)
+ 					break;
+ 
+ 				hv_pci_devices_present2(hbus, bus_rel2);
++				break;
+ 
+ 			case PCI_EJECT:
+ 				dev_msg = (struct pci_dev_incoming *)buffer;
+-- 
+2.56.0
+
