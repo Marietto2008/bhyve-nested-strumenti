@@ -1,0 +1,16 @@
+LIVELLO L2 FreeBSD 15.1 sotto bhyve (8 vCPU, virtio, bridge), L1 FreeBSD 15.1 bhyve, L0 bhyve FreeBSD 15.1-RELEASE-p6 2026-11-18T18:21:03Z
+ 6:21PM  up 8 mins, 0 users, load averages: 1.90, 1.28, 0.61
+BANCO inizio 8 CPU, vm_guest bhyve, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 403.6 Mpassi/s
+BANCO cpuN 3027.7 Mpassi/s (8 thread, 7.52 x cpu1)
+BANCO syscall 173.1 ns
+BANCO fork 4795.4 us
+BANCO pipe 1599.5 us mediana, p99 2256.2, max 19801.2
+BANCO timer 841 us mediana, p99 1728, p99.9 6320, max 35188 (21120 pause su 8 CPU)
+BANCO pagine 11.4 kpagine/s
+BANCO memcpy 9.23 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 24.764409 secs (43358265 bytes/sec)
+BANCO rete_scarico 993384664 bytes transferred in 120.018932 secs (8276900 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 117.655188 secs (9126175 bytes/sec)
+LIVELLO L2 FreeBSD 15.1 sotto bhyve (8 vCPU, virtio, bridge), L1 FreeBSD 15.1 bhyve, L0 bhyve fine 18:26:46Z

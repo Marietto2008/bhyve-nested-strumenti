@@ -1,0 +1,16 @@
+LIVELLO L2 FreeBSD 15.1 sotto KVM (QEMU 8 vCPU, rete slirp), L1 Ubuntu 24.04, L0 bhyve FreeBSD 15.1-RELEASE-p6 2026-11-18T14:58:33Z
+ 2:58PM  up 2 mins, 0 users, load averages: 0.20, 0.06, 0.02
+BANCO inizio 8 CPU, vm_guest kvm, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 410.9 Mpassi/s
+BANCO cpuN 3181.1 Mpassi/s (8 thread, 7.76 x cpu1)
+BANCO syscall 164.5 ns
+BANCO fork 3058.4 us
+BANCO pipe 1036.0 us mediana, p99 1335.3, max 33104.1
+BANCO timer 476 us mediana, p99 771, p99.9 1494, max 26317 (26861 pause su 8 CPU)
+BANCO pagine 164.7 kpagine/s
+BANCO memcpy 9.46 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 11.443676 secs (93828400 bytes/sec)
+BANCO rete_scarico 1073741824 bytes transferred in 72.701488 secs (14769186 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 33.421364 secs (32127409 bytes/sec)
+LIVELLO L2 FreeBSD 15.1 sotto KVM (QEMU 8 vCPU, rete slirp), L1 Ubuntu 24.04, L0 bhyve fine 15:01:23Z

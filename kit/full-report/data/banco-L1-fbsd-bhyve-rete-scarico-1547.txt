@@ -1,0 +1,4 @@
+INIZIORT154656
+1073741824 bytes transferred in 10.070296 secs (106624659 bytes/sec)
+1073741824 bytes transferred in 9.988689 secs (107495772 bytes/sec)
+RT154656

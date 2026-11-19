@@ -1,5 +1,8 @@
 # bhyve-nested-strumenti
 
+**English:** to reproduce the nested-virtualization work on your own machine, start from
+[`kit/README.md`](kit/README.md) (build, one-command smoke test, known issues, reference results).
+
 Script, lanciatori, sonde DTrace e patch del progetto di **virtualizzazione annidata
 su bhyve e QEMU+bhyve** (host FreeBSD 16-CURRENT, Intel VMX): Windows 11 con Hyper-V e
 WSL2 come L1, FreeBSD dentro WSL2 e Linux come L2.

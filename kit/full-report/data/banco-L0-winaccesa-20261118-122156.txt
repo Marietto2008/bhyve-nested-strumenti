@@ -1,0 +1,16 @@
+LIVELLO L0 host FreeBSD 16, Windows vm0:13 accesa e inattiva FreeBSD 16.0-CURRENT 2026-11-18T11:21:56Z
+12:21PM  up 18:01, 2 users, load averages: 3.06, 2.93, 2.70
+BANCO inizio 16 CPU, vm_guest none, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 468.6 Mpassi/s
+BANCO cpuN 6523.0 Mpassi/s (16 thread, 13.93 x cpu1)
+BANCO syscall 47.5 ns
+BANCO fork 590.1 us
+BANCO pipe 3.8 us mediana, p99 6.2, max 694.0
+BANCO timer 2 us mediana, p99 439, p99.9 3855, max 34800 (77801 pause su 16 CPU)
+BANCO pagine 717.8 kpagine/s
+BANCO memcpy 10.45 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 5.081071 secs (211321965 bytes/sec)
+BANCO rete_scarico 1073741824 bytes transferred in 0.667180 secs (1609372329 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 0.530560 secs (2023788169 bytes/sec)
+LIVELLO L0 host FreeBSD 16, Windows vm0:13 accesa e inattiva fine 11:22:33Z

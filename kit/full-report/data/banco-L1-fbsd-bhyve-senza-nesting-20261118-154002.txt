@@ -1,0 +1,18 @@
+CAT-INIZIO
+LIVELLO L1 FreeBSD 15.1 sotto bhyve, SENZA nesting esposto FreeBSD 15.1-RELEASE-p5 2026-11-18T15:36:57Z
+ 4:36PM  up 5 mins, 2 users, load averages: 0,07 0,05 0,01
+BANCO inizio 8 CPU, vm_guest kvm, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 465.1 Mpassi/s
+BANCO cpuN 3716.3 Mpassi/s (8 thread, 7.99 x cpu1)
+BANCO syscall 143.8 ns
+BANCO fork 558.6 us
+BANCO pipe 3.9 us mediana, p99 6.5, max 54.0
+BANCO timer 34 us mediana, p99 49, p99.9 61, max 572 (38686 pause su 8 CPU)
+BANCO pagine 1146.7 kpagine/s
+BANCO memcpy 11.85 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 15.709698 secs (68348981 bytes/sec)
+BANCO rete_scarico 1073741824 bytes transferred in 120.010595 secs (8947059 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 10.851172 secs (98951690 bytes/sec)
+LIVELLO L1 FreeBSD 15.1 sotto bhyve, SENZA nesting esposto fine 15:39:54Z
+CAT-FINE

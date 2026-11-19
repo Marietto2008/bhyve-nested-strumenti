@@ -1,0 +1,114 @@
+host-manifest 1.0, 2026-11-19T05:31:51Z
+
+== OS
+release:    FreeBSD 16.0-CURRENT  (osreldate 1600028)
+kernel:     VMMSNOOP, FreeBSD 16.0-CURRENT #0 vmm-ottobre-2716932c4984-dirty: Wed Oct 14 02:00:22 CEST 2026
+memory:     65337 MiB
+
+== CPU
+model:      Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz
+threads:    16
+signature:  Origin="GenuineIntel"  Id=0x906ed  Family=0x6  Model=0x9e  Stepping=13
+microcode:  revision 0x000000b8 (high dword of MSR 0x8b)
+vt-x:       VT-x: PAT,HLT,MTF,PAUSE,EPT,UG,VPID
+features2:  Features2=0x7ffafbff<SSE3,PCLMULQDQ,DTES64,MON,DS_CPL,VMX,SMX,EST,TM2,SSSE3,SDBG,FMA,CX16,xTPR,PDCM,PCID,SSE4.1,SSE4.2,x2APIC,MOVBE,POPCNT,TSCDLT,AESNI,XSAVE,OSXSAVE,AVX,F16C,RDRAND>
+
+== Board and firmware (SMBIOS)
+system.maker:    Gigabyte Technology Co., Ltd.
+system.product:  Z390 AORUS PRO
+planar.maker:    Gigabyte Technology Co., Ltd.
+planar.product:  Z390 AORUS PRO-CF
+bios.vendor:     American Megatrends Inc.
+bios.version:    F12g GA9
+bios.reldate:    06/08/2020
+
+== VMX capability MSRs (cpu0)
+0x3a     IA32_FEATURE_CONTROL         0x00000000 0x00020005
+0x480    VMX_BASIC                    0x00da0400 0x00000004
+0x481    VMX_PINBASED_CTLS            0x0000007f 0x00000016
+0x482    VMX_PROCBASED_CTLS           0xfff9fffe 0x0401e172
+0x483    VMX_EXIT_CTLS                0x01ffffff 0x00036dff
+0x484    VMX_ENTRY_CTLS               0x0003ffff 0x000011ff
+0x485    VMX_MISC                     0x00000000 0x7004c1e7
+0x48b    VMX_PROCBASED_CTLS2          0x005ffcff 0x00000000
+0x48c    VMX_EPT_VPID_CAP             0x00000f01 0x06734141
+0x48d    VMX_TRUE_PINBASED_CTLS       0x0000007f 0x00000016
+0x48e    VMX_TRUE_PROCBASED_CTLS      0xfff9fffe 0x04006172
+0x48f    VMX_TRUE_EXIT_CTLS           0x01ffffff 0x00036dfb
+0x490    VMX_TRUE_ENTRY_CTLS          0x0003ffff 0x000011fb
+0x491    VMX_VMFUNC                   0x00000000 0x00000001
+
+== vmm module
+ 5    1 0xffffffff82b32000   4f34d0 vmm-restore.ko (/boot/kernel/vmm-restore.ko)
+96d52f3d72181901b2f609d4354ad85c1f759973651862d6eb17420e917ef060  /boot/kernel/vmm-restore.ko
+
+== Binaries
+d393103a6f56885100fc63c0b8bc37921878e0bb3dc3af2a0b556fbd390e2955  /mnt/linuxulator2/vm/wsl2/fbsd/stage/current/sbin/bhyve
+
+== Writable hw.vmm settings
+hw.vmm.bhyve_xcpuids: 75072
+hw.vmm.maxvmms: 64
+hw.vmm.nested_memgen_inject: 0
+hw.vmm.qemu_mode_mask: 15
+hw.vmm.svm.disable_npf_assist: 0
+hw.vmm.vlapic_debug_lowvec: 0
+hw.vmm.vmx.debug_trace: 0
+hw.vmm.vmx.diag_efer: 0
+hw.vmm.vmx.diag_slot: 768
+hw.vmm.vmx.diag_ud: 0
+hw.vmm.vmx.diag_vec: 0
+hw.vmm.vmx.nested_apic_access: 0
+hw.vmm.vmx.nested_diag58: 0
+hw.vmm.vmx.nested_diag58_gpa: 0
+hw.vmm.vmx.nested_diag_amp_every: 1
+hw.vmm.vmx.nested_diag_amp_us: 0
+hw.vmm.vmx.nested_diag_d3_break: 0
+hw.vmm.vmx.nested_diag_e12w0: 4024479744
+hw.vmm.vmx.nested_diag_e12w1: 4045672448
+hw.vmm.vmx.nested_diag_e12w2: 4045893632
+hw.vmm.vmx.nested_diag_mk2: 0
+hw.vmm.vmx.nested_diag_mk2_every: 4
+hw.vmm.vmx.nested_diag_mk2_ripoff: 2097
+hw.vmm.vmx.nested_diag_mk_every: 1
+hw.vmm.vmx.nested_diag_mk_modo: 0
+hw.vmm.vmx.nested_diag_oprec: 0
+hw.vmm.vmx.nested_diag_oprec_every: 0
+hw.vmm.vmx.nested_diag_pf: 0
+hw.vmm.vmx.nested_diag_pfinj: 0
+hw.vmm.vmx.nested_diag_pfrec: 1
+hw.vmm.vmx.nested_diag_pfrec_e0walk: 0
+hw.vmm.vmx.nested_diag_pfrec_rippage: 18446744071580987392
+hw.vmm.vmx.nested_ept_ad: 0
+hw.vmm.vmx.nested_fast_field_validate: 0
+hw.vmm.vmx.nested_ffv_selftest_run: 0
+hw.vmm.vmx.nested_hcall_azzera: 0
+hw.vmm.vmx.nested_hcall_eptp: 0
+hw.vmm.vmx.nested_hcall_reg: 1
+hw.vmm.vmx.nested_invept_ns_max: 33385
+hw.vmm.vmx.nested_probe: 0
+hw.vmm.vmx.nested_qual_kvm: 0
+hw.vmm.vmx.nested_shadow_inject: 0
+hw.vmm.vmx.nested_shadow_verify: 0
+hw.vmm.vmx.nested_shadow_vmcs: 0
+hw.vmm.vmx.nested_vpid12_flush: 0
+hw.vmm.vmx.nested_vpid_d4_arm: 0
+hw.vmm.vmx.nested_vpid_test_off: 0
+hw.vmm.vmx.nested_vpid_track: 0
+hw.vmm.vmx.no_flush_rsb: 0
+hw.vmm.vmx.tsc_offset_check: 1
+hw.vmm.vmx.tsc_sync: 1
+hw.vmm.vmx.vept_diag: 0
+hw.vmm.vmx.vept_diag_maxmb: 320
+hw.vmm.vmx.vept_keep: 1
+hw.vmm.vmx.vept_keep_rientro: 2
+hw.vmm.vmx.vept_scan_budget_us: 2000
+hw.vmm.vmx.vept_scan_hold_keep: 0
+hw.vmm.vmx.vept_scan_max_ns: 22515857
+hw.vmm.vmx.vept_scan_retries: 1
+hw.vmm.vmx.vept_t_full_max_ns: 9900839
+hw.vmm.vmx.vept_t_partial_max_ns: 1444594
+hw.vmm.vmx.vept_t_scan_max_ns: 22507243
+hw.vmm.vmx.vept_t_verify_max_ns: 0
+hw.vmm.vmx.vept_test_race: 0
+hw.vmm.vmx.vept_test_verify_corrupt: 0
+hw.vmm.vmx.vept_verify_hpa: 0

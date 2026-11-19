@@ -1,0 +1,21 @@
+INIZIO 2026-11-18T15:23:01.4049220+01:00 distro FreeBSD
+wsl: Timeout durante l'attesa della chiusura del processo di distribuzione 605 dopo 60000 ms. L'operazione continua senza confermare che la distribuzione Þ stata arrestata.
+
+LIVELLO L2 FreeBSD 15.2 in WSL2 (Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve FreeBSD 15.2-PRERELEASE 2026-11-18T14:24:55Z
+ 3:24PM  up 17 secs, 0 users, load averages: 0.41, 0.10, 0.03
+BANCO inizio 8 CPU, vm_guest hv, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 321.1 Mpassi/s
+BANCO cpuN 1835.0 Mpassi/s (8 thread, 5.76 x cpu1)
+BANCO syscall 206.7 ns
+BANCO fork 4834.7 us
+BANCO pipe 1818.2 us mediana, p99 3479.9, max 80773.0
+BANCO timer 939 us mediana, p99 7218, p99.9 19018, max 58876 (17972 pause su 8 CPU)
+BANCO pagine 31.3 kpagine/s
+BANCO memcpy 0.74 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 9.502715 secs (112993162 bytes/sec)
+BANCO rete_scarico 758542528 bytes transferred in 120.063171 secs (6317862 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 49.659066 secs (21622272 bytes/sec)
+LIVELLO L2 FreeBSD 15.2 in WSL2 (Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve fine 14:29:13Z
+
+FINE 2026-11-18T15:29:22.2693268+01:00 rc=0 durata_s=381

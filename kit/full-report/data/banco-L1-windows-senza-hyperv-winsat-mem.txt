@@ -1,0 +1,6 @@
+AVVISO: impossibile eseguire l'attivit. L'opzione /ST precede l'ora corrente.
+rc=24
+nessun xml
+Strumento di valutazione sistema Windows
+Errore: impossibile misurare la frequenza TSC (Time Stamp Counter)
+

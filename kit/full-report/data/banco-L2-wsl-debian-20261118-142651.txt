@@ -1,0 +1,18 @@
+INIZIO 2026-11-18T14:27:01.0651353+01:00 distro Debian
+LIVELLO L2 Debian 13.5 in WSL2 (kernel Linux di WSL, Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve Linux 6.18.58.1-microsoft-standard-WSL2 2026-11-18T13:27:23Z
+ 14:27:23 up 2 min,  1 user,  load average: 1.64, 1.02, 0.42
+BANCO inizio 8 CPU, vm_guest linux, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 341.0 Mpassi/s
+BANCO cpuN 1952.2 Mpassi/s (8 thread, 5.92 x cpu1)
+BANCO syscall 252.5 ns
+BANCO fork 8380.9 us
+BANCO pipe 747.3 us mediana, p99 1736.2, max 156554.1
+BANCO timer 465 us mediana, p99 2210, p99.9 15608, max 189845 (23621 pause su 8 CPU)
+BANCO pagine 45.4 kpagine/s
+BANCO memcpy 0.91 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes (1.1 GB, 1.0 GiB) copied, 7.13022 s, 151 MB/s
+BANCO rete_scarico 1073741824 bytes (1.1 GB, 1.0 GiB) copied, 59.9706 s, 17.9 MB/s
+BANCO rete_invio 1073741824 bytes (1.1 GB, 1.0 GiB) copied, 38.3102 s, 28.0 MB/s
+LIVELLO L2 Debian 13.5 in WSL2 (kernel Linux di WSL, Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve fine 13:30:06Z
+FINE 2026-11-18T14:30:06.3576003+01:00 rc=0 durata_s=185

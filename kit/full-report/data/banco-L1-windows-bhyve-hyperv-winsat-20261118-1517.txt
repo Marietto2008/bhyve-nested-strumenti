@@ -1,0 +1,8 @@
+BANCO inizio Windows 8 CPU, 2026-11-18T15:15:03.3243974+01:00
+BANCO hypervisor_presente True
+BANCO winsat_cpu (69 s, xml delle 15:16:12) CompressionMetric=798.60811 MB/s; EncryptionMetric=7943.31887 MB/s; CPUCompression2Metric=2164.81181 MB/s; Encryption2Metric=5830.30465 MB/s; CompressionMetricUP=104.52936 MB/s; EncryptionMetricUP=996.27471 MB/s; CPUCompression2MetricUP=279.26514 MB/s; Encryption2MetricUP=733.33924 MB/s; DshowEncodeTime=0.00000 s; DshowVideoDecodeDur=0.00000 s; MFVideoDecodeDur=0.00000 s
+BANCO winsat_mem (7 s, xml delle 15:16:19) DshowEncodeTime=0.00000 s; Bandwidth=40159.34369 MB/s; DshowVideoDecodeDur=0.00000 s; MFVideoDecodeDur=0.00000 s
+BANCO winsat_disco_lettura (7 s, xml delle 15:16:27) DshowEncodeTime=0.00000 s; DshowVideoDecodeDur=0.00000 s; MFVideoDecodeDur=0.00000 s; AvgThroughput=178.88375 MB/s
+BANCO winsat_disco_scrittura (10 s, xml delle 15:16:37) DshowEncodeTime=0.00000 s; DshowVideoDecodeDur=0.00000 s; MFVideoDecodeDur=0.00000 s; AvgThroughput=200.53750 MB/s
+BANCO winsat_disco_casuale (32 s, xml delle 15:17:09) DshowEncodeTime=0.00000 s; DshowVideoDecodeDur=0.00000 s; MFVideoDecodeDur=0.00000 s; AvgThroughput=0.56000 MB/s
+BANCO fine 2026-11-18T15:17:09.7636853+01:00

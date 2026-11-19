@@ -1,0 +1,18 @@
+INIZIO 2026-11-18T13:53:55.8849461+01:00 distro FreeBSD
+LIVELLO L2 FreeBSD 15.2 in WSL2 (Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve FreeBSD 15.2-PRERELEASE 2026-11-18T12:55:20Z
+ 1:55PM  up 23 secs, 0 users, load averages: 0.67, 0.15, 0.05
+BANCO inizio 8 CPU, vm_guest hv, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 263.6 Mpassi/s
+BANCO cpuN 1862.0 Mpassi/s (8 thread, 7.08 x cpu1)
+BANCO syscall 226.3 ns
+BANCO fork 5732.3 us
+BANCO pipe 1910.8 us mediana, p99 5704.3, max 194535.9
+BANCO timer 1019 us mediana, p99 7364, p99.9 26926, max 157064 (16550 pause su 8 CPU)
+BANCO pagine 26.4 kpagine/s
+BANCO memcpy 1.67 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 14.106803 secs (76115178 bytes/sec)
+BANCO rete_scarico 567743168 bytes transferred in 120.168845 secs (4724545 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 62.139531 secs (17279529 bytes/sec)
+LIVELLO L2 FreeBSD 15.2 in WSL2 (Hyper-V), L1 Windows 11 8 vCPU, L0 QEMU+bhyve fine 13:00:02Z
+FINE 2026-11-18T14:00:02.6944803+01:00 rc=0 durata_s=367

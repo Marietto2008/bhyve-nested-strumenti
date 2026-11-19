@@ -1,0 +1,25 @@
+== 1/4 host manifest -> /mnt/linuxulator2/vm/confronto-kvm-bhyve/smoke-work/host-manifest.txt
+== 2/4 FreeBSD 15.1 image
+   checksum ok
+== 3/4 seed and L1 boot (timeout 900s)
+== 4/4 results (console: /mnt/linuxulator2/vm/confronto-kvm-bhyve/smoke-work/console.log)
+PASS  l1_boots
+PASS  vmx_in_l1
+PASS  l2_kernel_boots
+PASS  benchmark_ran
+SMOKE: l1 FreeBSD 15.1-RELEASE 4 cpus vm_guest=kvm
+SMOKE: vtx VT-x: PAT,HLT,MTF,PAUSE,EPT,UG,VPID
+SMOKE: l2 mountroot after 10s
+SMOKE: l2 Hypervisor: Origin = "bhyve bhyve "
+BANCO inizio 4 CPU, vm_guest kvm, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 466.0 Mpassi/s
+BANCO cpuN 1862.0 Mpassi/s (4 thread, 4.00 x cpu1)
+BANCO syscall 143.7 ns
+BANCO fork 564.9 us
+BANCO pipe 3.9 us mediana, p99 6.6, max 68.2
+BANCO timer 29 us mediana, p99 45, p99.9 74, max 181 (19412 pause su 4 CPU)
+BANCO pagine 464.5 kpagine/s
+BANCO memcpy 10.30 GB/s
+BANCO fine
+ALL PASSED
+uscita 0

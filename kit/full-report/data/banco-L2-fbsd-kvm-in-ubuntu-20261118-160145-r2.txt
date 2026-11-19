@@ -1,0 +1,16 @@
+LIVELLO L2 FreeBSD 15.1 sotto KVM, ripetizione FreeBSD 15.1-RELEASE-p6 2026-11-18T15:01:45Z
+ 3:01PM  up 5 mins, 0 users, load averages: 1.31, 0.74, 0.32
+BANCO inizio 8 CPU, vm_guest kvm, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 409.7 Mpassi/s
+BANCO cpuN 3180.1 Mpassi/s (8 thread, 7.77 x cpu1)
+BANCO syscall 165.0 ns
+BANCO fork 2916.5 us
+BANCO pipe 1037.1 us mediana, p99 1335.8, max 2255.3
+BANCO timer 476 us mediana, p99 789, p99.9 1386, max 6478 (26853 pause su 8 CPU)
+BANCO pagine 201.4 kpagine/s
+BANCO memcpy 9.78 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 bytes transferred in 1.627741 secs (659651393 bytes/sec)
+BANCO rete_scarico 1073741824 bytes transferred in 76.594549 secs (14018515 bytes/sec)
+BANCO rete_invio 1073741824 bytes transferred in 27.329710 secs (39288446 bytes/sec)
+LIVELLO L2 FreeBSD 15.1 sotto KVM, ripetizione fine 15:04:23Z

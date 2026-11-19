@@ -1,0 +1,28 @@
+ 15:54:33 up 4 min,  2 users,  load average: 0,27, 1,04, 0,55
+LIVELLO L1 Ubuntu 24.04 (Linux 6.17) sotto bhyve, nesting esposto, nessun L2 Linux 6.17.0-29-generic 2026-11-18T14:54:34Z
+ 15:54:34 up 4 min,  2 users,  load average: 0,27, 1,04, 0,55
+/tmp/claude-banco.c: In function ‘prova_pipe’:
+/tmp/claude-banco.c:258:17: warning: ignoring return value of ‘write’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  258 |                 write(ab[1], &c, 1);
+      |                 ^~~~~~~~~~~~~~~~~~~
+/tmp/claude-banco.c:259:17: warning: ignoring return value of ‘read’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  259 |                 read(ba[0], &c, 1);
+      |                 ^~~~~~~~~~~~~~~~~~
+/tmp/claude-banco.c: In function ‘eco’:
+/tmp/claude-banco.c:237:17: warning: ignoring return value of ‘write’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  237 |                 write(ba[1], &c, 1);
+      |                 ^~~~~~~~~~~~~~~~~~~
+BANCO inizio 8 CPU, vm_guest linux, Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz, 5 s per prova
+BANCO cpu1 444.1 Mpassi/s
+BANCO cpuN 3538.3 Mpassi/s (8 thread, 7.97 x cpu1)
+BANCO syscall 168.1 ns
+BANCO fork 572.4 us
+BANCO pipe 85.4 us mediana, p99 130.7, max 229.7
+BANCO timer 107 us mediana, p99 148, p99.9 171, max 1476 (35943 pause su 8 CPU)
+BANCO pagine 904.8 kpagine/s
+BANCO memcpy 16.55 GB/s
+BANCO fine
+BANCO disco_scrittura 1073741824 byte ( 1,1 GB, 1,0 GiB) copiato, 8,92632 s, 120 MB/s
+BANCO rete_scarico 1073741824 byte ( 1,1 GB, 1,0 GiB) copiato, 2,5398 s, 423 MB/s
+BANCO rete_invio 
+LIVELLO L1 Ubuntu 24.04 (Linux 6.17) sotto bhyve, nesting esposto, nessun L2 fine 14:55:25Z

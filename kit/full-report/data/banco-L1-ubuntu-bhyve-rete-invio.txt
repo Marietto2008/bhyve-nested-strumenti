@@ -1,0 +1,2 @@
+1073741824 byte ( 1,1 GB, 1,0 GiB) copiato, 4,081 s, 263 MB/s
+1073741824 byte ( 1,1 GB, 1,0 GiB) copiato, 4,05067 s, 265 MB/s
